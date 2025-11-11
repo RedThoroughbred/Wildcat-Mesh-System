@@ -76,11 +76,30 @@ Wildcat-Mesh-System/
 - Meshtastic-compatible radio (connected via serial or TCP)
 - systemd (for Linux service management)
 
-### Setup
+### Quick Setup (Recommended)
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/RedThoroughbred/Wildcat-Mesh-System.git
+   cd Wildcat-Mesh-System
+   ```
+
+2. **Run the setup script:**
+   ```bash
+   ./setup.sh
+   ```
+
+   The setup script will:
+   - Create a virtual environment
+   - Install all dependencies
+   - Detect your Meshtastic interface (USB/Serial or TCP)
+   - Generate configuration files
+
+### Manual Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/RedThoroughbred/Wildcat-Mesh-System.git
    cd Wildcat-Mesh-System
    ```
 
@@ -93,11 +112,13 @@ Wildcat-Mesh-System/
    ```
 
 3. **Configure BBS:**
-   Edit `bbs/config.ini` with your Meshtastic interface settings:
+   Copy and edit `bbs/example_config.ini` to `bbs/config.ini`:
    ```ini
    [interface]
-   type = serial  # or tcp
-   # hostname = 192.168.1.100  # if using tcp
+   type = serial  # for USB devices (auto-detects port)
+   # OR for network devices:
+   # type = tcp
+   # hostname = 192.168.1.100
    ```
 
 4. **Configure Observatory:**
@@ -194,6 +215,21 @@ Navigate to the web interface:
 - **Channels**: Activity analysis with time-range filtering (24h/7d/30d)
 - **Nodes**: Individual node details and reliability metrics
 - **BBS Messages**: View all BBS activity and conversations
+
+### Sharing Observatory with Remote Users
+
+Want to let friends check out your Observatory from anywhere?
+
+**Quick share with ngrok:**
+```bash
+./share-observatory.sh
+```
+
+This will give you a public URL like `https://abc123.ngrok-free.app` to share.
+
+**Other options:**
+- See [docs/NGROK_SETUP.md](docs/NGROK_SETUP.md) for detailed remote access guides
+- Supports ngrok, Cloudflare Tunnel, and Tailscale VPN
 
 ## Configuration
 
