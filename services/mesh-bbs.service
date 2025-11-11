@@ -8,7 +8,7 @@ Restart=always
 RestartSec=20
 User=seth
 WorkingDirectory=/home/seth/Wildcat-Mesh-System/bbs
-ExecStart=/home/seth/Wildcat-Mesh-System/bbs/venv/bin/python3 /home/seth/Wildcat-Mesh-System/bbs/server.py
+ExecStart=/home/seth/Wildcat-Mesh-System/venv/bin/python3 /home/seth/Wildcat-Mesh-System/bbs/server.py
 RuntimeMaxSec=300
 WatchdogSec=60
 

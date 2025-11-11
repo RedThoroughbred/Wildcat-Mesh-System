@@ -12,7 +12,7 @@ MESH_HOSTNAME = '192.168.86.37'
 SECRET_KEY = 'wildcat-mesh-observatory-2025'
 DEBUG = True
 HOST = '0.0.0.0'
-PORT = 5001
+PORT = 5000
 
 # Dashboard settings
 REFRESH_INTERVAL = 5  # seconds

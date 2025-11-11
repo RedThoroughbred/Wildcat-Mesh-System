@@ -9,7 +9,7 @@ Restart=always
 RestartSec=10
 User=seth
 WorkingDirectory=/home/seth/Wildcat-Mesh-System/observatory
-ExecStart=/home/seth/Wildcat-Mesh-System/observatory/venv/bin/python3 /home/seth/Wildcat-Mesh-System/observatory/app.py
+ExecStart=/home/seth/Wildcat-Mesh-System/venv/bin/python3 /home/seth/Wildcat-Mesh-System/observatory/app.py
 
 [Install]
 WantedBy=multi-user.target

@@ -24,20 +24,21 @@ Wildcat-Mesh-System/
 │   ├── command_handlers.py
 │   ├── utils.py
 │   ├── config.ini         # BBS configuration
-│   └── venv/              # Python virtual environment
+│   └── requirements.txt   # Python dependencies
 ├── observatory/           # Observatory Dashboard
 │   ├── app.py            # Flask application
 │   ├── config.py         # Dashboard configuration
 │   ├── modules/          # Database and utilities
 │   ├── templates/        # HTML templates
 │   ├── static/           # CSS, JS, images
-│   └── venv/             # Python virtual environment
+│   └── requirements.txt  # Python dependencies
 ├── shared/               # Shared resources
 │   └── bulletins.db      # SQLite database (shared)
 ├── services/             # systemd service files
 │   ├── mesh-bbs.service
 │   ├── telemetry-logger.service
 │   └── mesh-observatory.service
+├── venv/                 # Shared Python virtual environment
 └── docs/                 # Documentation
 ```
 
@@ -83,23 +84,15 @@ Wildcat-Mesh-System/
    cd Wildcat-Mesh-System
    ```
 
-2. **Set up BBS:**
+2. **Set up unified virtual environment:**
    ```bash
-   cd bbs
    python3 -m venv venv
    source venv/bin/activate
-   pip install -r requirements.txt
+   pip install -r bbs/requirements.txt
+   pip install -r observatory/requirements.txt
    ```
 
-3. **Set up Observatory:**
-   ```bash
-   cd ../observatory
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-4. **Configure BBS:**
+3. **Configure BBS:**
    Edit `bbs/config.ini` with your Meshtastic interface settings:
    ```ini
    [interface]
@@ -107,8 +100,8 @@ Wildcat-Mesh-System/
    # hostname = 192.168.1.100  # if using tcp
    ```
 
-5. **Configure Observatory:**
-   Edit `observatory/config.py` if needed (default: TCP at 192.168.86.37)
+4. **Configure Observatory:**
+   Edit `observatory/config.py` if needed (default: TCP at 192.168.86.37, port 5000)
 
 ### Running as Services
 
@@ -144,26 +137,23 @@ Wildcat-Mesh-System/
 
 **BBS:**
 ```bash
-cd bbs
 source venv/bin/activate
-python3 server.py
+python3 bbs/server.py
 ```
 
 **Telemetry Logger:**
 ```bash
-cd bbs
 source venv/bin/activate
-python3 telemetry_logger.py
+python3 bbs/telemetry_logger.py
 ```
 
 **Observatory:**
 ```bash
-cd observatory
 source venv/bin/activate
-python3 app.py
+python3 observatory/app.py
 ```
 
-Access the dashboard at: http://localhost:5001
+Access the dashboard at: http://localhost:5000
 
 ## Database Schema
 
@@ -228,7 +218,7 @@ MESH_HOSTNAME = '192.168.86.37'
 
 # Dashboard settings
 REFRESH_INTERVAL = 5  # seconds
-PORT = 5001
+PORT = 5000
 ```
 
 ## Development
