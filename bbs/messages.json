@@ -1,0 +1,209 @@
+{
+  "menu_labels": {
+    "weather": "[W]eather",
+    "wall_of_shame": "[W]all of Shame",
+    "network_info": "[N]etwork Info",
+    "quote": "[Q]uote",
+    "quick_commands": "[Q]uick Commands",
+    "resources": "[R]esources",
+    "bulletins": "[B]ulletins",
+    "utilities": "[U]tilities",
+    "exit": "E[X]IT",
+    "mail": "[M]ail",
+    "channel_dir": "[C]hannel Dir",
+    "js8call": "[J]S8CALL",
+    "stats": "[S]tats",
+    "fortune": "[F]ortune",
+    "games": "[G]ames"
+  },
+
+  "menu_headers": {
+    "main": "💾Wildcat TC² BBS💾 (✉️:{mail_count})",
+    "bbs": "📰BBS Menu📰",
+    "utilities": "🛠️Utilities Menu🛠️",
+    "mail": "✉️Mail Menu✉️",
+    "bulletin": "📰Bulletin Menu📰",
+    "stats": "📊Stats Menu📊",
+    "network_info": "📡Network Info📡",
+    "resources": "📚Resources📚",
+    "games": "🎮 Games Menu 🎮",
+    "weather": "☁️ Weather ☁️",
+    "trivia": "🎯 Meshtastic Trivia 🎯",
+    "propagation": "📡 Propagation Calculator 📡",
+    "propagation_analysis": "📊 Propagation Analysis 📊",
+    "channel_directory": "📚CHANNEL DIRECTORY📚",
+    "quick_help": "✈️QUICK COMMANDS✈️"
+  },
+
+  "mail": {
+    "menu": "What would you like to do with mail?\n[R]ead  [S]end E[X]IT",
+    "has_messages": "You have {count} mail messages. Select a message number to read:",
+    "no_messages": "There are no messages in your mailbox.📭",
+    "message_display": "Date: {date}\nFrom: {sender}\nSubject: {subject}\n{content}",
+    "action_prompt": "What would you like to do with this message?\n[K]eep  [D]elete  [R]eply",
+    "deleted": "The message has been deleted 🗑️",
+    "kept": "The message has been kept in your inbox.✉️",
+    "ask_recipient": "What is the Short Name of the node you want to leave a message for?",
+    "node_not_found": "I'm unable to find that node in my database.",
+    "multiple_nodes": "There are multiple nodes with that short name. Which one would you like to leave a message for?",
+    "ask_subject": "What is the subject of your message to {recipient}?\nKeep it short.",
+    "ask_content": "Send your message. You can send it in multiple messages if it's too long for one.\nSend a single message with END when you're done",
+    "ask_reply": "Send your reply to {sender} now, followed by a message with END",
+    "sent": "Mail has been posted to the mailbox of {recipient}.\n(╯°□°)╯📨📬",
+    "notification": "You have a new mail message from {sender}. Check your mailbox by responding to this message with CM.",
+    "not_found": "Mail not found",
+    "no_new": "You have no new messages.",
+    "list_header": "📬 You have the following messages:\n",
+    "list_item": "{number:02d}. From: {sender}, Subject: {subject}\n",
+    "list_footer": "\nPlease reply with the number of the message you want to read.",
+    "invalid_number": "Invalid message number. Please try again."
+  },
+
+  "bulletins": {
+    "menu": "Which board would you like to enter?\n[G]eneral  [I]nfo  [N]ews  [U]rgent",
+    "board_summary": "{board} has {count} messages.\n[R]ead  [P]ost",
+    "select_prompt": "Select a bulletin number to view from {board}:",
+    "no_bulletins": "No bulletins in {board}.",
+    "no_permission": "You don't have permission to post to this board.",
+    "ask_subject": "What is the subject of your bulletin? Keep it short.",
+    "ask_content": "Send the contents of your bulletin. Send a message with END when finished.",
+    "display": "From: {sender}\nDate: {date}\nSubject: {subject}\n- - - - - - -\n{content}",
+    "posted": "Your bulletin '{subject}' has been posted to {board}.\n(╯°□°)╯📄📌[{board}]",
+    "list_header": "📰 Bulletins on {board} board:\n",
+    "list_item": "[{number:02d}] Subject: {subject}, From: {sender}, Date: {date}\n",
+    "list_footer": "\nPlease reply with the number of the bulletin you want to read.",
+    "none_available": "No bulletins available on {board} board.",
+    "invalid_number": "Invalid bulletin number. Please try again."
+  },
+
+  "stats": {
+    "menu": "[N]odes  [H]ardware  [R]oles\n[S]NR Leaders  [D]istance\n[C]hannel Activity  [T]op Nodes\n[P]ropagation Analysis\nE[X]IT",
+    "nodes_header": "Total nodes seen:\n",
+    "hw_header": "Hardware Models:\n",
+    "roles_header": "Roles:\n",
+    "snr_header": "📶 SNR Leaderboard 📶\n\nBest Signals:\n",
+    "snr_line": "{rank}. {name} - {snr:.1f} dB\n",
+    "no_snr": "No SNR data available yet.",
+    "distance_header": "🌍 Distance Records 🌍\n\nFarthest Nodes:\n",
+    "distance_line": "{rank}. {name} - {distance:.1f} mi\n",
+    "no_distance": "No distance data available.",
+    "no_gps": "GPS position not available.",
+    "channel_header": "📻 Channel Activity (24h) 📻\n\n",
+    "channel_total": "Total Messages: {total}\n",
+    "channel_avg_snr": "Avg SNR: {snr:.1f} dB\n\n",
+    "channel_by_channel": "Messages by Channel:\n",
+    "channel_line": "- {name}: {count} msgs\n",
+    "channel_no_data": "No channel data yet.\n",
+    "top_senders_header": "\nTop Senders:\n",
+    "top_sender_line": "{rank}. {sender}: {count}\n",
+    "active_nodes_header": "⭐ Most Active Nodes ⭐\n\nRecent Activity:\n",
+    "active_node_line": "{rank}. {name} - {time}\n",
+    "no_activity": "No activity data available."
+  },
+
+  "network_info": {
+    "menu": "What info would you like?\n[N]odes  [S]ignals  [M]esh Health  E[X]IT",
+    "nodes_header": "📡 Mesh Network Status 📡\n\nTotal Nodes: {total}\n\nRecent Nodes:\n",
+    "node_line": "{rank}. {short} - {long}\n",
+    "nodes_more": "\n...and {count} more nodes",
+    "signals_header": "📶 Signal Reports 📶\n\nRecent SNR readings:\n",
+    "signal_line": "{name}: {snr:.1f} dB\n",
+    "no_signals": "No signal data available yet.",
+    "health_header": "🏥 Mesh Health 🏥\n\n",
+    "health_total": "Total Nodes: {total}\n",
+    "health_hw_header": "\nHardware Types:\n",
+    "health_hw_line": "{hw}: {count}\n",
+    "invalid_option": "Invalid option. Please try again."
+  },
+
+  "resources": {
+    "menu": "What info do you need?\n[G]uide  [H]ardware  [L]inks  [A]I Guide  E[X]IT",
+    "guide": "📖 Getting Started 📖\n\nNew to mesh?\n• Change your node name in settings\n• Set up channels to join groups\n• Add friends by their node ID\n• Adjust transmit power for range\n• Use CLIENT role for mobile nodes\n• Use CLIENT_MUTE for base stations\n\nLearn more: meshtastic.org/docs",
+    "hardware": "🔧 Recommended Hardware 🔧\n\nPortable:\n- Heltec V3 ($30)\n- T-Beam ($40)\n- RAK WisBlock ($50)\n\nBase Station:\n- Station G2 ($100)\n- RAK Base ($100)\n\nTracker:\n- T1000-E ($30-40)\n\nInfo: meshtastic.org/docs/hardware",
+    "links": "🔗 Useful Links 🔗\n\nMain Site:\nmeshtastic.org\n\nDocumentation:\nmeshtastic.org/docs\n\nDiscord:\ndiscord.gg/meshtastic\n\nReddit:\nr/meshtastic",
+    "ai_guide": "🤖 AI Meshtastic Guide 🤖\n\nInteractive AI assistant for Meshtastic help.\n\nnotebooklm.google.com/notebook/ebf5b4fd-2074-4160-a9c9-996155209bb8"
+  },
+
+  "weather": {
+    "prompt": "\n\nEnter your 5-digit ZIP code:",
+    "invalid_zip": "Invalid ZIP code. Please enter a 5-digit ZIP code.",
+    "display": "☁️ {city} Weather ☁️\n\nTemp: {temp:.0f}°F (feels {feels:.0f}°F)\nConditions: {conditions}\nHumidity: {humidity}%",
+    "not_found": "ZIP code not found. Please try again.",
+    "unavailable": "Unable to get weather at this time.",
+    "service_unavailable": "Weather service unavailable."
+  },
+
+  "games": {
+    "menu": "What would you like to play?\n[T]rivia  [P]ropagation Calc  E[X]IT",
+    "trivia_question": "\n\n{question}\n\nReply with your answer!",
+    "trivia_correct": "✅ Correct! The answer is: {answer}\n\nPlay again? Send 'T' or type 'X' for menu.",
+    "trivia_wrong": "❌ Not quite! The answer was: {answer}\n\nTry another? Send 'T' or type 'X' for menu.",
+    "no_trivia": "No trivia questions available.",
+    "trivia_unavailable": "Trivia game unavailable.",
+    "prop_prompt": "\n\nEnter antenna height in feet (e.g., 20):",
+    "prop_result": "📡 Estimated Range 📡\n\nAntenna: {height:.0f} ft\nLine of Sight: ~{distance:.1f} mi\nCondition: {condition}\n\nNote: Actual range varies with terrain, weather, and obstacles.",
+    "prop_invalid": "Please enter a valid number."
+  },
+
+  "propagation_analysis": {
+    "menu": "[H]ourly Trends\n[B]est/Worst Times\n[N]ode Reliability\nE[X]IT",
+    "hourly_header": "📡 Best Times to Mesh 📡\n\nAvg SNR by Hour (7 days):\n",
+    "hourly_line": "{hour:2d}{ampm}: {snr:+.1f}dB ({count}msg)\n",
+    "not_enough_data": "Not enough data yet. Check back after a few days!",
+    "records_header": "🏆 Propagation Records 🏆\n\nBest SNR (7 days):\n",
+    "best_line": "{name}: {snr:+.1f}dB\n",
+    "worst_header": "\n📉 Weakest Signals:\n",
+    "worst_line": "{name}: {snr:+.1f}dB\n",
+    "ask_node": "Enter node short name to analyze (e.g., 4B80):",
+    "node_stats": "📊 {name} Reliability 📊\n\nMessages (7d): {count}\nAvg SNR: {avg_snr:+.1f}dB\nRange: {min_snr:+.1f} to {max_snr:+.1f}dB\nAvg RSSI: {avg_rssi:.0f}dBm\n\nSignal Quality: {quality}",
+    "no_node_data": "No data for {name} in last 7 days.",
+    "node_not_found": "Node '{name}' not found."
+  },
+
+  "channel_directory": {
+    "menu": "What would you like to do?\n[V]iew  [P]ost  E[X]IT",
+    "select_prompt": "Select a channel number to view:\n",
+    "no_channels": "No channels available in the directory.",
+    "display": "Channel Name: {name}\nChannel URL:\n{url}",
+    "ask_name": "Name your channel for the directory:",
+    "ask_url": "Send a message with your channel URL or PSK:",
+    "added": "Your channel '{name}' has been added to the directory.",
+    "list_header": "Available Channels:\n",
+    "list_item": "{number:02d}. Name: {name}\n",
+    "list_footer": "\nPlease reply with the number of the channel you want to view.",
+    "invalid_number": "Invalid channel number. Please try again."
+  },
+
+  "wall_of_shame": {
+    "header": "Devices with battery levels below 20%:\n",
+    "line": "{name} - Battery {level}%\n",
+    "none": "No devices with battery levels below 20% found."
+  },
+
+  "fortune": {
+    "no_fortunes": "No fortunes available.",
+    "decorated": "🔮 {fortune} 🔮",
+    "error": "Error generating fortune: {error}"
+  },
+
+  "quick_commands": {
+    "help": "Send command below for usage info:\nSM,, - Send Mail\nCM - Check Mail\nPB,, - Post Bulletin\nCB,, - Check Bulletins\n",
+    "send_mail_format": "Send Mail Quick Command format:\nSM,,{short_name},,{subject},,{message}",
+    "post_bulletin_format": "Post Bulletin Quick Command format:\nPB,,{board_name},,{subject},,{content}",
+    "check_bulletin_format": "Check Bulletins Quick Command format:\nCB,,board_name",
+    "post_channel_format": "Post Channel Quick Command format:\nCHP,,{channel_name},,{channel_url}",
+    "node_not_found": "Node with short name '{name}' not found.",
+    "multiple_nodes": "Multiple nodes with short name '{name}' found. Please be more specific.",
+    "sent": "Mail has been sent to {recipient}.",
+    "bulletin_posted": "Your bulletin '{subject}' has been posted to {board}.",
+    "channel_added": "Channel '{name}' has been added to the directory.",
+    "error": "Error processing {command} command.",
+    "invalid_input": "Invalid input. Please enter a valid {type}."
+  },
+
+  "common": {
+    "help_prompt": "Type 'HELP' for a list of commands.",
+    "error_node_info": "Error: Unable to retrieve your node information.",
+    "okay": "Okay, feel free to send another command."
+  }
+}

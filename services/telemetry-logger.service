@@ -1,0 +1,15 @@
+[Unit]
+Description=Wildcat Mesh Telemetry Logger
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+User=seth
+WorkingDirectory=/home/seth/Wildcat-Mesh-System/bbs
+ExecStart=/home/seth/Wildcat-Mesh-System/bbs/venv/bin/python3 /home/seth/Wildcat-Mesh-System/bbs/telemetry_logger.py
+
+[Install]
+WantedBy=multi-user.target

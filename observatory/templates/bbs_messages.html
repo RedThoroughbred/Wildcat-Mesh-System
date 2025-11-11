@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}BBS Messages - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="/channels" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">
+        ← Back to Channels
+    </a>
+</div>
+
+<!-- Header -->
+<div class="card">
+    <div class="card-header" style="background: linear-gradient(135deg, var(--primary) 0%, #7B1FA2 100%);">
+        💬 BBS Direct Messages
+    </div>
+
+    <div style="padding: 1.5rem; background: var(--bg-surface);">
+        <p style="color: var(--text-secondary); margin: 0;">
+            This shows the complete conversation between users and the BBS node.
+            <strong style="color: var(--success);">📡 BBS RESPONSE</strong> messages are replies from the BBS,
+            while <strong style="color: var(--primary);">👤 USER MESSAGE</strong> are incoming requests.
+        </p>
+    </div>
+</div>
+
+<!-- Time Range Selector -->
+<div class="card">
+    <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface);">
+        <div style="font-weight: 600; color: var(--text-primary);">📅 Time Range:</div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="/bbs-messages?hours=24"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 24 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 24) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 24) this.style.background='var(--bg-dark)'">
+                Last 24 Hours
+            </a>
+            <a href="/bbs-messages?hours=168"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 168 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 168) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 168) this.style.background='var(--bg-dark)'">
+                Last 7 Days
+            </a>
+            <a href="/bbs-messages?hours=720"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 720 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 720) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 720) this.style.background='var(--bg-dark)'">
+                Last 30 Days
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Message Log -->
+<div class="card">
+    <div class="card-header">
+        📜 BBS Conversation History
+        <span style="opacity: 0.7; font-size: 0.9rem; margin-left: 1rem;">{{ messages|length }} messages • Newest First</span>
+    </div>
+
+    <div style="padding: 1rem;">
+        {% if messages %}
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for msg in messages %}
+            <div class="message-item" style="
+                background: {% if msg.is_bbs_response %}linear-gradient(90deg, #1a4d2e 0%, var(--bg-surface) 10%){% else %}var(--bg-surface){% endif %};
+                padding: 1rem;
+                border-radius: 8px;
+                border-left: 4px solid {% if msg.is_bbs_response %}var(--success){% elif msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %};
+            ">
+                <!-- Message Header -->
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div>
+                        <span style="color: var(--primary); font-weight: 600;">{{ msg.sender_short_name }}</span>
+                        <span style="color: var(--text-secondary); font-size: 0.85rem; margin-left: 0.5rem;">
+                            {{ msg.sender_id }}
+                        </span>
+                        {% if msg.is_bbs_response %}
+                        <span style="background: var(--success); color: white; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; margin-left: 0.5rem;">
+                            📡 BBS RESPONSE
+                        </span>
+                        {% else %}
+                        <span style="background: var(--primary); color: white; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; margin-left: 0.5rem;">
+                            👤 USER MESSAGE
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.85rem;">
+                        {% set dt = msg.timestamp|int %}
+                        {{ dt|timestamp_to_datetime }}
+                    </div>
+                </div>
+
+                <!-- Message Content -->
+                <div style="color: var(--text-primary); margin: 0.75rem 0; font-size: 1rem;">
+                    {{ msg.message }}
+                </div>
+
+                <!-- Signal Info -->
+                <div style="display: flex; gap: 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <div>
+                        <span style="font-weight: 600;">SNR:</span>
+                        <span style="color: {% if msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+                            {{ msg.snr|round(1) if msg.snr else 'N/A' }} dB
+                        </span>
+                    </div>
+                    {% if msg.rssi %}
+                    <div>
+                        <span style="font-weight: 600;">RSSI:</span>
+                        <span>{{ msg.rssi }} dBm</span>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <span style="font-weight: 600;">To Node ID:</span>
+                        <span style="font-family: monospace;">{{ msg.to_id }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+            <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">📭 No direct messages found</p>
+            <p style="font-size: 0.9rem;">The BBS has not received any direct messages in this time period.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Info Card -->
+<div class="card">
+    <div class="card-header">ℹ️ About BBS Messages</div>
+    <div style="padding: 1.5rem; color: var(--text-secondary);">
+        <p style="margin-bottom: 1rem;">
+            <strong style="color: var(--text-primary);">What are BBS Direct Messages?</strong><br>
+            When users send a message to the BBS (like "Hey" or "W" for weather), it's sent as a direct message,
+            not broadcast to the entire channel. This keeps BBS interactions private and reduces channel clutter.
+        </p>
+        <p style="margin-bottom: 0;">
+            <strong style="color: var(--text-primary);">Channel Messages vs Direct Messages:</strong><br>
+            • <strong>Channel messages</strong>: Broadcast to everyone (to_id = 4294967295)<br>
+            • <strong>Direct messages</strong>: Sent to specific node (your BBS node ID)<br>
+            • Channel 0 view now excludes these direct messages for cleaner history
+        </p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-refresh every 30 seconds
+setInterval(function() {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}

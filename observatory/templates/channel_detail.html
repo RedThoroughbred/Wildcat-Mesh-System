@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Channel {{ channel_id }} - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="/channels" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">
+        ← Back to Channels
+    </a>
+</div>
+
+<!-- Channel Header -->
+<div class="card">
+    <div class="card-header" style="background: linear-gradient(135deg, var(--primary) 0%, #1565C0 100%);">
+        💬 {{ channel_id|channel_name }}
+        <span style="opacity: 0.8; font-size: 0.9rem; margin-left: 1rem;">(Channel {{ channel_id }})</span>
+    </div>
+
+    {% if channel_info %}
+    <div style="padding: 1.5rem; background: var(--bg-surface);">
+        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="stat-card" style="background: var(--bg-dark);">
+                <div class="label">Total Messages</div>
+                <div class="value">{{ channel_info.message_count }}</div>
+                <div class="unit">last 24h</div>
+            </div>
+            <div class="stat-card" style="background: var(--bg-dark);">
+                <div class="label">Unique Senders</div>
+                <div class="value">{{ channel_info.unique_senders }}</div>
+                <div class="unit">nodes</div>
+            </div>
+            <div class="stat-card" style="background: var(--bg-dark);">
+                <div class="label">Average SNR</div>
+                <div class="value" style="color: {% if channel_info.avg_snr and channel_info.avg_snr > 5 %}var(--success){% elif channel_info.avg_snr and channel_info.avg_snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+                    {{ channel_info.avg_snr|round(1) if channel_info.avg_snr else 'N/A' }}
+                </div>
+                <div class="unit">dB</div>
+            </div>
+            <div class="stat-card" style="background: var(--bg-dark);">
+                <div class="label">Last Activity</div>
+                <div class="value" style="font-size: 1rem;">{{ channel_info.last_message|format_time }}</div>
+                <div class="unit">ago</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Time Range Selector -->
+<div class="card">
+    <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface);">
+        <div style="font-weight: 600; color: var(--text-primary);">📅 Time Range:</div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="/channel/{{ channel_id }}?hours=24"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 24 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 24) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 24) this.style.background='var(--bg-dark)'">
+                Last 24 Hours
+            </a>
+            <a href="/channel/{{ channel_id }}?hours=168"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 168 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 168) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 168) this.style.background='var(--bg-dark)'">
+                Last 7 Days
+            </a>
+            <a href="/channel/{{ channel_id }}?hours=720"
+               style="padding: 0.5rem 1rem; background: {% if selected_hours == 720 %}var(--primary){% else %}var(--bg-dark){% endif %}; border-radius: 6px; text-decoration: none; color: white; font-size: 0.9rem; transition: background 0.2s;"
+               onmouseover="if({{ selected_hours }} != 720) this.style.background='#333'"
+               onmouseout="if({{ selected_hours }} != 720) this.style.background='var(--bg-dark)'">
+                Last 30 Days
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Chat Log -->
+<div class="card">
+    <div class="card-header">
+        📜 Message History
+        <span style="opacity: 0.7; font-size: 0.9rem; margin-left: 1rem;">{{ messages|length }} messages • Newest First</span>
+    </div>
+
+    <div style="padding: 1rem;">
+        {% if messages %}
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for msg in messages %}
+            <div class="message-item" style="
+                background: var(--bg-surface);
+                padding: 1rem;
+                border-radius: 8px;
+                border-left: 4px solid {% if msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %};
+            ">
+                <!-- Message Header -->
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div>
+                        <span style="color: var(--primary); font-weight: 600;">{{ msg.sender_short_name }}</span>
+                        <span style="color: var(--text-secondary); font-size: 0.85rem; margin-left: 0.5rem;">
+                            {{ msg.sender_id }}
+                        </span>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.85rem;">
+                        {{ msg.timestamp|format_time }}
+                    </div>
+                </div>
+
+                <!-- Message Content -->
+                <div style="color: var(--text-primary); margin: 0.75rem 0; font-size: 1rem;">
+                    {{ msg.message }}
+                </div>
+
+                <!-- Signal Info -->
+                <div style="display: flex; gap: 1.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    <div>
+                        <span style="font-weight: 600;">SNR:</span>
+                        <span style="color: {% if msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+                            {{ msg.snr|round(1) if msg.snr else 'N/A' }} dB
+                        </span>
+                    </div>
+                    {% if msg.rssi %}
+                    <div>
+                        <span style="font-weight: 600;">RSSI:</span>
+                        <span>{{ msg.rssi }} dBm</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+            <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">📭 No messages found</p>
+            <p style="font-size: 0.9rem;">This channel has had no activity in the last 24 hours.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Signal Quality Legend -->
+<div class="card">
+    <div class="card-header">📊 Signal Quality Guide</div>
+    <div style="padding: 1.5rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+        <div style="text-align: center; padding: 1rem; background: var(--bg-surface); border-radius: 6px; border-left: 4px solid var(--success);">
+            <div style="color: var(--success); font-weight: 600; font-size: 1.2rem; margin-bottom: 0.5rem;">Excellent</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">SNR > 5 dB</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">Strong, reliable signal</div>
+        </div>
+        <div style="text-align: center; padding: 1rem; background: var(--bg-surface); border-radius: 6px; border-left: 4px solid var(--warning);">
+            <div style="color: var(--warning); font-weight: 600; font-size: 1.2rem; margin-bottom: 0.5rem;">Good</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">SNR 0-5 dB</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">Acceptable connection</div>
+        </div>
+        <div style="text-align: center; padding: 1rem; background: var(--bg-surface); border-radius: 6px; border-left: 4px solid var(--danger);">
+            <div style="color: var(--danger); font-weight: 600; font-size: 1.2rem; margin-bottom: 0.5rem;">Poor</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">SNR < 0 dB</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">Weak or unreliable</div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-refresh every 30 seconds
+setInterval(function() {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}

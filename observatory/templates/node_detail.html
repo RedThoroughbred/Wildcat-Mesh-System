@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}{{ node.info.sender_short_name }} - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+{% if node.info %}
+<!-- Node Header -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 style="color: var(--primary); margin: 0;">{{ node.info.sender_short_name }}</h2>
+            <p style="color: var(--text-secondary); font-family: monospace; margin: 0.5rem 0 0 0;">{{ node.info.sender_id }}</p>
+        </div>
+        <a href="/nodes" style="padding: 0.5rem 1rem; background: var(--bg-surface); color: var(--text-primary); text-decoration: none; border-radius: 6px; border: 1px solid var(--border);">
+            ← Back to Nodes
+        </a>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Total Messages</div>
+        <div class="value">{{ node.info.message_count }}</div>
+        <div class="unit">sent</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Average SNR</div>
+        <div class="value" style="color: {% if node.info.avg_snr and node.info.avg_snr > 5 %}var(--success){% elif node.info.avg_snr and node.info.avg_snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+            {{ node.info.avg_snr|round(1) if node.info.avg_snr else 'N/A' }}
+        </div>
+        <div class="unit">{% if node.info.avg_snr %}dB{% else %}no data{% endif %}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Best SNR</div>
+        <div class="value" style="color: var(--success);">{{ node.info.best_snr|round(1) if node.info.best_snr else 'N/A' }}</div>
+        <div class="unit">{% if node.info.best_snr %}dB peak{% else %}no data{% endif %}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Worst SNR</div>
+        <div class="value" style="color: var(--danger);">{{ node.info.worst_snr|round(1) if node.info.worst_snr else 'N/A' }}</div>
+        <div class="unit">{% if node.info.worst_snr %}dB low{% else %}no data{% endif %}</div>
+    </div>
+</div>
+
+<!-- SNR History Chart -->
+<div class="card">
+    <div class="card-header">📈 Signal Quality History</div>
+    <canvas id="snrChart" style="max-height: 300px;"></canvas>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <!-- Connection Quality -->
+    <div class="card">
+        <div class="card-header">🔌 Connection Quality</div>
+        <div style="padding: 1rem;">
+            <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="color: var(--text-secondary);">Average RSSI</span>
+                    <span style="color: var(--text-primary); font-weight: 600;">{{ node.info.avg_rssi|round(0)|int if node.info.avg_rssi else 'N/A' }} dBm</span>
+                </div>
+                {% if node.info.avg_rssi %}
+                <div style="background: var(--bg-surface); height: 8px; border-radius: 4px; overflow: hidden;">
+                    {% set rssi_percent = ((node.info.avg_rssi + 120) / 70 * 100)|int %}
+                    <div style="background: {% if rssi_percent > 60 %}var(--success){% elif rssi_percent > 30 %}var(--warning){% else %}var(--danger){% endif %}; height: 100%; width: {{ [rssi_percent, 100]|min }}%;"></div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="color: var(--text-secondary);">SNR Range</span>
+                    <span style="color: var(--text-primary); font-weight: 600;">
+                        {% if node.info.worst_snr and node.info.best_snr %}
+                        {{ node.info.worst_snr|round(1) }} to {{ node.info.best_snr|round(1) }} dB
+                        {% else %}
+                        N/A
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="color: var(--text-secondary);">First Seen</span>
+                    <span style="color: var(--text-primary);">{{ node.info.first_seen|format_time }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Last Seen</span>
+                    <span style="color: var(--text-primary);">{{ node.info.last_seen|format_time }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Summary -->
+    <div class="card">
+        <div class="card-header">📊 Activity Summary</div>
+        <canvas id="activityChart" style="max-height: 200px;"></canvas>
+    </div>
+</div>
+
+<!-- Recent Messages -->
+<div class="card">
+    <div class="card-header">💬 Recent Messages ({{ node.recent_messages|length }})</div>
+    {% if node.recent_messages %}
+    <div style="max-height: 500px; overflow-y: auto;">
+        {% for msg in node.recent_messages %}
+        <div style="background: var(--bg-surface); border-left: 3px solid {% if msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %}; padding: 1rem; margin-bottom: 0.75rem; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">{{ msg.timestamp|format_time }}</span>
+                {% if msg.snr %}
+                <span style="font-size: 0.9rem; color: {% if msg.snr and msg.snr > 5 %}var(--success){% elif msg.snr and msg.snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+                    SNR: {{ msg.snr|round(1) }} dB | RSSI: {{ msg.rssi }} dBm | CH{{ msg.channel_index }}
+                </span>
+                {% endif %}
+            </div>
+            <div style="color: var(--text-primary); word-wrap: break-word;">
+                {{ msg.message }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No messages recorded</p>
+    {% endif %}
+</div>
+
+{% else %}
+<div class="card">
+    <h2 style="color: var(--danger);">Node Not Found</h2>
+    <p style="color: var(--text-secondary);">The requested node could not be found in the database.</p>
+    <a href="/nodes" style="color: var(--primary);">← Back to Nodes</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+{% if node.info %}
+// SNR History Chart
+const snrData = {{ node.recent_messages|tojson }};
+const ctx1 = document.getElementById('snrChart').getContext('2d');
+
+// Reverse to show oldest first
+const reversedData = snrData.slice().reverse();
+
+new Chart(ctx1, {
+    type: 'line',
+    data: {
+        labels: reversedData.map((msg, i) => i + 1),
+        datasets: [{
+            label: 'SNR (dB)',
+            data: reversedData.map(msg => msg.snr),
+            borderColor: '#2E7D32',
+            backgroundColor: 'rgba(46, 125, 50, 0.1)',
+            tension: 0.3,
+            fill: true
+        }, {
+            label: 'RSSI (dBm)',
+            data: reversedData.map(msg => msg.rssi),
+            borderColor: '#1565C0',
+            backgroundColor: 'rgba(21, 101, 192, 0.1)',
+            tension: 0.3,
+            fill: true,
+            yAxisID: 'y2'
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: {
+            mode: 'index',
+            intersect: false
+        },
+        plugins: {
+            legend: {
+                labels: { color: '#FFFFFF' }
+            }
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'SNR (dB)',
+                    color: '#2E7D32'
+                },
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            },
+            y2: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: 'RSSI (dBm)',
+                    color: '#1565C0'
+                },
+                ticks: { color: '#B0B0B0' },
+                grid: { display: false }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Message #',
+                    color: '#B0B0B0'
+                },
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            }
+        }
+    }
+});
+
+// Activity summary pie chart (messages per channel)
+const ctx2 = document.getElementById('activityChart').getContext('2d');
+const channelCounts = {};
+
+snrData.forEach(msg => {
+    const ch = msg.channel_index || 0;
+    channelCounts[ch] = (channelCounts[ch] || 0) + 1;
+});
+
+new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(channelCounts).map(ch => 'Channel ' + ch),
+        datasets: [{
+            data: Object.values(channelCounts),
+            backgroundColor: ['#2E7D32', '#1565C0', '#F57C00', '#E91E63', '#9C27B0'],
+            borderWidth: 2,
+            borderColor: '#121212'
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: '#FFFFFF' }
+            }
+        }
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

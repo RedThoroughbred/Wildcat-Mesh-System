@@ -1,0 +1,15 @@
+[Unit]
+Description=Wildcat Mesh Observatory Dashboard
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+User=seth
+WorkingDirectory=/home/seth/Wildcat-Mesh-System/observatory
+ExecStart=/home/seth/Wildcat-Mesh-System/observatory/venv/bin/python3 /home/seth/Wildcat-Mesh-System/observatory/app.py
+
+[Install]
+WantedBy=multi-user.target

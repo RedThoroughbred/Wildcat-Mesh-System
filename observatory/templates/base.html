@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Wildcat Mesh Observatory{% endblock %}</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1 style="margin: 0;">Wildcat Mesh Observatory</h1>
+                <p style="color: #B0B0B0; margin-top: 0.5rem; margin-bottom: 0;">Northern Kentucky Mesh Network | Real-time Analytics</p>
+            </div>
+            <div id="connectionStatus" style="padding: 0.75rem 1.5rem; background: var(--bg-surface); border-radius: 6px; border: 2px solid var(--border); font-weight: 600; color: var(--text-secondary);">
+                <span id="statusIndicator">●</span> <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <nav class="nav">
+        <a href="/" class="{{ 'active' if request.path == '/' }}">🏠 Dashboard</a>
+        <a href="/map" class="{{ 'active' if request.path == '/map' }}">🗺️ Map</a>
+        <a href="/nodes" class="{{ 'active' if request.path == '/nodes' }}">📡 Nodes</a>
+        <a href="/propagation" class="{{ 'active' if request.path == '/propagation' }}">📊 Propagation</a>
+        <a href="/channels" class="{{ 'active' if request.path == '/channels' }}">💬 Channels</a>
+        <a href="/bbs-messages" class="{{ 'active' if request.path == '/bbs-messages' }}">📨 BBS Messages</a>
+        <a href="/admin" class="{{ 'active' if request.path == '/admin' }}">⚙️ Admin</a>
+        <a href="/api" class="{{ 'active' if request.path == '/api' }}">📚 API</a>
+    </nav>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Global WebSocket Connection -->
+    <script>
+        const socket = io();
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const statusBox = document.getElementById('connectionStatus');
+
+        socket.on('connect', function() {
+            statusIndicator.style.color = '#4CAF50';
+            statusIndicator.style.animation = 'pulse 2s infinite';
+            statusText.textContent = 'LIVE';
+            statusText.style.color = '#4CAF50';
+            statusBox.style.borderColor = '#4CAF50';
+        });
+
+        socket.on('disconnect', function() {
+            statusIndicator.style.color = '#F44336';
+            statusIndicator.style.animation = 'none';
+            statusText.textContent = 'DISCONNECTED';
+            statusText.style.color = '#F44336';
+            statusBox.style.borderColor = '#F44336';
+        });
+
+        socket.on('stats_update', function(data) {
+            // Dispatch custom event that pages can listen to
+            window.dispatchEvent(new CustomEvent('meshStatsUpdate', { detail: data }));
+        });
+    </script>
+
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

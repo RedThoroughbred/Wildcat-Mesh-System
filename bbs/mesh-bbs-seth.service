@@ -1,0 +1,17 @@
+[Unit]
+Description=TC²-BBS Meshtastic Version (Heltec V3)
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=20
+# Auto-restart every 10 minutes to prevent serial connection issues
+RuntimeMaxSec=600
+User=seth
+WorkingDirectory=/home/seth/Wildcat-TC2-BBS
+ExecStart=/home/seth/Wildcat-TC2-BBS/venv/bin/python3 /home/seth/Wildcat-TC2-BBS/server.py
+
+[Install]
+WantedBy=multi-user.target

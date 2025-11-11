@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="alert alert-warning">
+    ⚠️ <strong>Admin Tools</strong> - These features will allow network management and configuration
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div class="card">
+        <div class="card-header">📢 Broadcast Message</div>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Send a message to all nodes on the network</p>
+
+        <textarea id="broadcastMsg" placeholder="Enter your message..."
+                  style="width: 100%; height: 100px; padding: 0.75rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
+
+        <button style="margin-top: 1rem; padding: 0.75rem 1.5rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+            Send Broadcast
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-header">📊 Export Data</div>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Download network data for analysis</p>
+
+        <a href="/export/messages.csv" download style="display: block; margin-bottom: 0.75rem; width: 100%; padding: 0.75rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; text-align: left; box-sizing: border-box;">
+            📥 Export Message Logs (CSV)
+        </a>
+
+        <a href="/export/nodes.csv" download style="display: block; margin-bottom: 0.75rem; width: 100%; padding: 0.75rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; text-align: left; box-sizing: border-box;">
+            📥 Export Node List (CSV)
+        </a>
+
+        <button onclick="alert('Database backup coming soon!')" style="width: 100%; padding: 0.75rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; text-align: left;">
+            📥 Full Database Backup (SQLite)
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">📜 Live Mesh Network Activity</div>
+
+    <!-- Filter Buttons -->
+    <div style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="log-filter active" data-type="messages" onclick="filterLogs('messages')">Messages</button>
+        <button class="log-filter" data-type="telemetry" onclick="filterLogs('telemetry')">Telemetry</button>
+        <button class="log-filter" data-type="position" onclick="filterLogs('position')">Position</button>
+        <button class="log-filter" data-type="all" onclick="filterLogs('all')">All Activity</button>
+    </div>
+
+    <!-- Log Output -->
+    <div id="logOutput" style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; font-family: monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto;">
+        <p style="color: var(--text-secondary);">Loading logs...</p>
+    </div>
+
+    <!-- Controls -->
+    <div style="padding: 1rem; display: flex; gap: 0.5rem;">
+        <button onclick="refreshLogs()" style="padding: 0.5rem 1rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+            🔄 Refresh
+        </button>
+        <button onclick="clearLogDisplay()" style="padding: 0.5rem 1rem; background: var(--bg-dark); color: white; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;">
+            🗑️ Clear Display
+        </button>
+        <label style="display: flex; align-items: center; margin-left: auto;">
+            <input type="checkbox" id="autoRefresh" checked style="margin-right: 0.5rem;">
+            <span style="color: var(--text-secondary);">Auto-refresh (5s)</span>
+        </label>
+    </div>
+</div>
+
+<style>
+.log-filter {
+    padding: 0.5rem 1rem;
+    background: var(--bg-dark);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.log-filter:hover {
+    background: var(--bg-surface);
+}
+
+.log-filter.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.log-line {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.log-timestamp {
+    color: #888;
+}
+
+.log-service {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.log-level-INFO {
+    color: var(--success);
+}
+
+.log-level-WARNING {
+    color: var(--warning);
+}
+
+.log-level-ERROR {
+    color: var(--danger);
+}
+</style>
+
+<div class="card">
+    <div class="card-header">🔧 BBS Management</div>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Configure and manage your Wildcat TC² BBS</p>
+
+    <a href="/admin/bbs-config" style="display: block; margin-bottom: 0.75rem; width: 100%; padding: 0.75rem; background: var(--primary); color: white; border: none; border-radius: 6px; text-decoration: none; text-align: left; box-sizing: border-box; font-weight: 600;">
+        ⚙️ Edit BBS Configuration
+    </a>
+
+    <a href="/admin/bbs-content" style="display: block; margin-bottom: 0.75rem; width: 100%; padding: 0.75rem; background: var(--success); color: white; border: none; border-radius: 6px; text-decoration: none; text-align: left; box-sizing: border-box; font-weight: 600;">
+        ✏️ Edit BBS Content (Quotes, Trivia)
+    </a>
+
+    <button onclick="restartService('mesh-bbs.service')" style="width: 100%; padding: 0.75rem; background: var(--warning); color: white; border: none; border-radius: 6px; cursor: pointer; text-align: left; font-weight: 600; margin-bottom: 0.75rem;">
+        🔄 Restart BBS Service
+    </button>
+
+    <button onclick="restartService('telemetry-logger.service')" style="width: 100%; padding: 0.75rem; background: var(--warning); color: white; border: none; border-radius: 6px; cursor: pointer; text-align: left; font-weight: 600;">
+        🔄 Restart Telemetry Logger
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-header">🔧 Network Management</div>
+    <p style="color: var(--text-secondary);">Future features:</p>
+    <ul style="color: var(--text-secondary);">
+        <li>View node configurations</li>
+        <li>Send remote commands</li>
+        <li>Update channel settings</li>
+        <li>Manage node favorites</li>
+        <li>Configure alerts and notifications</li>
+        <li>Generate reports</li>
+    </ul>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Placeholder - broadcast button will be wired up in Phase 3
+document.querySelector('button[style*="Send Broadcast"]')?.addEventListener('click', function() {
+    alert('Broadcast messaging coming in Phase 3!');
+});
+
+// Service restart function
+async function restartService(serviceName) {
+    if (!confirm(`Are you sure you want to restart ${serviceName}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/admin/bbs-config/restart', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('✓ Service restarted successfully!');
+        } else {
+            alert('✗ Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('✗ Error restarting service: ' + error.message);
+    }
+}
+
+// Live Mesh Network Activity Logs
+let currentFilter = 'messages';
+let autoRefreshInterval = null;
+
+async function fetchLogs(type = 'messages', limit = 100) {
+    try {
+        const response = await fetch(`/admin/logs?type=${type}&limit=${limit}`);
+        const data = await response.json();
+        return data.logs || [];
+    } catch (error) {
+        console.error('Error fetching logs:', error);
+        return [];
+    }
+}
+
+function formatLogLine(log) {
+    const typeColors = {
+        'MESSAGE': 'var(--primary)',
+        'TELEMETRY': 'var(--warning)',
+        'POSITION': 'var(--success)'
+    };
+    const typeColor = typeColors[log.type] || 'var(--text-secondary)';
+
+    return `
+        <div class="log-line">
+            <span class="log-timestamp">[${log.timestamp}]</span>
+            <span class="log-type" style="color: ${typeColor}; font-weight: 600;">[${log.type}]</span>
+            <span class="log-source" style="color: var(--primary);">${log.source}</span>
+            <span style="color: var(--text-primary);">${log.details}</span>
+            ${log.signal ? `<span style="color: var(--success); margin-left: 1rem;">${log.signal}</span>` : ''}
+        </div>
+    `;
+}
+
+async function refreshLogs() {
+    const logs = await fetchLogs(currentFilter);
+    const logOutput = document.getElementById('logOutput');
+
+    if (logs.length === 0) {
+        logOutput.innerHTML = '<p style="color: var(--text-secondary);">No mesh activity logged yet. Start using the BBS or wait for nodes to broadcast.</p>';
+        return;
+    }
+
+    logOutput.innerHTML = logs.map(formatLogLine).join('');
+    logOutput.scrollTop = logOutput.scrollHeight; // Auto-scroll to bottom
+}
+
+function filterLogs(type) {
+    currentFilter = type;
+
+    // Update active button
+    document.querySelectorAll('.log-filter').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.log-filter[data-type="${type}"]`).classList.add('active');
+
+    refreshLogs();
+}
+
+function clearLogDisplay() {
+    document.getElementById('logOutput').innerHTML = '<p style="color: var(--text-secondary);">Logs cleared. Click refresh to reload.</p>';
+}
+
+// Auto-refresh logic
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+        autoRefreshInterval = setInterval(refreshLogs, 5000);
+    } else {
+        clearInterval(autoRefreshInterval);
+    }
+});
+
+// Initial load
+refreshLogs();
+
+// Start auto-refresh
+autoRefreshInterval = setInterval(refreshLogs, 5000);
+</script>
+{% endblock %}

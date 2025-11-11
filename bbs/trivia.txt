@@ -1,0 +1,30 @@
+What frequency does Meshtastic use in North America?|902-928 MHz|A
+What is the maximum nodes in a single Meshtastic mesh?|Around 100 active nodes|B
+What does LoRa stand for?|Long Range|A
+What is the typical range of Meshtastic in urban areas?|1-3 miles|B
+What power output does Meshtastic typically use?|100mW to 1W|B
+Which modulation does Meshtastic use?|LoRa (CSS)|A
+What is the default channel name?|LongFast|A
+How many channels can a Meshtastic device have?|8 channels|B
+What does SNR stand for?|Signal to Noise Ratio|A
+What is a good SNR value for Meshtastic?|Above 0 dB|B
+What processor do most Meshtastic devices use?|ESP32|A
+Which device role uses the least power?|CLIENT_MUTE|B
+What is the maximum message length in Meshtastic?|237 bytes|B
+What does RSSI measure?|Signal strength|A
+What does GPS provide to Meshtastic?|Position and time sync|B
+How does Meshtastic encrypt messages?|AES-256|A
+What is the purpose of CLIENT_MUTE role?|Receive only, minimal rebroadcast|B
+Which frequency band does Europe use?|868 MHz|A
+What protocol does Meshtastic use for routing?|Mesh flooding|B
+What is the minimum hop limit?|3 hops|B
+Which device has the longest battery life?|Solar-powered nodes|B
+What does BBS stand for?|Bulletin Board System|A
+What year was LoRa technology introduced?|2012|B
+What is the spreading factor range in LoRa?|SF7 to SF12|B
+Which role is best for a solar base station?|ROUTER|B
+What does MQTT enable in Meshtastic?|Internet gateway functionality|B
+How many admin keys can a node have?|Up to 3|B
+What is the purpose of a REPEATER role?|Extend mesh range|B
+What type of antenna works best for Meshtastic?|Omnidirectional|B
+What does the tracker role do?|Optimized for GPS tracking|B

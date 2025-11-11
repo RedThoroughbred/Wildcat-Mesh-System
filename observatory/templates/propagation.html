@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Propagation - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">📊 Hourly SNR Trends (Last 7 Days)</div>
+    <canvas id="hourlyChart" style="max-height: 400px;"></canvas>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div class="card">
+        <div class="card-header">🏆 Best Connections</div>
+        {% if best_worst.best %}
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for conn in best_worst.best %}
+            <div style="background: var(--bg-surface); padding: 0.75rem; margin-bottom: 0.5rem; border-radius: 6px; border-left: 3px solid var(--success);">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-weight: 600; color: var(--primary);">{{ conn.sender_short_name }}</span>
+                    <span style="color: var(--success); font-weight: 600;">{{ conn.snr|round(1) }} dB</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                    RSSI: {{ conn.rssi }} dBm | {{ conn.timestamp|format_time }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No SNR data available yet</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-header">📉 Worst Connections</div>
+        {% if best_worst.worst %}
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for conn in best_worst.worst %}
+            <div style="background: var(--bg-surface); padding: 0.75rem; margin-bottom: 0.5rem; border-radius: 6px; border-left: 3px solid var(--danger);">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-weight: 600; color: var(--primary);">{{ conn.sender_short_name }}</span>
+                    <span style="color: var(--danger); font-weight: 600;">{{ conn.snr|round(1) }} dB</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                    RSSI: {{ conn.rssi }} dBm | {{ conn.timestamp|format_time }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No SNR data available yet</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">📈 SNR Distribution</div>
+    <canvas id="snrDistChart" style="max-height: 300px;"></canvas>
+</div>
+
+<div class="card">
+    <div class="card-header">💡 Propagation Insights</div>
+    <div style="padding: 1rem;">
+        {% if hourly_trends %}
+        <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--primary); margin-bottom: 1rem;">
+            <strong style="color: var(--primary);">📊 Data Summary:</strong>
+            <p style="color: var(--text-secondary); margin: 0.5rem 0 0 0;">
+                Analyzed {{ hourly_trends|sum(attribute='message_count') }} messages over the last 7 days
+            </p>
+        </div>
+
+        {% set best_hour = hourly_trends|sort(attribute='avg_snr', reverse=true)|first %}
+        {% if best_hour %}
+        <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--success); margin-bottom: 1rem;">
+            <strong style="color: var(--success);">🌟 Best Time to Mesh:</strong>
+            <p style="color: var(--text-secondary); margin: 0.5rem 0 0 0;">
+                {{ best_hour.hour }}:00 with average SNR of {{ best_hour.avg_snr|round(1) }} dB
+            </p>
+        </div>
+        {% endif %}
+
+        {% set worst_hour = hourly_trends|sort(attribute='avg_snr')|first %}
+        {% if worst_hour %}
+        <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--warning);">
+            <strong style="color: var(--warning);">⚠️ Challenging Time:</strong>
+            <p style="color: var(--text-secondary); margin: 0.5rem 0 0 0;">
+                {{ worst_hour.hour }}:00 with average SNR of {{ worst_hour.avg_snr|round(1) }} dB
+            </p>
+        </div>
+        {% endif %}
+        {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
+            Collecting propagation data... Check back after more mesh activity!
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Hourly SNR chart with REAL data
+const hourlyData = {{ hourly_trends|tojson }};
+const ctx1 = document.getElementById('hourlyChart').getContext('2d');
+
+// Fill in missing hours with null for complete 24h view
+const hours24 = Array.from({length: 24}, (_, i) => i);
+const snrByHour = hours24.map(h => {
+    const data = hourlyData.find(d => d.hour === h);
+    return data ? data.avg_snr : null;
+});
+const rssiByHour = hours24.map(h => {
+    const data = hourlyData.find(d => d.hour === h);
+    return data ? data.avg_rssi : null;
+});
+const countByHour = hours24.map(h => {
+    const data = hourlyData.find(d => d.hour === h);
+    return data ? data.message_count : 0;
+});
+
+new Chart(ctx1, {
+    type: 'line',
+    data: {
+        labels: hours24.map(h => {
+            if (h === 0) return '12AM';
+            if (h === 12) return '12PM';
+            if (h < 12) return h + 'AM';
+            return (h - 12) + 'PM';
+        }),
+        datasets: [{
+            label: 'Avg SNR (dB)',
+            data: snrByHour,
+            borderColor: '#2E7D32',
+            backgroundColor: 'rgba(46, 125, 50, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y'
+        }, {
+            label: 'Avg RSSI (dBm)',
+            data: rssiByHour,
+            borderColor: '#1565C0',
+            backgroundColor: 'rgba(21, 101, 192, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y2'
+        }, {
+            label: 'Messages',
+            data: countByHour,
+            type: 'bar',
+            backgroundColor: 'rgba(245, 124, 0, 0.3)',
+            borderColor: '#F57C00',
+            borderWidth: 1,
+            yAxisID: 'y3'
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: {
+            mode: 'index',
+            intersect: false
+        },
+        plugins: {
+            legend: {
+                labels: { color: '#FFFFFF' }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        let label = context.dataset.label || '';
+                        if (label) label += ': ';
+                        if (context.parsed.y !== null) {
+                            label += context.parsed.y.toFixed(1);
+                            if (context.dataset.yAxisID === 'y') label += ' dB';
+                            if (context.dataset.yAxisID === 'y2') label += ' dBm';
+                            if (context.dataset.yAxisID === 'y3') label += ' msgs';
+                        }
+                        return label;
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: { display: true, text: 'SNR (dB)', color: '#2E7D32' },
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            },
+            y2: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: { display: true, text: 'RSSI (dBm)', color: '#1565C0' },
+                ticks: { color: '#B0B0B0' },
+                grid: { display: false }
+            },
+            y3: {
+                type: 'linear',
+                display: false,
+                position: 'right'
+            },
+            x: {
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            }
+        }
+    }
+});
+
+// SNR Distribution histogram
+const snrDist = {{ snr_distribution|tojson }};
+const ctx2 = document.getElementById('snrDistChart').getContext('2d');
+
+new Chart(ctx2, {
+    type: 'bar',
+    data: {
+        labels: snrDist.map(d => d.snr.toFixed(0) + ' dB'),
+        datasets: [{
+            label: 'Message Count',
+            data: snrDist.map(d => d.count),
+            backgroundColor: snrDist.map(d => {
+                if (d.snr > 5) return '#4CAF50';
+                if (d.snr > 0) return '#FF9800';
+                return '#F44336';
+            }),
+            borderColor: '#121212',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { labels: { color: '#FFFFFF' } },
+            title: {
+                display: true,
+                text: 'SNR Distribution - Last 7 Days',
+                color: '#FFFFFF'
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Number of Messages', color: '#B0B0B0' },
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            },
+            x: {
+                title: { display: true, text: 'Signal Strength (SNR)', color: '#B0B0B0' },
+                ticks: { color: '#B0B0B0' },
+                grid: { color: '#333333' }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

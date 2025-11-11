@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Map - Wildcat Mesh Observatory{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+#map {
+    height: 600px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">🗺️ Live Mesh Network Map</div>
+    <div id="map"></div>
+</div>
+
+<div class="card">
+    <div class="card-header">📍 Node Locations</div>
+    <p style="color: var(--text-secondary);">Interactive map coming soon! This will show:</p>
+    <ul style="color: var(--text-secondary);">
+        <li>All nodes with GPS coordinates</li>
+        <li>Signal strength visualization</li>
+        <li>Range circles and coverage areas</li>
+        <li>Connection lines between nodes</li>
+        <li>Click nodes for details</li>
+    </ul>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Initialize map centered on Walton, KY
+const map = L.map('map').setView([38.8631, -84.6138], 12);
+
+// Dark theme map tiles
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+}).addTo(map);
+
+// Add a marker for Wildcat BBS Node in Walton, KY
+const bbsIcon = L.icon({
+    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTQiIGZpbGw9IiMyRTdEMzIiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iMTYiIHk9IjIxIiBmb250LXNpemU9IjE2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmZmIj7wn5OwPC90ZXh0Pjwvc3ZnPg==',
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -40]
+});
+
+// Add BBS node marker
+const bbsMarker = L.marker([38.8631, -84.6138], {icon: bbsIcon}).addTo(map)
+    .bindPopup('<b>🛰️ Wildcat BBS Node</b><br>Walton, KY<br><small>Your mesh hub</small>')
+    .openPopup();
+
+// Create different colored icons for nodes based on signal quality
+function createNodeIcon(avgSnr) {
+    let color = '#C62828'; // Red (poor)
+    if (avgSnr > 5) color = '#2E7D32'; // Green (excellent)
+    else if (avgSnr > 0) color = '#F57C00'; // Orange (good)
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
+    return L.icon({
+        iconUrl: 'data:image/svg+xml;base64,' + btoa(svg),
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -12]
+    });
+}
+
+// Fetch and display node positions from database
+function loadNodePositions() {
+    fetch('/api/v1/positions')
+        .then(response => response.json())
+        .then(nodes => {
+            console.log('📍 Loaded ' + nodes.length + ' node positions');
+
+            nodes.forEach(node => {
+                const icon = createNodeIcon(node.avg_snr || 0);
+                const marker = L.marker([node.latitude, node.longitude], {icon: icon}).addTo(map);
+
+                // Create popup with node details
+                const lastSeen = node.last_message_time
+                    ? new Date(node.last_message_time * 1000).toLocaleString()
+                    : 'Never';
+
+                const popupContent = `
+                    <div style="min-width: 200px;">
+                        <b>${node.sender_short_name || node.node_name || 'Unknown'}</b><br>
+                        <small style="color: #666;">${node.node_id}</small><br>
+                        <hr style="margin: 0.5rem 0;">
+                        📍 Lat: ${node.latitude.toFixed(4)}, Lon: ${node.longitude.toFixed(4)}<br>
+                        ${node.altitude ? '⛰️ Alt: ' + node.altitude + 'm<br>' : ''}
+                        ${node.avg_snr ? '📶 Avg SNR: ' + node.avg_snr.toFixed(1) + ' dB<br>' : ''}
+                        🕐 Last seen: ${lastSeen}
+                    </div>
+                `;
+
+                marker.bindPopup(popupContent);
+            });
+
+            if (nodes.length === 0) {
+                console.log('ℹ️ No nodes with GPS coordinates yet');
+            }
+        })
+        .catch(err => {
+            console.error('Error loading node positions:', err);
+        });
+}
+
+// Load positions on page load
+loadNodePositions();
+
+// Refresh positions every 60 seconds
+setInterval(loadNodePositions, 60000);
+</script>
+{% endblock %}

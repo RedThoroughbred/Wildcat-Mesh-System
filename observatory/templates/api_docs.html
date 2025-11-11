@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}API Documentation - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">📚 API Documentation</div>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+        The Wildcat Mesh Observatory provides a RESTful API for accessing mesh network data programmatically.
+        All endpoints return JSON unless otherwise specified.
+    </p>
+
+    <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--primary); margin-bottom: 2rem;">
+        <strong style="color: var(--primary);">Base URL:</strong>
+        <code style="background: var(--bg-dark); padding: 0.25rem 0.5rem; border-radius: 4px; margin-left: 0.5rem;">http://nicho:5001/api/v1</code>
+    </div>
+</div>
+
+<!-- Statistics Endpoint -->
+<div class="card">
+    <div class="card-header" style="background: var(--bg-surface); padding: 1rem; border-radius: 8px 8px 0 0; border-left: 4px solid var(--success);">
+        <span style="background: var(--success); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-right: 0.5rem;">GET</span>
+        <code style="font-size: 1.1rem;">/api/v1/stats</code>
+    </div>
+    <div style="padding: 1.5rem;">
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Get overall mesh network statistics</p>
+
+        <strong style="color: var(--primary);">Response:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem;"><code>{
+  "messages_24h": 55,
+  "avg_snr": 8.5,
+  "active_nodes": 2,
+  "total_nodes": 7
+}</code></pre>
+
+        <strong style="color: var(--primary); margin-top: 1rem; display: block;">Try it:</strong>
+        <button onclick="tryApi('/api/v1/stats', 'stats-result')" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Test Endpoint
+        </button>
+        <pre id="stats-result" style="display: none; background: var(--bg-dark); padding: 1rem; border-radius: 6px; margin-top: 0.5rem; color: #4CAF50;"></pre>
+    </div>
+</div>
+
+<!-- Nodes Endpoint -->
+<div class="card">
+    <div class="card-header" style="background: var(--bg-surface); padding: 1rem; border-radius: 8px 8px 0 0; border-left: 4px solid var(--success);">
+        <span style="background: var(--success); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-right: 0.5rem;">GET</span>
+        <code style="font-size: 1.1rem;">/api/v1/nodes</code>
+    </div>
+    <div style="padding: 1.5rem;">
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Get active nodes (last hour)</p>
+
+        <strong style="color: var(--primary);">Response:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem;"><code>[
+  {
+    "sender_id": "!abc123",
+    "sender_short_name": "🕸",
+    "last_seen": 1699564800
+  }
+]</code></pre>
+
+        <button onclick="tryApi('/api/v1/nodes', 'nodes-result')" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Test Endpoint
+        </button>
+        <pre id="nodes-result" style="display: none; background: var(--bg-dark); padding: 1rem; border-radius: 6px; margin-top: 0.5rem; color: #4CAF50;"></pre>
+    </div>
+</div>
+
+<!-- Messages Endpoint -->
+<div class="card">
+    <div class="card-header" style="background: var(--bg-surface); padding: 1rem; border-radius: 8px 8px 0 0; border-left: 4px solid var(--success);">
+        <span style="background: var(--success); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-right: 0.5rem;">GET</span>
+        <code style="font-size: 1.1rem;">/api/v1/messages</code>
+    </div>
+    <div style="padding: 1.5rem;">
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Get recent messages (last 20)</p>
+
+        <strong style="color: var(--primary);">Response:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem;"><code>[
+  {
+    "timestamp": 1699564800,
+    "sender_short_name": "🕸",
+    "message": "Hello mesh!",
+    "snr": 8.5,
+    "rssi": -95,
+    "channel_index": 0
+  }
+]</code></pre>
+
+        <button onclick="tryApi('/api/v1/messages', 'messages-result')" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Test Endpoint
+        </button>
+        <pre id="messages-result" style="display: none; background: var(--bg-dark); padding: 1rem; border-radius: 6px; margin-top: 0.5rem; color: #4CAF50;"></pre>
+    </div>
+</div>
+
+<!-- Export Endpoints -->
+<div class="card">
+    <div class="card-header">📥 Export Endpoints</div>
+    <div style="padding: 1.5rem;">
+        <div style="margin-bottom: 1.5rem;">
+            <div style="background: var(--bg-surface); padding: 1rem; border-radius: 8px; border-left: 4px solid var(--accent);">
+                <span style="background: var(--accent); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-right: 0.5rem;">GET</span>
+                <code style="font-size: 1.1rem;">/export/nodes.csv</code>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">Download complete node list as CSV</p>
+            </div>
+        </div>
+
+        <div>
+            <div style="background: var(--bg-surface); padding: 1rem; border-radius: 8px; border-left: 4px solid var(--accent);">
+                <span style="background: var(--accent); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-right: 0.5rem;">GET</span>
+                <code style="font-size: 1.1rem;">/export/messages.csv</code>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">Download message history as CSV (last 1000)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Usage Examples -->
+<div class="card">
+    <div class="card-header">💻 Usage Examples</div>
+    <div style="padding: 1.5rem;">
+        <strong style="color: var(--primary);">Python:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem; margin-bottom: 1.5rem;"><code>import requests
+
+# Get mesh stats
+response = requests.get('http://nicho:5001/api/v1/stats')
+stats = response.json()
+print(f"Active nodes: {stats['active_nodes']}")
+
+# Get recent messages
+messages = requests.get('http://nicho:5001/api/v1/messages').json()
+for msg in messages:
+    print(f"{msg['sender_short_name']}: {msg['message']}")</code></pre>
+
+        <strong style="color: var(--primary);">Bash/curl:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem; margin-bottom: 1.5rem;"><code># Get stats
+curl http://nicho:5001/api/v1/stats | jq
+
+# Download nodes CSV
+curl -O http://nicho:5001/export/nodes.csv
+
+# Get messages and filter by SNR
+curl http://nicho:5001/api/v1/messages | jq '.[] | select(.snr > 5)'</code></pre>
+
+        <strong style="color: var(--primary);">JavaScript:</strong>
+        <pre style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; overflow-x: auto; color: var(--text-primary); margin-top: 0.5rem;"><code>// Fetch stats
+fetch('http://nicho:5001/api/v1/stats')
+  .then(res => res.json())
+  .then(stats => console.log('Active nodes:', stats.active_nodes));
+
+// Async/await
+const getMessages = async () => {
+  const response = await fetch('http://nicho:5001/api/v1/messages');
+  const messages = await response.json();
+  return messages;
+};</code></pre>
+    </div>
+</div>
+
+<!-- Rate Limits & Notes -->
+<div class="card">
+    <div class="card-header">⚙️ Notes & Best Practices</div>
+    <div style="padding: 1.5rem;">
+        <ul style="color: var(--text-secondary); line-height: 2;">
+            <li><strong style="color: var(--primary);">No Authentication:</strong> API is currently open for local network access</li>
+            <li><strong style="color: var(--primary);">Rate Limits:</strong> None currently, but please be considerate</li>
+            <li><strong style="color: var(--primary);">CORS:</strong> Enabled for local development</li>
+            <li><strong style="color: var(--primary);">Timestamps:</strong> Unix timestamps (seconds since epoch)</li>
+            <li><strong style="color: var(--primary);">Caching:</strong> Data is updated in real-time from the database</li>
+            <li><strong style="color: var(--primary);">WebSocket:</strong> Available at <code style="background: var(--bg-dark); padding: 0.25rem 0.5rem; border-radius: 4px;">ws://nicho:5001/socket.io/</code></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function tryApi(endpoint, resultId) {
+    const resultEl = document.getElementById(resultId);
+    resultEl.style.display = 'block';
+    resultEl.textContent = 'Loading...';
+
+    fetch(endpoint)
+        .then(res => res.json())
+        .then(data => {
+            resultEl.textContent = JSON.stringify(data, null, 2);
+        })
+        .catch(err => {
+            resultEl.style.color = '#F44336';
+            resultEl.textContent = 'Error: ' + err.message;
+        });
+}
+</script>
+{% endblock %}

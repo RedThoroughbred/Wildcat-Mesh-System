@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}BBS Content Editor - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">✏️ BBS Content Editor</div>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+        Edit your BBS text content below. Manage quotes, trivia questions, and more.
+    </p>
+
+    <div id="alertBox" style="display: none; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;"></div>
+
+    <!-- Tab Navigation -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border);">
+        <button class="tab-btn active" data-tab="fortunes" style="padding: 0.75rem 1.5rem; background: var(--primary); color: white; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-weight: 600;">
+            🔮 Quotes/Fortunes
+        </button>
+        <button class="tab-btn" data-tab="trivia" style="padding: 0.75rem 1.5rem; background: var(--bg-surface); color: var(--text-primary); border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-weight: 600;">
+            🎯 Trivia Questions
+        </button>
+    </div>
+</div>
+
+<!-- Fortunes/Quotes Tab -->
+<div class="tab-content" id="fortunes-tab">
+    <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+        <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--primary);">
+            🔮 Quotes & Fortunes (fortunes.txt)
+        </div>
+        <div style="padding: 1.5rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                These inspiring messages appear when users select [Q]uotes from the main menu or [F]ortune from utilities. One random quote is shown each time.
+            </p>
+
+            <div style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--primary); margin-bottom: 1rem;">
+                <strong style="color: var(--primary);">📝 Format:</strong>
+                <p style="color: var(--text-secondary); margin: 0.5rem 0 0 0;">
+                    One quote per line. Keep quotes under 200 characters for best display on Meshtastic devices.
+                </p>
+            </div>
+
+            <textarea
+                id="fortunes-content"
+                rows="20"
+                style="width: 100%; padding: 1rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; font-size: 0.9rem; resize: vertical;"
+            >{{ content.fortunes }}</textarea>
+
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button onclick="saveContent('fortunes')" style="flex: 1; padding: 0.75rem 1.5rem; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    💾 Save Quotes
+                </button>
+                <button onclick="addSampleFortune()" style="padding: 0.75rem 1.5rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    ➕ Add Sample Quote
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">💡 Quote Ideas</div>
+        <div style="padding: 1.5rem;">
+            <ul style="color: var(--text-secondary); line-height: 1.8;">
+                <li>Mesh network philosophy & decentralization</li>
+                <li>Privacy and security quotes</li>
+                <li>Community building messages</li>
+                <li>Technical ham radio wisdom</li>
+                <li>Off-grid communication inspiration</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Trivia Tab -->
+<div class="tab-content" id="trivia-tab" style="display: none;">
+    <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+        <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--success);">
+            🎯 Trivia Questions (trivia.txt)
+        </div>
+        <div style="padding: 1.5rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                Meshtastic trivia questions that appear when users select [G]ames then trivia. Users get instant feedback on their answers!
+            </p>
+
+            <div style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--success); margin-bottom: 1rem;">
+                <strong style="color: var(--success);">📝 Format:</strong>
+                <p style="color: var(--text-secondary); margin: 0.5rem 0;">
+                    <code style="background: var(--bg-surface); padding: 0.25rem 0.5rem; border-radius: 4px;">Question text?|Correct Answer|Category</code>
+                </p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0.5rem 0 0 0;">
+                    Example: <code style="background: var(--bg-surface); padding: 0.25rem 0.5rem; border-radius: 4px;">What frequency does Meshtastic use in the US?|915 MHz|A</code>
+                </p>
+            </div>
+
+            <textarea
+                id="trivia-content"
+                rows="20"
+                style="width: 100%; padding: 1rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; font-size: 0.9rem; resize: vertical;"
+            >{{ content.trivia }}</textarea>
+
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button onclick="saveContent('trivia')" style="flex: 1; padding: 0.75rem 1.5rem; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    💾 Save Trivia
+                </button>
+                <button onclick="addSampleTrivia()" style="padding: 0.75rem 1.5rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    ➕ Add Sample Question
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">💡 Trivia Tips</div>
+        <div style="padding: 1.5rem;">
+            <ul style="color: var(--text-secondary); line-height: 1.8;">
+                <li><strong>Categories:</strong> A = Basic, B = Intermediate, C = Advanced</li>
+                <li><strong>Question length:</strong> Keep under 150 characters for best display</li>
+                <li><strong>Answers:</strong> Exact match required (case-insensitive)</li>
+                <li><strong>Topics:</strong> Meshtastic features, LoRa technology, mesh networking, ham radio</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+    <a href="/admin" style="padding: 1rem 2rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; text-align: center; font-weight: 600;">
+        ← Back to Admin
+    </a>
+    <a href="/admin/bbs-config" style="padding: 1rem 2rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; text-align: center; font-weight: 600;">
+        ⚙️ Edit BBS Config
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showAlert(message, isSuccess) {
+    const alertBox = document.getElementById('alertBox');
+    alertBox.style.display = 'block';
+    alertBox.style.background = isSuccess ? '#2E7D32' : '#C62828';
+    alertBox.style.color = 'white';
+    alertBox.style.border = `2px solid ${isSuccess ? '#4CAF50' : '#F44336'}`;
+    alertBox.textContent = message;
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    setTimeout(() => {
+        alertBox.style.display = 'none';
+    }, 5000);
+}
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const tab = this.dataset.tab;
+
+        // Update button styles
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.style.background = 'var(--bg-surface)';
+            b.style.color = 'var(--text-primary)';
+            b.classList.remove('active');
+        });
+        this.style.background = 'var(--primary)';
+        this.style.color = 'white';
+        this.classList.add('active');
+
+        // Show/hide tabs
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        document.getElementById(tab + '-tab').style.display = 'block';
+    });
+});
+
+async function saveContent(fileType) {
+    const textarea = document.getElementById(fileType + '-content');
+    const content = textarea.value;
+
+    try {
+        const response = await fetch('/admin/bbs-content/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                file_type: fileType,
+                content: content
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert('✓ ' + result.message, true);
+        } else {
+            showAlert('✗ Error: ' + result.message, false);
+        }
+    } catch (error) {
+        showAlert('✗ Error saving content: ' + error.message, false);
+    }
+}
+
+function addSampleFortune() {
+    const textarea = document.getElementById('fortunes-content');
+    const samples = [
+        "The mesh is more than technology—it's a community reaching out across the silence.",
+        "Decentralization is not just a protocol, it's a philosophy.",
+        "When the grid goes down, the mesh stays up.",
+        "Every node you add strengthens the network for all.",
+        "Privacy is not a feature. It's a fundamental right."
+    ];
+    const sample = samples[Math.floor(Math.random() * samples.length)];
+    textarea.value += (textarea.value ? '\n' : '') + sample;
+}
+
+function addSampleTrivia() {
+    const textarea = document.getElementById('trivia-content');
+    const samples = [
+        "What is the maximum number of hops a Meshtastic message can make?|3|A",
+        "What does SNR stand for in radio communications?|Signal to Noise Ratio|A",
+        "What is the default LoRa spreading factor for LongFast preset?|7|B",
+        "What encryption does Meshtastic use for messages?|AES-256|B"
+    ];
+    const sample = samples[Math.floor(Math.random() * samples.length)];
+    textarea.value += (textarea.value ? '\n' : '') + sample;
+}
+</script>
+{% endblock %}

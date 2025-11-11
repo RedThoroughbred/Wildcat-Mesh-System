@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Nodes - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">📡 Discovered Nodes ({{ nodes|length }})</div>
+
+    <div style="margin-bottom: 1.5rem;">
+        <input type="text" id="nodeSearch" placeholder="Search by name or ID..."
+               style="width: 100%; padding: 0.75rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 1rem;">
+    </div>
+
+    {% if nodes %}
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--primary);">
+                    <th style="padding: 0.75rem; text-align: left;">Node</th>
+                    <th style="padding: 0.75rem; text-align: left;">ID</th>
+                    <th style="padding: 0.75rem; text-align: center;">Messages</th>
+                    <th style="padding: 0.75rem; text-align: center;">Avg SNR</th>
+                    <th style="padding: 0.75rem; text-align: center;">Best SNR</th>
+                    <th style="padding: 0.75rem; text-align: center;">Avg RSSI</th>
+                    <th style="padding: 0.75rem; text-align: left;">Last Seen</th>
+                    <th style="padding: 0.75rem; text-align: center;">Status</th>
+                </tr>
+            </thead>
+            <tbody id="nodeTableBody">
+                {% for node in nodes %}
+                {% set hours_since = ((current_time - node.last_seen) / 3600)|int %}
+                <tr class="node-row" data-node-name="{{ node.sender_short_name|lower }}" data-node-id="{{ node.sender_id|lower }}"
+                    style="border-bottom: 1px solid var(--border); transition: background 0.2s ease; cursor: pointer;"
+                    onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background=''"
+                    onclick="window.location.href='/node/{{ node.sender_id }}'">
+                    <td style="padding: 0.75rem;">
+                        <span style="font-weight: 600; color: var(--primary);">{{ node.sender_short_name }}</span>
+                        {% if node.sender_long_name %}
+                        <br><span style="font-size: 0.85rem; color: var(--text-secondary);">{{ node.sender_long_name }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary);">
+                        {{ node.sender_id }}
+                    </td>
+                    <td style="padding: 0.75rem; text-align: center; font-weight: 600;">
+                        {{ node.message_count }}
+                    </td>
+                    <td style="padding: 0.75rem; text-align: center;">
+                        {% if node.avg_snr %}
+                        <span style="color: {% if node.avg_snr > 5 %}var(--success){% elif node.avg_snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
+                            {{ node.avg_snr|round(1) }} dB
+                        </span>
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.75rem; text-align: center;">
+                        {% if node.best_snr %}
+                        <span style="color: var(--success);">{{ node.best_snr|round(1) }} dB</span>
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.75rem; text-align: center; color: var(--text-secondary);">
+                        {% if node.avg_rssi %}
+                        {{ node.avg_rssi|round(0)|int }} dBm
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.75rem; color: var(--text-secondary);">
+                        {{ node.last_seen|format_time }}
+                    </td>
+                    <td style="padding: 0.75rem; text-align: center;">
+                        {% if hours_since < 1 %}
+                        <span style="color: var(--success);">●</span> Online
+                        {% elif hours_since < 24 %}
+                        <span style="color: var(--warning);">●</span> Recent
+                        {% else %}
+                        <span style="color: var(--text-secondary);">○</span> Offline
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
+        No nodes discovered yet. Nodes will appear here as they send messages.
+    </p>
+    {% endif %}
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Total Nodes</div>
+        <div class="value">{{ nodes|length }}</div>
+        <div class="unit">discovered</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Active Now</div>
+        <div class="value">{{ stats.active_nodes }}</div>
+        <div class="unit">last hour</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Total Messages</div>
+        <div class="value">{{ stats.messages_24h }}</div>
+        <div class="unit">last 24h</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Network Health</div>
+        <div class="value" style="color: {% if nodes|length > 5 %}var(--success){% elif nodes|length > 2 %}var(--warning){% else %}var(--danger){% endif %};">
+            {% if nodes|length > 5 %}Good{% elif nodes|length > 2 %}Fair{% else %}Low{% endif %}
+        </div>
+        <div class="unit">connectivity</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search functionality
+document.getElementById('nodeSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('.node-row');
+
+    rows.forEach(row => {
+        const nodeName = row.dataset.nodeName;
+        const nodeId = row.dataset.nodeId;
+
+        if (nodeName.includes(searchTerm) || nodeId.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

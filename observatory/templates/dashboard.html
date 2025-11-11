@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Active Nodes</div>
+        <div class="value">{{ stats.active_nodes }}</div>
+        <div class="unit">in last hour</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="label">Messages (24h)</div>
+        <div class="value">{{ stats.messages_24h }}</div>
+        <div class="unit">total</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="label">Average SNR</div>
+        <div class="value">{{ stats.avg_snr }}</div>
+        <div class="unit">dB</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="label">Total Nodes</div>
+        <div class="value">{{ stats.total_nodes }}</div>
+        <div class="unit">all time</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">📻 Recent Activity</div>
+        <div class="activity-feed">
+            {% for msg in recent_messages %}
+            {% set is_broadcast = (msg.to_id|int == 4294967295 if msg.to_id else false) %}
+            {% set is_dm = not is_broadcast %}
+            <a href="{% if is_dm %}/bbs-messages{% else %}/channel/{{ msg.channel_index }}{% endif %}"
+               class="activity-item"
+               style="text-decoration: none; color: inherit; display: block; transition: background 0.2s;"
+               onmouseover="this.style.background='#2a2a2a'"
+               onmouseout="this.style.background='transparent'">
+                <div class="time">{{ msg.timestamp|format_time }}</div>
+                <div>
+                    <span class="sender">{{ msg.sender_short_name }}</span>
+                    <span class="message">{{ msg.message|truncate(100) }}</span>
+                </div>
+                <div class="snr">
+                    {% if msg.snr %}SNR: {{ msg.snr|round(1) }} dB | RSSI: {{ msg.rssi }} | {% endif %}
+                    {% if is_dm %}DM{% else %}CH{{ msg.channel_index }}{% endif %}
+                </div>
+            </a>
+            {% else %}
+            <p style="color: #B0B0B0; text-align: center; padding: 2rem;">No recent messages</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Active Nodes -->
+    <div class="card">
+        <div class="card-header">🟢 Active Nodes</div>
+        <div class="node-list">
+            {% for node in active_nodes %}
+            <a href="/node/{{ node.sender_id }}"
+               class="node-item"
+               style="text-decoration: none; color: inherit; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;"
+               onmouseover="this.style.background='#2a2a2a'"
+               onmouseout="this.style.background='transparent'">
+                <div>
+                    <span class="node-status"></span>
+                    <span class="node-name">{{ node.sender_short_name }}</span>
+                    <div class="node-id">{{ node.sender_id }}</div>
+                </div>
+                <div style="font-size: 0.85rem; color: #B0B0B0;">
+                    {{ node.last_seen|format_time }}
+                </div>
+            </a>
+            {% else %}
+            <p style="color: #B0B0B0; text-align: center; padding: 1rem;">No active nodes</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Channel Activity Chart -->
+<div class="card">
+    <div class="card-header">📊 Channel Activity (24h)</div>
+    <canvas id="channelChart" style="max-height: 300px;"></canvas>
+</div>
+
+{% if low_battery_nodes %}
+<div class="alert alert-warning">
+    <strong>⚠️ Low Battery Alert:</strong> {{ low_battery_nodes|length }} node(s) below 20%
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.activity-item:hover, .node-item:hover {
+    cursor: pointer;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Channel color mapping (consistent with channels page)
+const channelColors = {
+    0: '#2E7D32',  // Green for LongFast
+    1: '#1565C0',  // Blue
+    2: '#F57C00',  // Orange
+    3: '#E91E63',  // Pink
+    4: '#9C27B0',  // Purple
+    5: '#00BCD4',  // Cyan
+    6: '#FFB300',  // Amber
+    7: '#D32F2F'   // Red
+};
+
+const dmColor = '#7B1FA2';  // Purple for DMs (different from channel purple)
+
+// Format timestamps
+document.addEventListener('DOMContentLoaded', function() {
+    // Apply channel colors to recent activity
+    document.querySelectorAll('.activity-item').forEach(item => {
+        const snrDiv = item.querySelector('.snr');
+        if (snrDiv) {
+            const text = snrDiv.textContent;
+            const chMatch = text.match(/CH(\d+)/);
+            const dmMatch = text.match(/DM/);
+
+            if (chMatch) {
+                const channelIndex = parseInt(chMatch[1]);
+                const color = channelColors[channelIndex] || '#B0B0B0';
+                const span = document.createElement('span');
+                span.style.color = color;
+                span.style.fontWeight = '600';
+                span.textContent = 'CH' + channelIndex;
+                snrDiv.innerHTML = snrDiv.innerHTML.replace(/CH\d+/, span.outerHTML);
+            } else if (dmMatch) {
+                const span = document.createElement('span');
+                span.style.color = dmColor;
+                span.style.fontWeight = '600';
+                span.textContent = 'DM';
+                snrDiv.innerHTML = snrDiv.innerHTML.replace(/DM/, span.outerHTML);
+            }
+        }
+    });
+
+    // Channel activity chart
+    const channelData = {{ channel_activity|tojson }};
+    const ctx = document.getElementById('channelChart').getContext('2d');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: channelData.map(ch => ch.channel_index === 0 ? 'LongFast' : 'Channel ' + ch.channel_index),
+            datasets: [{
+                label: 'Messages',
+                data: channelData.map(ch => ch.count),
+                backgroundColor: channelData.map(ch => channelColors[ch.channel_index] || '#666666'),
+                borderColor: channelData.map(ch => channelColors[ch.channel_index] || '#666666'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false  // Hide legend since colors are already shown in bars
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#B0B0B0' },
+                    grid: { color: '#333333' }
+                },
+                x: {
+                    ticks: { color: '#B0B0B0' },
+                    grid: { color: '#333333' }
+                }
+            }
+        }
+    });
+
+    // Listen for stats updates from global WebSocket (in base.html)
+    window.addEventListener('meshStatsUpdate', function(e) {
+        const data = e.detail;
+        console.log('📊 Stats update received:', data);
+
+        // Update stat cards
+        const stats = data.stats;
+        document.querySelectorAll('.stat-card').forEach((card, i) => {
+            const valueEl = card.querySelector('.value');
+            if (i === 0 && valueEl) valueEl.textContent = data.active_node_count;
+            if (i === 1 && valueEl) valueEl.textContent = stats.messages_24h;
+            if (i === 2 && valueEl) valueEl.textContent = stats.avg_snr;
+            if (i === 3 && valueEl) valueEl.textContent = stats.total_nodes;
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}BBS Configuration - Wildcat Mesh Observatory{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">🔧 BBS Configuration Editor</div>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+        Edit your BBS configuration below. Changes are saved to <code style="background: var(--bg-dark); padding: 0.25rem 0.5rem; border-radius: 4px;">{{ config_path }}</code>
+    </p>
+
+    <div id="alertBox" style="display: none; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;"></div>
+
+    <form id="configForm">
+        <!-- Interface Section -->
+        <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+            <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--primary);">
+                🔌 [interface] - Connection Settings
+            </div>
+            <div style="padding: 1.5rem;">
+                {% for key, value in config.interface.items() %}
+                <div style="margin-bottom: 1rem;">
+                    <label for="interface_{{ key }}" style="display: block; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">
+                        {{ key }}
+                    </label>
+                    <input
+                        type="text"
+                        id="interface_{{ key }}"
+                        name="interface.{{ key }}"
+                        value="{{ value }}"
+                        data-section="interface"
+                        data-key="{{ key }}"
+                        style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace;"
+                    />
+                    <small style="color: var(--text-secondary); display: block; margin-top: 0.25rem;">
+                        {% if key == 'type' %}Connection type: tcp or serial{% endif %}
+                        {% if key == 'hostname' %}IP address of Meshtastic node (for TCP){% endif %}
+                    </small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Main Menu Section -->
+        <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+            <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--success);">
+                🏠 Main Menu Configuration
+            </div>
+            <div style="padding: 1.5rem;">
+                <label style="display: block; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">
+                    main_menu_items
+                </label>
+                <input
+                    type="text"
+                    id="menu_main_menu_items"
+                    name="menu.main_menu_items"
+                    value="{{ config.menu.main_menu_items }}"
+                    data-section="menu"
+                    data-key="main_menu_items"
+                    style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; margin-bottom: 1rem;"
+                />
+
+                <div style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--success);">
+                    <strong style="color: var(--success);">Available Main Menu Options:</strong>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-top: 0.75rem; color: var(--text-secondary);">
+                        <div><code style="color: var(--success);">W</code> - Weather (interactive ZIP lookup)</div>
+                        <div><code style="color: var(--success);">N</code> - Network Info (live mesh stats)</div>
+                        <div><code style="color: var(--success);">R</code> - Resources (guides & docs)</div>
+                        <div><code style="color: var(--success);">Q</code> - Quotes (inspirational mesh quotes)</div>
+                        <div><code style="color: var(--success);">G</code> - Games (trivia, etc.)</div>
+                        <div><code style="color: var(--success);">B</code> - Bulletins (enter BBS)</div>
+                        <div><code style="color: var(--success);">U</code> - Utilities (stats, leaderboards)</div>
+                        <div><code style="color: var(--success);">X</code> - EXIT (close BBS)</div>
+                    </div>
+                    <p style="margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary);">
+                        💡 Separate with commas and spaces (e.g., <code>W, N, R, Q, G, B, U, X</code>)
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- BBS Menu Section -->
+        <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+            <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--accent);">
+                📰 BBS Sub-Menu Configuration
+            </div>
+            <div style="padding: 1.5rem;">
+                <label style="display: block; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">
+                    bbs_menu_items
+                </label>
+                <input
+                    type="text"
+                    id="menu_bbs_menu_items"
+                    name="menu.bbs_menu_items"
+                    value="{{ config.menu.bbs_menu_items }}"
+                    data-section="menu"
+                    data-key="bbs_menu_items"
+                    style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; margin-bottom: 1rem;"
+                />
+
+                <div style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--accent);">
+                    <strong style="color: var(--accent);">Available BBS Menu Options:</strong>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-top: 0.75rem; color: var(--text-secondary);">
+                        <div><code style="color: var(--accent);">M</code> - Mail (read/send messages)</div>
+                        <div><code style="color: var(--accent);">B</code> - Bulletins (4 boards: General, Info, News, Urgent)</div>
+                        <div><code style="color: var(--accent);">C</code> - Channel Directory</div>
+                        <div><code style="color: var(--accent);">J</code> - JS8CALL integration</div>
+                        <div><code style="color: var(--accent);">X</code> - EXIT (back to main menu)</div>
+                    </div>
+                    <p style="margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary);">
+                        💡 Separate with commas and spaces (e.g., <code>M, B, C, J, X</code>)
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Utilities Menu Section -->
+        <div class="card" style="background: var(--bg-surface); margin-bottom: 1.5rem;">
+            <div class="card-header" style="background: var(--bg-dark); border-left: 4px solid var(--warning);">
+                🛠️ Utilities Sub-Menu Configuration
+            </div>
+            <div style="padding: 1.5rem;">
+                <label style="display: block; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">
+                    utilities_menu_items
+                </label>
+                <input
+                    type="text"
+                    id="menu_utilities_menu_items"
+                    name="menu.utilities_menu_items"
+                    value="{{ config.menu.utilities_menu_items }}"
+                    data-section="menu"
+                    data-key="utilities_menu_items"
+                    style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; margin-bottom: 1rem;"
+                />
+
+                <div style="background: var(--bg-dark); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--warning);">
+                    <strong style="color: var(--warning);">Available Utilities Menu Options:</strong>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-top: 0.75rem; color: var(--text-secondary);">
+                        <div><code style="color: var(--warning);">S</code> - Stats (mesh statistics)</div>
+                        <div><code style="color: var(--warning);">F</code> - Fortune (Wall of Fame - best SNR)</div>
+                        <div><code style="color: var(--warning);">W</code> - Wall of Shame (low battery nodes)</div>
+                        <div><code style="color: var(--warning);">X</code> - EXIT (back to main menu)</div>
+                    </div>
+                    <p style="margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary);">
+                        💡 Separate with commas and spaces (e.g., <code>S, F, W, X</code>)
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+            <button type="submit" style="flex: 1; padding: 1rem 2rem; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1rem;">
+                💾 Save Configuration
+            </button>
+            <button type="button" id="saveAndRestart" style="flex: 1; padding: 1rem 2rem; background: var(--warning); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1rem;">
+                🔄 Save & Restart BBS
+            </button>
+            <a href="/admin" style="padding: 1rem 2rem; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; text-align: center; font-weight: 600;">
+                ← Back to Admin
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">💡 Quick Tips</div>
+    <div style="padding: 1.5rem;">
+        <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--primary); margin-bottom: 1rem;">
+            <strong style="color: var(--primary);">🎨 Customizing Your BBS:</strong>
+            <ul style="color: var(--text-secondary); margin: 0.5rem 0 0 1.5rem; line-height: 1.8;">
+                <li>Add or remove menu items by editing the letter codes</li>
+                <li>Reorder items by changing their position in the list</li>
+                <li>Every change creates an automatic backup (.backup file)</li>
+                <li>Restart BBS after saving to apply changes immediately</li>
+            </ul>
+        </div>
+
+        <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; border-left: 4px solid var(--warning);">
+            <strong style="color: var(--warning);">⚠️ Important Notes:</strong>
+            <ul style="color: var(--text-secondary); margin: 0.5rem 0 0 1.5rem; line-height: 1.8;">
+                <li>Always include <code style="background: var(--bg-dark); padding: 0.15rem 0.4rem; border-radius: 3px;">X</code> (EXIT) option in menus</li>
+                <li>Use exact letter codes - case matters!</li>
+                <li>Backup saved to: <code style="background: var(--bg-dark); padding: 0.15rem 0.4rem; border-radius: 3px;">{{ config_path }}.backup</code></li>
+                <li>BBS restarts every 10 minutes automatically (watchdog)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showAlert(message, isSuccess) {
+    const alertBox = document.getElementById('alertBox');
+    alertBox.style.display = 'block';
+    alertBox.style.background = isSuccess ? '#2E7D32' : '#C62828';
+    alertBox.style.color = 'white';
+    alertBox.style.border = `2px solid ${isSuccess ? '#4CAF50' : '#F44336'}`;
+    alertBox.textContent = message;
+
+    setTimeout(() => {
+        alertBox.style.display = 'none';
+    }, 5000);
+}
+
+function collectFormData() {
+    const inputs = document.querySelectorAll('input[data-section]');
+    const configData = {};
+
+    inputs.forEach(input => {
+        const section = input.dataset.section;
+        const key = input.dataset.key;
+
+        if (!configData[section]) {
+            configData[section] = {};
+        }
+
+        configData[section][key] = input.value;
+    });
+
+    return configData;
+}
+
+document.getElementById('configForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const configData = collectFormData();
+
+    try {
+        const response = await fetch('/admin/bbs-config/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(configData)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert('✓ ' + result.message, true);
+        } else {
+            showAlert('✗ Error: ' + result.message, false);
+        }
+    } catch (error) {
+        showAlert('✗ Error saving configuration: ' + error.message, false);
+    }
+});
+
+document.getElementById('saveAndRestart').addEventListener('click', async function() {
+    const configData = collectFormData();
+
+    try {
+        // Save config first
+        const saveResponse = await fetch('/admin/bbs-config/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(configData)
+        });
+
+        const saveResult = await saveResponse.json();
+
+        if (!saveResult.success) {
+            showAlert('✗ Error saving: ' + saveResult.message, false);
+            return;
+        }
+
+        showAlert('✓ Configuration saved! Restarting BBS service...', true);
+
+        // Wait a moment, then restart
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const restartResponse = await fetch('/admin/bbs-config/restart', {
+            method: 'POST'
+        });
+
+        const restartResult = await restartResponse.json();
+
+        if (restartResult.success) {
+            showAlert('✓ BBS service restarted successfully! Changes are now active.', true);
+        } else {
+            showAlert('✗ Error restarting: ' + restartResult.message, false);
+        }
+    } catch (error) {
+        showAlert('✗ Error: ' + error.message, false);
+    }
+});
+</script>
+{% endblock %}
