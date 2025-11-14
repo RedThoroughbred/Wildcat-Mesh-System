@@ -53,8 +53,8 @@
                 <td style="text-align: center; padding: 0.75rem;">{{ ch.message_count }}</td>
                 <td style="text-align: center; padding: 0.75rem;">{{ ch.unique_senders }}</td>
                 <td style="text-align: center; padding: 0.75rem;">
-                    <span style="color: {% if ch.avg_snr > 5 %}var(--success){% elif ch.avg_snr > 0 %}var(--warning){% else %}var(--danger){% endif %};">
-                        {{ ch.avg_snr|round(1) if ch.avg_snr else 'N/A' }} dB
+                    <span style="color: {% if ch.avg_snr and ch.avg_snr > 5 %}var(--success){% elif ch.avg_snr and ch.avg_snr > 0 %}var(--warning){% elif ch.avg_snr %}var(--danger){% else %}var(--text-secondary){% endif %};">
+                        {{ ch.avg_snr|round(1) if ch.avg_snr else 'N/A' }}{% if ch.avg_snr %} dB{% endif %}
                     </span>
                 </td>
                 <td style="padding: 0.75rem; color: var(--text-secondary);">{{ ch.last_message|format_time }}</td>
@@ -185,7 +185,7 @@ let sendersChart = new Chart(ctx2, {
             label: 'Messages Sent',
             data: topSenders.map(s => s.message_count),
             backgroundColor: topSenders.map(s =>
-                s.avg_snr > 5 ? '#2E7D32' : s.avg_snr > 0 ? '#F57C00' : '#C62828'
+                s.avg_snr && s.avg_snr > 5 ? '#2E7D32' : s.avg_snr && s.avg_snr > 0 ? '#F57C00' : s.avg_snr ? '#C62828' : '#666666'
             ),
             borderWidth: 1
         }]
@@ -322,7 +322,7 @@ async function updateTopSenders(hours) {
     sendersChart.data.labels = topSenders.map(s => s.sender_short_name);
     sendersChart.data.datasets[0].data = topSenders.map(s => s.message_count);
     sendersChart.data.datasets[0].backgroundColor = topSenders.map(s =>
-        s.avg_snr > 5 ? '#2E7D32' : s.avg_snr > 0 ? '#F57C00' : '#C62828'
+        s.avg_snr && s.avg_snr > 5 ? '#2E7D32' : s.avg_snr && s.avg_snr > 0 ? '#F57C00' : s.avg_snr ? '#C62828' : '#666666'
     );
     sendersChart.update();
 }

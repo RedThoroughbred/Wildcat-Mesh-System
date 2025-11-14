@@ -350,10 +350,32 @@ def bbs_config_view():
 
     # Read current config
     parser = configparser.ConfigParser()
-    parser.read(bbs_config_path)
 
-    # Convert to dict for template
-    config_data = {section: dict(parser.items(section)) for section in parser.sections()}
+    try:
+        if not os.path.exists(bbs_config_path):
+            # Config file doesn't exist - provide defaults
+            config_data = {
+                'interface': {'type': 'serial', 'hostname': ''},
+                'sync': {'bbs_nodes': ''}
+            }
+            logging.warning(f"BBS config file not found at {bbs_config_path}, using defaults")
+        else:
+            parser.read(bbs_config_path)
+            # Convert to dict for template
+            config_data = {section: dict(parser.items(section)) for section in parser.sections()}
+
+            # Ensure required sections exist
+            if 'interface' not in config_data:
+                config_data['interface'] = {'type': 'serial', 'hostname': ''}
+            if 'sync' not in config_data:
+                config_data['sync'] = {'bbs_nodes': ''}
+    except Exception as e:
+        logging.error(f"Error reading BBS config: {e}")
+        # Provide defaults on error
+        config_data = {
+            'interface': {'type': 'serial', 'hostname': ''},
+            'sync': {'bbs_nodes': ''}
+        }
 
     return render_template('bbs_config.html', config=config_data, config_path=bbs_config_path)
 
