@@ -565,6 +565,13 @@ def api_channel_activity():
     return jsonify(get_channel_activity(hours=hours))
 
 
+@app.route('/api/v1/channel-details')
+def api_channel_details():
+    """Get channel details (JSON)"""
+    hours = request.args.get('hours', 24, type=int)
+    return jsonify(get_channel_details(hours=hours))
+
+
 @app.route('/api/v1/hourly-activity')
 def api_hourly_activity():
     """Get hourly activity (JSON)"""

@@ -45,7 +45,24 @@
 
 <!-- Channel Details Table -->
 <div class="card">
-    <div class="card-header">📋 Channel Details</div>
+    <div class="card-header" id="channelDetailsTitle">📋 Channel Details (24h)</div>
+
+    <!-- Time Range Selector -->
+    <div id="detailsTimeSelector" style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem;">
+        <button onclick="updateChannelDetails(24)" class="details-time-btn active" data-hours="24"
+           style="padding: 0.5rem 1rem; background: var(--primary); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+            24 Hours
+        </button>
+        <button onclick="updateChannelDetails(168)" class="details-time-btn" data-hours="168"
+           style="padding: 0.5rem 1rem; background: var(--bg-dark); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+            7 Days
+        </button>
+        <button onclick="updateChannelDetails(720)" class="details-time-btn" data-hours="720"
+           style="padding: 0.5rem 1rem; background: var(--bg-dark); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+            30 Days
+        </button>
+    </div>
+
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
             <tr style="border-bottom: 2px solid var(--primary);">
@@ -56,7 +73,7 @@
                 <th style="text-align: left; padding: 0.75rem;">Last Activity</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="channelDetailsTableBody">
             {% for ch in channel_details %}
             <tr onclick="window.location.href='/channel/{{ ch.channel_index }}';"
                 style="border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s;"
@@ -222,6 +239,82 @@ async function updateChannelActivity(hours) {
     channelChart.data.datasets[0].data = channelData.map(ch => ch.count);
     channelChart.data.datasets[0].backgroundColor = channelData.map(ch => channelColors[ch.channel_index] || '#666666');
     channelChart.update();
+}
+
+// Update channel details table with new time range
+async function updateChannelDetails(hours) {
+    // Update button states
+    document.querySelectorAll('#detailsTimeSelector .details-time-btn').forEach(btn => {
+        if (btn.getAttribute('data-hours') == hours) {
+            btn.style.background = 'var(--primary)';
+            btn.classList.add('active');
+        } else {
+            btn.style.background = 'var(--bg-dark)';
+            btn.classList.remove('active');
+        }
+    });
+
+    // Update title
+    const titleEl = document.getElementById('channelDetailsTitle');
+    if (hours == 24) {
+        titleEl.textContent = '📋 Channel Details (24h)';
+    } else if (hours == 168) {
+        titleEl.textContent = '📋 Channel Details (7d)';
+    } else if (hours == 720) {
+        titleEl.textContent = '📋 Channel Details (30d)';
+    }
+
+    // Fetch new data
+    const response = await fetch(`/api/v1/channel-details?hours=${hours}`);
+    const channelDetails = await response.json();
+
+    // Update table
+    const tbody = document.getElementById('channelDetailsTableBody');
+
+    if (channelDetails.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                    No channel activity in the selected time range
+                </td>
+            </tr>
+        `;
+    } else {
+        tbody.innerHTML = channelDetails.map(ch => {
+            const channelName = channelNames[ch.channel_index] || 'Channel ' + ch.channel_index;
+            const channelColor = channelColors[ch.channel_index] || '#666666';
+
+            // Format SNR color
+            let snrColor = 'var(--text-secondary)';
+            if (ch.avg_snr !== null && ch.avg_snr > 5) snrColor = 'var(--success)';
+            else if (ch.avg_snr !== null && ch.avg_snr > 0) snrColor = 'var(--warning)';
+            else if (ch.avg_snr !== null) snrColor = 'var(--danger)';
+
+            const snrText = ch.avg_snr !== null ? ch.avg_snr.toFixed(1) + ' dB' : 'N/A';
+
+            // Format timestamp
+            const lastActivity = new Date(ch.last_message * 1000).toLocaleString();
+
+            return `
+                <tr onclick="window.location.href='/channel/${ch.channel_index}';"
+                    style="border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s;"
+                    onmouseover="this.style.background='var(--bg-surface)'"
+                    onmouseout="this.style.background='transparent'"
+                    data-channel="${ch.channel_index}">
+                    <td style="padding: 0.75rem;">
+                        <strong class="channel-name-${ch.channel_index}" style="color: ${channelColor};">${channelName}</strong>
+                        <br><small style="color: var(--text-secondary);">Channel ${ch.channel_index}</small>
+                    </td>
+                    <td style="text-align: center; padding: 0.75rem;">${ch.message_count}</td>
+                    <td style="text-align: center; padding: 0.75rem;">${ch.unique_senders}</td>
+                    <td style="text-align: center; padding: 0.75rem;">
+                        <span style="color: ${snrColor};">${snrText}</span>
+                    </td>
+                    <td style="padding: 0.75rem; color: var(--text-secondary);">${lastActivity}</td>
+                </tr>
+            `;
+        }).join('');
+    }
 }
 
 // Top senders with REAL data

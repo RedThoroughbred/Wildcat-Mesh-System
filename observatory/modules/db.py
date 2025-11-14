@@ -233,13 +233,13 @@ def get_channel_hourly_activity(hours=24):
     return [dict(row) for row in activity]
 
 
-def get_channel_details():
+def get_channel_details(hours=24):
     """Get detailed stats for each channel"""
     import time
     conn = get_db_connection()
     c = conn.cursor()
 
-    cutoff = int(time.time()) - 86400
+    cutoff = int(time.time()) - (hours * 3600)
 
     c.execute("""
         SELECT
