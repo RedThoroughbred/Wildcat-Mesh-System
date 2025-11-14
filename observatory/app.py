@@ -38,6 +38,8 @@ from modules.db import (
 
 app = Flask(__name__)
 app.config.from_object(config)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Setup logging
