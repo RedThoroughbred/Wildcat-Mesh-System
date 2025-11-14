@@ -198,6 +198,13 @@ let channelChart = new Chart(ctx1, {
     },
     options: {
         responsive: true,
+        onClick: (event, activeElements) => {
+            if (activeElements.length > 0) {
+                const index = activeElements[0].index;
+                const channel = channelData[index];
+                window.location.href = '/channel/' + channel.channel_index;
+            }
+        },
         plugins: {
             legend: {
                 position: 'right',
@@ -206,6 +213,9 @@ let channelChart = new Chart(ctx1, {
         }
     }
 });
+
+// Add cursor pointer style when hovering over pie chart
+document.getElementById('channelChart').style.cursor = 'pointer';
 
 // Update channel activity chart with new time range
 async function updateChannelActivity(hours) {
@@ -398,10 +408,12 @@ document.querySelectorAll('[data-channel]').forEach(row => {
 let hourlyData = {{ hourly_activity|tojson }};
 const ctx3 = document.getElementById('heatmapChart').getContext('2d');
 let heatmapChart;
+let heatmapChannels; // Store channels for onClick handler
 
 // Process data into hourly buckets
 const hours = Array.from({length: 24}, (_, i) => i);
-const channels = [...new Set(hourlyData.map(d => d.channel_index))].sort();
+heatmapChannels = [...new Set(hourlyData.map(d => d.channel_index))].sort();
+const channels = heatmapChannels;
 
 const datasets = channels.map(ch => {
     const hourCounts = hours.map(h => {
@@ -431,8 +443,22 @@ heatmapChart = new Chart(ctx3, {
     },
     options: {
         responsive: true,
+        onClick: (event, activeElements) => {
+            if (activeElements.length > 0) {
+                const datasetIndex = activeElements[0].datasetIndex;
+                const channelIndex = heatmapChannels[datasetIndex];
+                window.location.href = '/channel/' + channelIndex;
+            }
+        },
         plugins: {
-            legend: { labels: { color: '#FFFFFF' } },
+            legend: {
+                labels: { color: '#FFFFFF' },
+                onClick: (event, legendItem, legend) => {
+                    // Navigate to channel detail page when clicking legend
+                    const channelIndex = heatmapChannels[legendItem.datasetIndex];
+                    window.location.href = '/channel/' + channelIndex;
+                }
+            },
             title: {
                 display: true,
                 text: 'Message Activity by Hour and Channel',
@@ -455,6 +481,9 @@ heatmapChart = new Chart(ctx3, {
         }
     }
 });
+
+// Add cursor pointer style when hovering over heatmap chart
+document.getElementById('heatmapChart').style.cursor = 'pointer';
 
 // Update top senders chart with new time range
 async function updateTopSenders(hours) {
@@ -501,7 +530,8 @@ async function updateHeatmap(hours) {
 
     // Rebuild datasets
     const hours24 = Array.from({length: 24}, (_, i) => i);
-    const channels = [...new Set(hourlyData.map(d => d.channel_index))].sort();
+    heatmapChannels = [...new Set(hourlyData.map(d => d.channel_index))].sort();
+    const channels = heatmapChannels;
 
     const newDatasets = channels.map(ch => {
         const hourCounts = hours24.map(h => {
