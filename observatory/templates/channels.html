@@ -31,12 +31,12 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="label">Total Messages</div>
-                <div class="value">{{ stats.messages_24h }}</div>
-                <div class="unit">last 24h</div>
+                <div class="value" id="totalMessagesValue">{{ stats.messages_24h }}</div>
+                <div class="unit" id="totalMessagesUnit">last 24h</div>
             </div>
             <div class="stat-card">
                 <div class="label">Active Channels</div>
-                <div class="value">{{ channel_details|length }}</div>
+                <div class="value" id="activeChannelsValue">{{ channel_details|length }}</div>
                 <div class="unit">channels</div>
             </div>
         </div>
@@ -222,12 +222,16 @@ async function updateChannelActivity(hours) {
 
     // Update title
     const titleEl = document.getElementById('channelActivityTitle');
+    let timeText = '';
     if (hours == 24) {
         titleEl.textContent = '💬 Channel Activity (24h)';
+        timeText = 'last 24h';
     } else if (hours == 168) {
         titleEl.textContent = '💬 Channel Activity (7d)';
+        timeText = 'last 7d';
     } else if (hours == 720) {
         titleEl.textContent = '💬 Channel Activity (30d)';
+        timeText = 'last 30d';
     }
 
     // Fetch new data
@@ -239,6 +243,13 @@ async function updateChannelActivity(hours) {
     channelChart.data.datasets[0].data = channelData.map(ch => ch.count);
     channelChart.data.datasets[0].backgroundColor = channelData.map(ch => channelColors[ch.channel_index] || '#666666');
     channelChart.update();
+
+    // Update Quick Stats
+    const totalMessages = channelData.reduce((sum, ch) => sum + ch.count, 0);
+    const activeChannels = channelData.length;
+    document.getElementById('totalMessagesValue').textContent = totalMessages.toLocaleString();
+    document.getElementById('totalMessagesUnit').textContent = timeText;
+    document.getElementById('activeChannelsValue').textContent = activeChannels;
 }
 
 // Update channel details table with new time range
