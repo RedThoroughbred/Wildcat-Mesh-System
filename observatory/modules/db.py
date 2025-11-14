@@ -163,13 +163,13 @@ def get_mesh_stats():
     }
 
 
-def get_channel_activity():
+def get_channel_activity(hours=24):
     """Get activity by channel"""
     import time
     conn = get_db_connection()
     c = conn.cursor()
 
-    cutoff = int(time.time()) - 86400  # 24h
+    cutoff = int(time.time()) - (hours * 3600)
     c.execute("""
         SELECT channel_index, COUNT(*) as count
         FROM message_logs

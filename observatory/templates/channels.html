@@ -5,7 +5,24 @@
 {% block content %}
 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
     <div class="card">
-        <div class="card-header">💬 Channel Activity (24h)</div>
+        <div class="card-header" id="channelActivityTitle">💬 Channel Activity (24h)</div>
+
+        <!-- Time Range Selector -->
+        <div id="channelTimeSelector" style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem;">
+            <button onclick="updateChannelActivity(24)" class="channel-time-btn active" data-hours="24"
+               style="padding: 0.5rem 1rem; background: var(--primary); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+                24 Hours
+            </button>
+            <button onclick="updateChannelActivity(168)" class="channel-time-btn" data-hours="168"
+               style="padding: 0.5rem 1rem; background: var(--bg-dark); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+                7 Days
+            </button>
+            <button onclick="updateChannelActivity(720)" class="channel-time-btn" data-hours="720"
+               style="padding: 0.5rem 1rem; background: var(--bg-dark); border: none; border-radius: 6px; color: white; font-size: 0.9rem; cursor: pointer;">
+                30 Days
+            </button>
+        </div>
+
         <canvas id="channelChart" style="max-height: 400px;"></canvas>
     </div>
 
@@ -124,7 +141,7 @@
 {% block extra_js %}
 <script>
 // Channel activity chart
-const channelData = {{ channel_activity|tojson }};
+let channelData = {{ channel_activity|tojson }};
 const ctx1 = document.getElementById('channelChart').getContext('2d');
 
 // Channel name mapping
@@ -151,7 +168,7 @@ const channelColors = {
     7: '#D32F2F'   // Red
 };
 
-new Chart(ctx1, {
+let channelChart = new Chart(ctx1, {
     type: 'doughnut',
     data: {
         labels: channelData.map(ch => channelNames[ch.channel_index] || 'Channel ' + ch.channel_index),
@@ -172,6 +189,40 @@ new Chart(ctx1, {
         }
     }
 });
+
+// Update channel activity chart with new time range
+async function updateChannelActivity(hours) {
+    // Update button states
+    document.querySelectorAll('#channelTimeSelector .channel-time-btn').forEach(btn => {
+        if (btn.getAttribute('data-hours') == hours) {
+            btn.style.background = 'var(--primary)';
+            btn.classList.add('active');
+        } else {
+            btn.style.background = 'var(--bg-dark)';
+            btn.classList.remove('active');
+        }
+    });
+
+    // Update title
+    const titleEl = document.getElementById('channelActivityTitle');
+    if (hours == 24) {
+        titleEl.textContent = '💬 Channel Activity (24h)';
+    } else if (hours == 168) {
+        titleEl.textContent = '💬 Channel Activity (7d)';
+    } else if (hours == 720) {
+        titleEl.textContent = '💬 Channel Activity (30d)';
+    }
+
+    // Fetch new data
+    const response = await fetch(`/api/v1/channel-activity?hours=${hours}`);
+    channelData = await response.json();
+
+    // Update chart
+    channelChart.data.labels = channelData.map(ch => channelNames[ch.channel_index] || 'Channel ' + ch.channel_index);
+    channelChart.data.datasets[0].data = channelData.map(ch => ch.count);
+    channelChart.data.datasets[0].backgroundColor = channelData.map(ch => channelColors[ch.channel_index] || '#666666');
+    channelChart.update();
+}
 
 // Top senders with REAL data
 let topSenders = {{ top_senders|tojson }};

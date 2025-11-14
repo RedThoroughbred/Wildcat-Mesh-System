@@ -556,6 +556,13 @@ def api_top_senders():
     return jsonify(get_top_senders(10, hours=hours))
 
 
+@app.route('/api/v1/channel-activity')
+def api_channel_activity():
+    """Get channel activity (JSON)"""
+    hours = request.args.get('hours', 24, type=int)
+    return jsonify(get_channel_activity(hours=hours))
+
+
 @app.route('/api/v1/hourly-activity')
 def api_hourly_activity():
     """Get hourly activity (JSON)"""
