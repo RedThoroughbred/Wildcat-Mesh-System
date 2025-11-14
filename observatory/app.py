@@ -346,7 +346,7 @@ def admin_logs():
 @app.route('/admin/bbs-config')
 def bbs_config_view():
     """BBS Configuration Editor"""
-    bbs_config_path = '/home/seth/Wildcat-TC2-BBS/config.ini'
+    bbs_config_path = '/home/user/Wildcat-Mesh-System/bbs/config.ini'
 
     # Default config structure
     default_config = {
@@ -399,7 +399,7 @@ def bbs_config_view():
 def save_bbs_config():
     """Save BBS configuration"""
     try:
-        bbs_config_path = '/home/seth/Wildcat-TC2-BBS/config.ini'
+        bbs_config_path = '/home/user/Wildcat-Mesh-System/bbs/config.ini'
 
         # Create backup
         backup_path = f"{bbs_config_path}.backup"
@@ -459,7 +459,7 @@ def restart_bbs_service():
 @app.route('/admin/bbs-content')
 def bbs_content_view():
     """BBS Content Editor (fortunes, trivia, resources)"""
-    bbs_path = '/home/seth/Wildcat-TC2-BBS'
+    bbs_path = '/home/user/Wildcat-Mesh-System/bbs'
 
     # Read content files
     content_files = {}
@@ -483,7 +483,7 @@ def bbs_content_view():
 def save_bbs_content():
     """Save BBS content files"""
     try:
-        bbs_path = '/home/seth/Wildcat-TC2-BBS'
+        bbs_path = '/home/user/Wildcat-Mesh-System/bbs'
         data = request.json
         file_type = data.get('file_type')
         content = data.get('content')
