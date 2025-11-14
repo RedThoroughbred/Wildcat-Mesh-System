@@ -32,7 +32,8 @@ from modules.db import (
     get_channel_details,
     get_channel_messages,
     get_node_positions,
-    get_bbs_messages
+    get_bbs_messages,
+    get_neighbor_info
 )
 
 app = Flask(__name__)
@@ -149,6 +150,12 @@ def propagation_view():
                           hourly_trends=hourly_trends,
                           best_worst=best_worst,
                           snr_distribution=snr_dist)
+
+
+@app.route('/topology')
+def topology_view():
+    """Network topology visualization"""
+    return render_template('topology.html')
 
 
 @app.route('/channels')
@@ -517,6 +524,12 @@ def api_hourly_activity():
     """Get hourly activity (JSON)"""
     hours = request.args.get('hours', 24, type=int)
     return jsonify(get_channel_hourly_activity(hours=hours))
+
+
+@app.route('/api/v1/neighbor-info')
+def api_neighbor_info():
+    """Get network topology neighbor information (JSON)"""
+    return jsonify(get_neighbor_info())
 
 
 # Export endpoints

@@ -1,6 +1,7 @@
 """Database operations for Mesh Observatory"""
 import sqlite3
 import logging
+import time
 from config import DATABASE_PATH
 
 def get_db_connection():
@@ -533,3 +534,35 @@ def get_bbs_messages(limit=500, hours=168):
     # Reverse so newest is at top but conversation chunks read naturally
     messages.reverse()
     return messages
+
+
+def get_neighbor_info():
+    """Get network topology from neighbor information"""
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Get the most recent neighbor info for each node-neighbor pair
+    c.execute("""
+        SELECT
+            ni.node_id,
+            ni.neighbor_id,
+            ni.snr,
+            ni.timestamp,
+            n1.short_name as node_name,
+            n2.short_name as neighbor_name
+        FROM neighbor_info ni
+        LEFT JOIN node_info n1 ON ni.node_id = n1.node_id
+        LEFT JOIN node_info n2 ON ni.neighbor_id = n2.node_id
+        WHERE ni.timestamp = (
+            SELECT MAX(timestamp)
+            FROM neighbor_info
+            WHERE node_id = ni.node_id
+            AND neighbor_id = ni.neighbor_id
+        )
+        AND ni.timestamp > ?
+        ORDER BY ni.timestamp DESC
+    """, (int(time.time()) - 604800,))  # Last 7 days
+
+    neighbors = c.fetchall()
+    conn.close()
+    return [dict(row) for row in neighbors]

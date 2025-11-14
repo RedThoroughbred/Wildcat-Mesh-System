@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Network Topology - Wildcat Mesh Observatory{% endblock %}
+
+{% block extra_css %}
+<style>
+#topology-container {
+    min-height: 600px;
+    position: relative;
+}
+
+.topology-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.legend {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+.legend-line {
+    width: 30px;
+    height: 3px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card fade-in">
+    <div class="card-header">
+        🌐 Network Topology
+        <button id="refreshTopology" class="btn btn-sm btn-secondary" style="float: right; margin-top: -0.25rem;">
+            🔄 Refresh
+        </button>
+    </div>
+
+    <!-- Controls -->
+    <div class="topology-controls">
+        <button id="zoomIn" class="btn btn-sm btn-secondary">🔍 Zoom In</button>
+        <button id="zoomOut" class="btn btn-sm btn-secondary">🔍 Zoom Out</button>
+        <button id="resetView" class="btn btn-sm btn-secondary">⟲ Reset View</button>
+        <button id="centerGraph" class="btn btn-sm btn-primary">⊙ Center Graph</button>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+        <div style="font-weight: 600; color: var(--text-primary); margin-right: 1rem;">Node Status:</div>
+        <div class="legend-item">
+            <div class="legend-circle" style="background: #4CAF50;"></div>
+            <span>Online (< 1 hour)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-circle" style="background: #FF9800;"></div>
+            <span>Recent (< 24 hours)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-circle" style="background: #666666;"></div>
+            <span>Offline (> 24 hours)</span>
+        </div>
+
+        <div style="width: 100%; border-top: 1px solid var(--border); margin: 0.5rem 0;"></div>
+
+        <div style="font-weight: 600; color: var(--text-primary); margin-right: 1rem;">Link Quality (SNR):</div>
+        <div class="legend-item">
+            <div class="legend-line" style="background: #4CAF50;"></div>
+            <span>Excellent (> 5 dB)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background: #FF9800;"></div>
+            <span>Good (0-5 dB)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background: #F44336;"></div>
+            <span>Poor (< 0 dB)</span>
+        </div>
+    </div>
+
+    <!-- Topology Visualization -->
+    <div id="topology-container"></div>
+
+    <!-- Info Box -->
+    <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-surface); border-radius: 8px;">
+        <p style="color: var(--text-secondary); margin-bottom: 0.5rem;">
+            <strong style="color: var(--text-primary);">💡 Tip:</strong> Drag nodes to rearrange the graph. Scroll to zoom. Click and drag the background to pan.
+        </p>
+        <p style="color: var(--text-secondary); margin: 0;">
+            Connections are based on neighbor information from the mesh network. Thicker lines indicate stronger signal quality.
+        </p>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;" class="fade-in">
+    <div class="stat-card">
+        <div class="label">Total Nodes</div>
+        <div class="value" id="stat-total-nodes">-</div>
+        <div class="unit">in network</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Active Connections</div>
+        <div class="value" id="stat-connections">-</div>
+        <div class="unit">links</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Online Now</div>
+        <div class="value" id="stat-online">-</div>
+        <div class="unit">nodes</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Network Density</div>
+        <div class="value" id="stat-density">-</div>
+        <div class="unit">connections/node</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='js/network-topology.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize topology visualization
+    const topology = new NetworkTopology('topology-container', {
+        width: document.getElementById('topology-container').clientWidth,
+        height: 600
+    });
+
+    // Load data
+    topology.loadData().then(() => {
+        // Update statistics
+        document.getElementById('stat-total-nodes').textContent = topology.nodes.length;
+        document.getElementById('stat-connections').textContent = topology.links.length;
+
+        const onlineNodes = topology.nodes.filter(n => n.status === 'online').length;
+        document.getElementById('stat-online').textContent = onlineNodes;
+
+        const density = topology.nodes.length > 0
+            ? (topology.links.length / topology.nodes.length).toFixed(1)
+            : '0';
+        document.getElementById('stat-density').textContent = density;
+    });
+
+    // Controls
+    document.getElementById('refreshTopology').addEventListener('click', () => {
+        topology.refresh();
+        if (window.toast) {
+            toast.info('Refreshing network topology...', 2000);
+        }
+    });
+
+    let currentZoom = 1;
+    const zoomStep = 0.2;
+
+    document.getElementById('zoomIn').addEventListener('click', () => {
+        currentZoom += zoomStep;
+        topology.svg.transition().duration(300).call(
+            d3.zoom().transform,
+            d3.zoomIdentity.scale(currentZoom)
+        );
+    });
+
+    document.getElementById('zoomOut').addEventListener('click', () => {
+        currentZoom = Math.max(0.5, currentZoom - zoomStep);
+        topology.svg.transition().duration(300).call(
+            d3.zoom().transform,
+            d3.zoomIdentity.scale(currentZoom)
+        );
+    });
+
+    document.getElementById('resetView').addEventListener('click', () => {
+        currentZoom = 1;
+        topology.svg.transition().duration(500).call(
+            d3.zoom().transform,
+            d3.zoomIdentity
+        );
+    });
+
+    document.getElementById('centerGraph').addEventListener('click', () => {
+        topology.simulation.alpha(1).restart();
+        if (window.toast) {
+            toast.info('Centering graph...', 2000);
+        }
+    });
+
+    // Auto-refresh every 60 seconds
+    setInterval(() => {
+        topology.refresh();
+    }, 60000);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        const newWidth = document.getElementById('topology-container').clientWidth;
+        if (topology.svg) {
+            topology.svg.attr('width', newWidth);
+            topology.simulation.force('center', d3.forceCenter(newWidth / 2, 300));
+        }
+    });
+});
+</script>
+{% endblock %}
