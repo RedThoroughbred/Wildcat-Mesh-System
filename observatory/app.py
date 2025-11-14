@@ -348,34 +348,49 @@ def bbs_config_view():
     """BBS Configuration Editor"""
     bbs_config_path = '/home/seth/Wildcat-TC2-BBS/config.ini'
 
+    # Default config structure
+    default_config = {
+        'interface': {
+            'type': 'serial',
+            'hostname': ''
+        },
+        'sync': {
+            'bbs_nodes': ''
+        },
+        'menu': {
+            'main_menu_items': 'W, N, R, Q, G, B, U, X',
+            'bbs_menu_items': 'M, B, C, J, X',
+            'utilities_menu_items': 'S, L, X'
+        }
+    }
+
     # Read current config
     parser = configparser.ConfigParser()
 
     try:
         if not os.path.exists(bbs_config_path):
-            # Config file doesn't exist - provide defaults
-            config_data = {
-                'interface': {'type': 'serial', 'hostname': ''},
-                'sync': {'bbs_nodes': ''}
-            }
+            # Config file doesn't exist - use defaults
+            config_data = default_config.copy()
             logging.warning(f"BBS config file not found at {bbs_config_path}, using defaults")
         else:
             parser.read(bbs_config_path)
             # Convert to dict for template
             config_data = {section: dict(parser.items(section)) for section in parser.sections()}
 
-            # Ensure required sections exist
-            if 'interface' not in config_data:
-                config_data['interface'] = {'type': 'serial', 'hostname': ''}
-            if 'sync' not in config_data:
-                config_data['sync'] = {'bbs_nodes': ''}
+            # Ensure all required sections exist with defaults
+            for section, defaults in default_config.items():
+                if section not in config_data:
+                    config_data[section] = defaults
+                else:
+                    # Ensure all keys exist within the section
+                    for key, default_value in defaults.items():
+                        if key not in config_data[section]:
+                            config_data[section][key] = default_value
+
     except Exception as e:
         logging.error(f"Error reading BBS config: {e}")
         # Provide defaults on error
-        config_data = {
-            'interface': {'type': 'serial', 'hostname': ''},
-            'sync': {'bbs_nodes': ''}
-        }
+        config_data = default_config.copy()
 
     return render_template('bbs_config.html', config=config_data, config_path=bbs_config_path)
 
