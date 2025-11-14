@@ -3,7 +3,7 @@
 {% block title %}Dashboard - Wildcat Mesh Observatory{% endblock %}
 
 {% block content %}
-<div class="stats-grid">
+<div class="stats-grid fade-in">
     <div class="stat-card">
         <div class="label">Active Nodes</div>
         <div class="value">{{ stats.active_nodes }}</div>
@@ -29,9 +29,9 @@
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;" class="fade-in">
     <!-- Recent Activity -->
-    <div class="card">
+    <div class="card slide-in">
         <div class="card-header">📻 Recent Activity</div>
         <div class="activity-feed">
             {% for msg in recent_messages %}
@@ -47,9 +47,18 @@
                     <span class="sender">{{ msg.sender_short_name }}</span>
                     <span class="message">{{ msg.message|truncate(100) }}</span>
                 </div>
-                <div class="snr">
-                    {% if msg.snr %}SNR: {{ msg.snr|round(1) }} dB | RSSI: {{ msg.rssi }} | {% endif %}
-                    {% if is_dm %}DM{% else %}CH{{ msg.channel_index }}{% endif %}
+                <div class="snr" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    {% if msg.snr %}
+                    <span class="badge {% if msg.snr > 5 %}badge-success{% elif msg.snr > 0 %}badge-warning{% else %}badge-danger{% endif %}">
+                        SNR: {{ msg.snr|round(1) }} dB
+                    </span>
+                    <span class="badge badge-info">RSSI: {{ msg.rssi }}</span>
+                    {% endif %}
+                    {% if is_dm %}
+                    <span class="badge" style="background: rgba(123, 31, 162, 0.15); color: #9C27B0; border: 1px solid #9C27B0;">DM</span>
+                    {% else %}
+                    <span class="badge badge-primary">CH{{ msg.channel_index }}</span>
+                    {% endif %}
                 </div>
             </a>
             {% else %}
@@ -59,7 +68,7 @@
     </div>
 
     <!-- Active Nodes -->
-    <div class="card">
+    <div class="card slide-in">
         <div class="card-header">🟢 Active Nodes</div>
         <div class="node-list">
             {% for node in active_nodes %}
@@ -85,7 +94,7 @@
 </div>
 
 <!-- Channel Activity Chart -->
-<div class="card">
+<div class="card fade-in">
     <div class="card-header">📊 Channel Activity (24h)</div>
     <canvas id="channelChart" style="max-height: 300px;"></canvas>
 </div>

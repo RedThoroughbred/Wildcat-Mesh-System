@@ -13,7 +13,7 @@
 
     {% if nodes %}
     <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
+        <table id="nodesTable" style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
             <thead>
                 <tr style="border-bottom: 2px solid var(--primary);">
                     <th style="padding: 0.75rem; text-align: left;">Node</th>
@@ -73,11 +73,11 @@
                     </td>
                     <td style="padding: 0.75rem; text-align: center;">
                         {% if hours_since < 1 %}
-                        <span style="color: var(--success);">●</span> Online
+                        <span class="badge badge-success">● Online</span>
                         {% elif hours_since < 24 %}
-                        <span style="color: var(--warning);">●</span> Recent
+                        <span class="badge badge-warning">● Recent</span>
                         {% else %}
-                        <span style="color: var(--text-secondary);">○</span> Offline
+                        <span class="badge" style="background: rgba(176, 176, 176, 0.15); color: var(--text-secondary); border: 1px solid var(--text-secondary);">○ Offline</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -120,21 +120,34 @@
 
 {% block extra_js %}
 <script>
-// Search functionality
-document.getElementById('nodeSearch').addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    const rows = document.querySelectorAll('.node-row');
-
-    rows.forEach(row => {
-        const nodeName = row.dataset.nodeName;
-        const nodeId = row.dataset.nodeId;
-
-        if (nodeName.includes(searchTerm) || nodeId.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+// Initialize enhanced table
+document.addEventListener('DOMContentLoaded', function() {
+    const table = new EnhancedTable('nodesTable', {
+        sortable: true,
+        exportable: true
     });
+
+    // Search functionality
+    document.getElementById('nodeSearch').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('.node-row');
+
+        rows.forEach(row => {
+            const nodeName = row.dataset.nodeName;
+            const nodeId = row.dataset.nodeId;
+
+            if (nodeName.includes(searchTerm) || nodeId.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    // Show welcome toast
+    if (window.toast) {
+        toast.info('Click column headers to sort the table!', 3000);
+    }
 });
 </script>
 {% endblock %}
