@@ -220,3 +220,10 @@ def mail_summary(db_path: str) -> Dict[str, Any]:
     tot = _one(db_path, "SELECT COUNT(*) n, COUNT(DISTINCT recipient) recipients FROM mail") or {}
     per = _rows(db_path, "SELECT recipient, COUNT(*) waiting, MAX(date) latest FROM mail GROUP BY recipient ORDER BY waiting DESC LIMIT 20")
     return {"total": tot.get("n") or 0, "recipients": tot.get("recipients") or 0, "per_recipient": per}
+
+
+def direct_links(db_path: str, days: int = 7) -> List[Dict[str, Any]]:
+    """Nodes the base heard with zero hops (from rx_points) — persisted direct RF links."""
+    since = int(time.time() - days * 86400)
+    return _rows(db_path, "SELECT node_id id, COUNT(*) count, AVG(snr) snr, MAX(ts) last FROM rx_points"
+                          " WHERE hops = 0 AND ts >= ? GROUP BY node_id ORDER BY last DESC", (since,))

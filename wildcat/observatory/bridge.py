@@ -417,12 +417,34 @@ class Bridge:
         except Exception:
             log.exception("emit %s failed", event)
 
+    def _seed_links(self) -> None:
+        """Rebuild direct links + NeighborInfo edges from the DB once we know who we are,
+        so a restart doesn't blank the map's links and the Topology view."""
+        if getattr(self, "_links_seeded", False) or not self.state.my_id:
+            return
+        self._links_seeded = True
+        from . import queries as Q
+        db = str(self.cfg.database.path)
+        n = 0
+        with self.state.lock:
+            for r in Q.direct_links(db, 7):
+                if r["id"] and r["id"] != self.state.my_id:
+                    l = self.state._link(r["id"], self.state.my_id, r["snr"], "direct", float(r["last"]))
+                    l["count"] = max(l["count"], int(r["count"])); n += 1
+            for e in Q.neighbor_edges(db, 7):
+                if e["a"] and e["b"] and e["a"] != e["b"]:
+                    self.state._link(e["a"], e["b"], e["snr"], "neighbor", float(e["ts"])); n += 1
+        if n:
+            log.info("observatory v2: %d links seeded from the database", n)
+
     def _on_nodes(self, topic: str, payload: Dict[str, Any]) -> None:
         self.state.apply_roster(payload)
+        self._seed_links()
         self._emit("roster", {"my_id": self.state.my_id, "roster": self.state.roster})
 
     def _on_status(self, topic: str, payload: Dict[str, Any]) -> None:
         self.state.apply_status(payload)
+        self._seed_links()
         self._emit("status", {"bus": self.state.bus_connected, "meshd": payload, "my_id": self.state.my_id})
 
     def _on_rx(self, topic: str, env: Dict[str, Any]) -> None:

@@ -20,11 +20,14 @@ def db(tmp_path):
       CREATE TABLE telemetry_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, battery_level INTEGER, voltage REAL, channel_util REAL, air_util_tx REAL, temperature REAL);
       CREATE TABLE position_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, latitude REAL, longitude REAL, altitude REAL, satellites_in_view INTEGER);
       CREATE TABLE neighbor_info (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, neighbor_id TEXT, snr REAL);
+      CREATE TABLE rx_points (id INTEGER PRIMARY KEY, ts INTEGER, node_id TEXT, proto TEXT, lat REAL, lon REAL, alt REAL, snr REAL, rssi REAL, hops INTEGER, pos_age INTEGER, kind TEXT, source TEXT);
       CREATE TABLE bulletins (id INTEGER PRIMARY KEY, board TEXT, sender_short_name TEXT, date TEXT, subject TEXT, content TEXT, unique_id TEXT);
       CREATE TABLE mail (id INTEGER PRIMARY KEY, sender TEXT, sender_short_name TEXT, recipient TEXT, date TEXT, subject TEXT, content TEXT, unique_id TEXT);
     """)
     c.execute("INSERT INTO bulletins (board,sender_short_name,date,subject,content,unique_id) VALUES ('General','GO','2026-09-13','hello','first post','u1')")
     c.execute("INSERT INTO bulletins (board,sender_short_name,date,subject,content,unique_id) VALUES ('Urgent','STAY','2026-09-13','storm','take cover','u2')")
+    c.executemany("INSERT INTO rx_points (ts,node_id,lat,lon,snr,hops,source) VALUES (?,?,?,?,?,?,?)", [
+        (now - 10, STAY, 38.88, -84.62, 7.0, 0, "live"), (now - 5, STAY, 38.88, -84.62, 9.0, 0, "live"), (now - 3, GO, 38.9, -84.6, 1.0, 2, "live")])
     c.execute("INSERT INTO mail (sender,sender_short_name,recipient,date,subject,content,unique_id) VALUES ('!716c668c','GO','!a0388880','2026-09-13','secret','private','m1')")
     now = int(time.time())
     c.execute("INSERT INTO node_info VALUES (?,?,?,?,?)", (GO, "GO", "Wildcat Go", "TRACKER_T1000_E", "CLIENT"))
@@ -96,3 +99,8 @@ def test_bulletins_and_mail_privacy(db):
     m = Q.mail_summary(db)
     assert m["total"] == 1 and m["per_recipient"][0]["recipient"] == "!a0388880"
     assert "content" not in m["per_recipient"][0] and "subject" not in m["per_recipient"][0]
+
+
+def test_direct_links_from_rx_points(db):
+    d = Q.direct_links(db)
+    assert len(d) == 1 and d[0]["id"] == STAY and d[0]["count"] == 2 and d[0]["snr"] == 8.0
