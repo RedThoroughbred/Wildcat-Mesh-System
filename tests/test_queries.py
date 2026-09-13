@@ -14,6 +14,7 @@ BASE = "!9e766b18"; GO = "!716c668c"; STAY = "!a0388880"
 @pytest.fixture
 def db(tmp_path):
     p = tmp_path / "b.db"; c = sqlite3.connect(p)
+    now = int(time.time())
     c.executescript("""
       CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, sender_short_name TEXT, to_id INTEGER, channel_index INTEGER, message TEXT, snr REAL, rssi INTEGER, hop_limit INTEGER);
       CREATE TABLE node_info (node_id TEXT PRIMARY KEY, short_name TEXT, long_name TEXT, hw_model TEXT, role TEXT);
@@ -29,7 +30,6 @@ def db(tmp_path):
     c.executemany("INSERT INTO rx_points (ts,node_id,lat,lon,snr,hops,source) VALUES (?,?,?,?,?,?,?)", [
         (now - 10, STAY, 38.88, -84.62, 7.0, 0, "live"), (now - 5, STAY, 38.88, -84.62, 9.0, 0, "live"), (now - 3, GO, 38.9, -84.6, 1.0, 2, "live")])
     c.execute("INSERT INTO mail (sender,sender_short_name,recipient,date,subject,content,unique_id) VALUES ('!716c668c','GO','!a0388880','2026-09-13','secret','private','m1')")
-    now = int(time.time())
     c.execute("INSERT INTO node_info VALUES (?,?,?,?,?)", (GO, "GO", "Wildcat Go", "TRACKER_T1000_E", "CLIENT"))
     msgs = [(now - 100, GO, "GO", 2658560792, 0, "M", 9.0, -70), (now - 90, BASE, "6b18", 1902929548, 0, "menu", None, None),
             (now - 80, GO, "GO", 4294967295, 0, "hi all", 2.0, -95), (now - 70, STAY, "STAY", 4294967295, 1, "ch1", -6.0, -110),
