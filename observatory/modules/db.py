@@ -2,11 +2,12 @@
 import sqlite3
 import logging
 import time
-from config import DATABASE_PATH
+from config import DATABASE_PATH, DB_BUSY_TIMEOUT_MS, BBS_NODE_ID
 
 def get_db_connection():
-    """Get database connection"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    """Get database connection (path + busy timeout from [database] in wildcat.toml)"""
+    conn = sqlite3.connect(DATABASE_PATH, timeout=DB_BUSY_TIMEOUT_MS / 1000)
+    conn.execute(f"PRAGMA busy_timeout = {int(DB_BUSY_TIMEOUT_MS)}")
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     return conn
 
@@ -502,7 +503,7 @@ def get_bbs_messages(limit=500, hours=168):
     c = conn.cursor()
 
     cutoff = int(time.time()) - (hours * 3600)
-    bbs_node_id = '!9e766b18'
+    bbs_node_id = BBS_NODE_ID  # [observatory].bbs_node_id in wildcat.toml
 
     # Get all direct messages (not broadcasts)
     # This includes messages TO the BBS and responses FROM the BBS

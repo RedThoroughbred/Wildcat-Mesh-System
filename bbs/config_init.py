@@ -1,6 +1,8 @@
-import configparser
 import time
 from typing import Any
+
+import _bootstrap  # noqa: F401  (makes `wildcat` importable from any CWD)
+from wildcat.config import ConfigError, load as wildcat_load  # noqa: F401 (ConfigError re-exported for callers)
 import meshtastic.stream_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -83,50 +85,36 @@ def merge_config(system_config:dict[str, Any], args:argparse.Namespace) -> dict[
 
 def initialize_config(config_file: str = None) -> dict[str, Any]:
     """
-    Function reads and parses system configuration file
+    Load the ONE validated config (config/wildcat.toml, or the legacy bbs/config.ini
+    through the migrator) and return the dict shape the rest of the BBS expects.
 
-    Returns a dict with the following entries:
-    config - parsed config file
-    interface_type - type of the active interface
-    hostname - host name for TCP interface
-    port - serial port name for serial interface
-    bbs_nodes - list of peer nodes to sync with
+    Resolution (see wildcat/paths.py): explicit path → $WILDCAT_CONFIG →
+    <repo>/config/wildcat.toml → /etc/wildcat/wildcat.toml → <repo>/bbs/config.ini.
+    Nothing depends on the current working directory, a missing file lists every
+    path tried, and a bad value names the [table].key — no more silent empty reads
+    or KeyErrors deep in a handler (docs/DECISIONS.md D-001..D-004).
 
-    Args:
-        config_file (str, optional): Path to config file. Function reads from './config.ini' if this arg is set to None. Defaults to None.
+    Raises wildcat.config.ConfigError — callers print it and exit 2.
 
-    Returns:
-        dict: dict with system configuration, ad described above
+    Returns a dict with:
+    wildcat - the typed WildcatConfig
+    config - (compat) the same object; v1 callers held a ConfigParser here
+    interface_type / hostname / port / bbs_nodes / allowed_nodes / mqtt_topic
     """
-    config = configparser.ConfigParser()
+    cfg = wildcat_load(config_file)
 
-    if config_file is None:
-        config_file = "config.ini"
-    config.read(config_file)
-
-    interface_type = config['interface']['type']
-    hostname = config['interface'].get('hostname', None)
-    port = config['interface'].get('port', None)
-
-    bbs_nodes = config.get('sync', 'bbs_nodes', fallback='').split(',')
-    if bbs_nodes == ['']:
-        bbs_nodes = []
-
-    print(f"Configured to sync with the following BBS nodes: {bbs_nodes}")
-
-    allowed_nodes = config.get('allow_list', 'allowed_nodes', fallback='').split(',')
-    if allowed_nodes == ['']:
-        allowed_nodes = []
-
-    print(f"Nodes with Urgent board permissions: {allowed_nodes}")
+    print(f"Config: {cfg.source} [{cfg.source_kind}]")
+    print(f"Configured to sync with the following BBS nodes: {cfg.bbs.sync_nodes}")
+    print(f"Nodes with Urgent board permissions: {cfg.bbs.allowed_nodes}")
 
     return {
-        'config': config,
-        'interface_type': interface_type,
-        'hostname': hostname,
-        'port': port,
-        'bbs_nodes': bbs_nodes,
-        'allowed_nodes': allowed_nodes,
+        'wildcat': cfg,
+        'config': cfg,
+        'interface_type': cfg.radio.type,
+        'hostname': cfg.radio.host,
+        'port': cfg.radio.port,
+        'bbs_nodes': list(cfg.bbs.sync_nodes),
+        'allowed_nodes': list(cfg.bbs.allowed_nodes),
         'mqtt_topic': 'meshtastic.receive'
     }
 

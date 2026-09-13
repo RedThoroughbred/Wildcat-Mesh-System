@@ -14,6 +14,7 @@ import shutil
 import subprocess
 
 import config
+from wildcat.config import get_config as wildcat_config  # config.py put the repo root on sys.path
 from modules.db import (
     initialize_observatory_tables,
     get_db_connection,
@@ -347,61 +348,53 @@ def admin_logs():
 
 @app.route('/admin/bbs-config')
 def bbs_config_view():
-    """BBS Configuration Editor"""
-    bbs_config_path = '/home/user/Wildcat-Mesh-System/bbs/config.ini'
+    """BBS Configuration viewer / editor.
 
-    # Default config structure
-    default_config = {
-        'interface': {
-            'type': 'serial',
-            'hostname': ''
-        },
-        'sync': {
-            'bbs_nodes': ''
-        },
+    Shows whichever config file The Den actually loaded (docs/DECISIONS.md D-008).
+    Editable only while that file is the legacy bbs/config.ini — this form writes
+    INI, and pointing it at wildcat.toml would corrupt it.
+    """
+    cfg = wildcat_config()
+    read_only = cfg.source_kind != 'legacy-ini'
+    bbs_config_path = str(cfg.source)
+
+    # What the loader resolved (defaults filled in) — always correct, in the template's shape.
+    config_data = {
+        'interface': {'type': cfg.radio.type, 'hostname': cfg.radio.host or ''},
+        'sync': {'bbs_nodes': ','.join(cfg.bbs.sync_nodes)},
         'menu': {
-            'main_menu_items': 'W, N, R, Q, G, B, U, X',
-            'bbs_menu_items': 'M, B, C, J, X',
-            'utilities_menu_items': 'S, L, X'
-        }
+            'main_menu_items': ', '.join(cfg.bbs.menu.main),
+            'bbs_menu_items': ', '.join(cfg.bbs.menu.bbs),
+            'utilities_menu_items': ', '.join(cfg.bbs.menu.utilities),
+        },
     }
 
-    # Read current config
-    parser = configparser.ConfigParser()
-
-    try:
-        if not os.path.exists(bbs_config_path):
-            # Config file doesn't exist - use defaults
-            config_data = default_config.copy()
-            logging.warning(f"BBS config file not found at {bbs_config_path}, using defaults")
-        else:
+    if not read_only:
+        # Legacy INI: overlay the raw file so a save round-trips keys we don't render.
+        try:
+            parser = configparser.ConfigParser()
             parser.read(bbs_config_path)
-            # Convert to dict for template
-            config_data = {section: dict(parser.items(section)) for section in parser.sections()}
+            for section in parser.sections():
+                config_data.setdefault(section, {}).update(dict(parser.items(section)))
+        except Exception as e:
+            logging.error(f"Error reading BBS config: {e}")
 
-            # Ensure all required sections exist with defaults
-            for section, defaults in default_config.items():
-                if section not in config_data:
-                    config_data[section] = defaults
-                else:
-                    # Ensure all keys exist within the section
-                    for key, default_value in defaults.items():
-                        if key not in config_data[section]:
-                            config_data[section][key] = default_value
-
-    except Exception as e:
-        logging.error(f"Error reading BBS config: {e}")
-        # Provide defaults on error
-        config_data = default_config.copy()
-
-    return render_template('bbs_config.html', config=config_data, config_path=bbs_config_path)
+    return render_template('bbs_config.html', config=config_data, config_path=bbs_config_path,
+                           read_only=read_only, config_kind=cfg.source_kind)
 
 
 @app.route('/admin/bbs-config/save', methods=['POST'])
 def save_bbs_config():
-    """Save BBS configuration"""
+    """Save BBS configuration (legacy INI only — see bbs_config_view)"""
+    cfg = wildcat_config()
+    if cfg.source_kind != 'legacy-ini':
+        return jsonify({
+            'success': False,
+            'message': (f'{cfg.source} is TOML — edit it on the Pi, run `wildcat config validate`, '
+                        f'then restart the BBS. Web editing of wildcat.toml comes with Observatory v2.')
+        }), 400
     try:
-        bbs_config_path = '/home/user/Wildcat-Mesh-System/bbs/config.ini'
+        bbs_config_path = str(cfg.source)
 
         # Create backup
         backup_path = f"{bbs_config_path}.backup"
@@ -461,7 +454,7 @@ def restart_bbs_service():
 @app.route('/admin/bbs-content')
 def bbs_content_view():
     """BBS Content Editor (fortunes, trivia, resources)"""
-    bbs_path = '/home/user/Wildcat-Mesh-System/bbs'
+    bbs_path = config.BBS_CONTENT_DIR   # [bbs].content_dir in wildcat.toml
 
     # Read content files
     content_files = {}
@@ -485,7 +478,7 @@ def bbs_content_view():
 def save_bbs_content():
     """Save BBS content files"""
     try:
-        bbs_path = '/home/user/Wildcat-Mesh-System/bbs'
+        bbs_path = config.BBS_CONTENT_DIR   # [bbs].content_dir in wildcat.toml
         data = request.json
         file_type = data.get('file_type')
         content = data.get('content')

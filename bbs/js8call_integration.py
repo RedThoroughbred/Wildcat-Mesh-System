@@ -2,7 +2,6 @@ from socket import socket, AF_INET, SOCK_STREAM
 import json
 import time
 import sqlite3
-import configparser
 import logging
 
 from meshtastic import BROADCAST_NUM
@@ -10,7 +9,8 @@ from meshtastic import BROADCAST_NUM
 from command_handlers import handle_help_command
 from utils import send_message, update_user_state
 
-config_file = 'config.ini'
+import _bootstrap  # noqa: F401
+from wildcat.config import get_config
 
 def from_message(content):
     try:
@@ -30,19 +30,14 @@ class JS8CallClient:
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
 
-        self.config = configparser.ConfigParser()
-        self.config.read(config_file)
-
-        self.server = (
-            self.config.get('js8call', 'host', fallback=None),
-            self.config.getint('js8call', 'port', fallback=None)
-        )
-        self.db_file = self.config.get('js8call', 'db_file', fallback=None)
-        self.js8groups = self.config.get('js8call', 'js8groups', fallback='').split(',')
-        self.store_messages = self.config.getboolean('js8call', 'store_messages', fallback=True)
-        self.js8urgent = self.config.get('js8call', 'js8urgent', fallback='').split(',')
-        self.js8groups = [group.strip() for group in self.js8groups]
-        self.js8urgent = [group.strip() for group in self.js8urgent]
+        # [bbs.js8call] in wildcat.toml (validated; enabled only when host AND port are set)
+        js8 = get_config().bbs.js8call
+        self.config = js8
+        self.server = (js8.host, js8.port)
+        self.db_file = js8.db_file if js8.enabled else None
+        self.js8groups = list(js8.groups)
+        self.store_messages = js8.store_messages
+        self.js8urgent = list(js8.urgent_groups)
 
         self.connected = False
         self.sock = None

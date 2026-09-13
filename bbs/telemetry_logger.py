@@ -5,14 +5,16 @@ Captures telemetry, position, and topology data from Meshtastic network
 Runs independently alongside the BBS
 """
 
+import argparse
 import logging
+import sys
 import time
-import configparser
 import sqlite3
 from datetime import datetime
-import meshtastic
-import meshtastic.tcp_interface
-import meshtastic.serial_interface
+
+import _bootstrap  # noqa: F401  (repo root on sys.path so `wildcat` imports from any CWD)
+from config_init import initialize_config, get_interface, ConfigError
+from wildcat.config import get_config
 
 # Setup logging
 logging.basicConfig(
@@ -22,14 +24,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Database path (shared with Observatory in monorepo)
-import os
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'shared', 'bulletins.db')
-
-
 def get_db_connection():
-    """Get database connection"""
-    conn = sqlite3.connect(DB_PATH)
+    """Get database connection — path + pragmas from [database] in wildcat.toml."""
+    db = get_config().database
+    conn = sqlite3.connect(str(db.path), timeout=db.busy_timeout_ms / 1000)
+    conn.execute(f"PRAGMA busy_timeout = {int(db.busy_timeout_ms)}")
     return conn
 
 
@@ -253,21 +252,24 @@ def main():
     logger.info("🛰️  Wildcat Mesh Telemetry Logger")
     logger.info("=" * 50)
 
-    # Load config
-    config = configparser.ConfigParser()
-    config.read('/home/seth/Wildcat-TC2-BBS/config.ini')
-
-    interface_type = config.get('interface', 'type', fallback='serial')
+    # The same validated config the BBS uses — no more hardcoded INI path
+    # (the old one pointed at /home/seth/Wildcat-TC2-BBS, which no longer exists,
+    # so this logger silently fell back to a serial port it didn't have).
+    parser = argparse.ArgumentParser(description="Wildcat Mesh Telemetry Logger")
+    parser.add_argument("--config", "-c", default=None,
+                        help="config file (default: $WILDCAT_CONFIG or <repo>/config/wildcat.toml)")
+    args = parser.parse_args()
+    try:
+        system_config = initialize_config(args.config)
+    except ConfigError as e:
+        logger.error("CONFIG ERROR\n%s", e)
+        sys.exit(2)
 
     try:
-        # Connect to Meshtastic interface
-        if interface_type == 'tcp':
-            hostname = config.get('interface', 'hostname')
-            logger.info(f"Connecting to Meshtastic via TCP: {hostname}")
-            interface = meshtastic.tcp_interface.TCPInterface(hostname=hostname)
-        else:
-            logger.info("Connecting to Meshtastic via Serial")
-            interface = meshtastic.serial_interface.SerialInterface()
+        # Connect to Meshtastic interface (shared with the BBS: serial auto-detect, tcp host)
+        logger.info(f"Connecting to Meshtastic via {system_config['interface_type']}"
+                    + (f": {system_config['hostname']}" if system_config['hostname'] else ""))
+        interface = get_interface(system_config)
 
         logger.info("✅ Connected to Meshtastic!")
         logger.info("📊 Logging telemetry data...")

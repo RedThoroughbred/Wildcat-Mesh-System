@@ -1,4 +1,3 @@
-import configparser
 import logging
 import random
 import time
@@ -19,25 +18,57 @@ from utils import (
     update_user_state
 )
 
-# Read the configuration for menu options
-config = configparser.ConfigParser()
-config.read('config.ini')
+# Config + content come LAZILY from the one validated config (docs/DECISIONS.md
+# D-002 / D-004): absolute paths, nothing read at import time, and a missing
+# [bbs.menu] table means the stock menu — never a KeyError from in here.
+import _bootstrap  # noqa: F401
+from wildcat.config import get_config
 
-main_menu_items = config['menu']['main_menu_items'].split(',')
-bbs_menu_items = config['menu']['bbs_menu_items'].split(',')
-utilities_menu_items = config['menu']['utilities_menu_items'].split(',')
 
-# Load messages from JSON
+def _menu(which):
+    """Menu letters for 'main' | 'bbs' | 'utilities' — validated, defaulted, normalized."""
+    return list(getattr(get_config().bbs.menu, which))
+
+
+def _content(filename):
+    """Absolute path of a BBS content file (messages.json, fortunes.txt, trivia.txt)."""
+    return get_config().bbs.content_dir / filename
+
+
 def load_messages():
     """Load BBS messages from messages.json"""
+    path = _content('messages.json')
     try:
-        with open('messages.json', 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        logging.error(f"Error loading messages.json: {e}")
+        logging.error(f"Error loading {path}: {e}")
         return {}
 
-MESSAGES = load_messages()
+
+class _LazyMessages:
+    """`MESSAGES.get(...)` as before, but loaded on first use instead of at import."""
+    _data = None
+
+    def _load(self):
+        if self._data is None:
+            self._data = load_messages()
+        return self._data
+
+    def get(self, key, default=None):
+        return self._load().get(key, default)
+
+    def __getitem__(self, key):
+        return self._load()[key]
+
+    def __contains__(self, key):
+        return key in self._load()
+
+    def reload(self):
+        self._data = None
+
+
+MESSAGES = _LazyMessages()
 
 
 def build_menu(items, menu_name):
@@ -88,16 +119,16 @@ def handle_help_command(sender_id, interface, menu_name=None):
         update_user_state(sender_id, {'command': 'MENU', 'menu': menu_name, 'step': 1})
         if menu_name == 'bbs':
             header = headers.get('bbs', '📰BBS Menu📰')
-            response = build_menu(bbs_menu_items, header)
+            response = build_menu(_menu('bbs'), header)
         elif menu_name == 'utilities':
             header = headers.get('utilities', '🛠️Utilities Menu🛠️')
-            response = build_menu(utilities_menu_items, header)
+            response = build_menu(_menu('utilities'), header)
     else:
         update_user_state(sender_id, {'command': 'MAIN_MENU', 'step': 1})
         mail = get_mail(get_node_id_from_num(sender_id, interface))
         header_template = headers.get('main', '💾Wildcat TC² BBS💾 (✉️:{mail_count})')
         header = header_template.format(mail_count=len(mail))
-        response = build_menu(main_menu_items, header)
+        response = build_menu(_menu('main'), header)
     send_message(response, sender_id, interface)
 
 def get_node_name(node_id, interface):
@@ -148,7 +179,7 @@ def handle_stats_command(sender_id, interface):
 
 def handle_fortune_command(sender_id, interface):
     try:
-        with open('fortunes.txt', 'r') as file:
+        with open(_content('fortunes.txt'), 'r', encoding='utf-8') as file:
             fortunes = file.readlines()
         if not fortunes:
             send_message("No fortunes available.", sender_id, interface)
@@ -909,7 +940,8 @@ def handle_weather_steps(sender_id, message, step, state, interface):
             return
 
         try:
-            api_key = "b5f7bc717799c13af6c652a35002edd6"
+            # [bbs].weather_api_key in wildcat.toml; blank keeps the legacy built-in key
+            api_key = get_config().bbs.weather_api_key or "b5f7bc717799c13af6c652a35002edd6"
             country_code = "us"
 
             # Get current weather
@@ -949,7 +981,7 @@ def handle_weather_steps(sender_id, message, step, state, interface):
 def handle_trivia_command(sender_id, interface):
     """Start trivia game"""
     try:
-        with open('trivia.txt', 'r') as file:
+        with open(_content('trivia.txt'), 'r', encoding='utf-8') as file:
             questions = [line.strip() for line in file.readlines() if line.strip()]
 
         if not questions:

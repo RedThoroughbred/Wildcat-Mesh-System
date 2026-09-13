@@ -13,9 +13,11 @@ other BBS servers listed in the config.ini file.
 """
 
 import logging
+import sys
 import time
 
-from config_init import initialize_config, get_interface, init_cli_parser, merge_config
+import _bootstrap  # noqa: F401  (repo root on sys.path so `wildcat` imports from any CWD)
+from config_init import initialize_config, get_interface, init_cli_parser, merge_config, ConfigError
 from db_operations import initialize_database
 from js8call_integration import JS8CallClient
 from message_processing import on_receive
@@ -55,7 +57,12 @@ def main():
     config_file = None
     if args.config is not None:
         config_file = args.config
-    system_config = initialize_config(config_file)
+    try:
+        system_config = initialize_config(config_file)
+    except ConfigError as e:
+        # Fail at boot with the [table].key that's wrong — never a KeyError mid-DM.
+        logging.error("CONFIG ERROR\n%s", e)
+        sys.exit(2)
 
     merge_config(system_config, args)
 

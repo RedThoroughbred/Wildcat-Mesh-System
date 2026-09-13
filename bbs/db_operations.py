@@ -14,14 +14,24 @@ from utils import (
     send_mail_to_bbs_nodes, send_message, send_channel_to_bbs_nodes
 )
 
+import _bootstrap  # noqa: F401
+from wildcat.config import get_config
+
 
 thread_local = threading.local()
 
 def get_db_connection():
-    # Database path - shared with Observatory
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'shared', 'bulletins.db')
+    # Database path + pragmas from the one validated config ([database] in wildcat.toml).
+    # Shared with the telemetry logger and the Observatory: several writers, one file,
+    # so WAL + a busy_timeout instead of "database is locked".
     if not hasattr(thread_local, 'connection'):
-        thread_local.connection = sqlite3.connect(db_path)
+        db = get_config().database
+        db.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db.path))
+        conn.execute(f"PRAGMA busy_timeout = {int(db.busy_timeout_ms)}")
+        if db.wal:
+            conn.execute("PRAGMA journal_mode = WAL")
+        thread_local.connection = conn
     return thread_local.connection
 
 def initialize_database():
