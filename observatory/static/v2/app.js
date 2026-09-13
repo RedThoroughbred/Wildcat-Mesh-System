@@ -198,7 +198,7 @@
     const arc = $("g-arc"), q = n.id === S.myId ? 1 : snrPct(n.snr);
     arc.style.strokeDashoffset = (ARC * (1 - q)).toFixed(1);
     arc.style.stroke = n.id === S.myId ? "var(--terracotta)" : snrColor(n.snr); arc.style.color = arc.style.stroke;
-    $("c-snr").textContent = n.snr != null ? n.snr.toFixed(1) + " dB" : "–";
+    $("c-snr").innerHTML = n.snr != null ? n.snr.toFixed(1) + " dB" + (n._prevSnr != null && Math.abs(n.snr - n._prevSnr) >= 0.5 ? `<span class="trend ${n.snr > n._prevSnr ? "up" : "down"}">${n.snr > n._prevSnr ? "▲" : "▼"}</span>` : "") : "–";
     $("c-rssi").textContent = n.rssi != null ? n.rssi + " dBm" : "–";
     const b = n.battery;
     $("c-batt").textContent = b != null ? (b > 100 ? "on power" : b + "%") + (n.voltage != null ? ` · ${n.voltage.toFixed(2)} V` : "") : "–";
@@ -270,6 +270,7 @@
     if (ev.my_id) S.myId = ev.my_id;
     S.times.push(now());
     if (ev.node && ev.packet && ev.packet.rssi != null) ev.node.rssi = ev.packet.rssi;
+    if (ev.node && S.roster[ev.node.id] && S.roster[ev.node.id].snr != null && ev.node.snr != null && ev.node.snr !== S.roster[ev.node.id].snr) ev.node._prevSnr = S.roster[ev.node.id].snr;
     upsertNode(ev.node);
     for (const l of ev.links || []) upsertLink(l);
     if (typeof TL !== "undefined" && document.body.classList.contains("replaying")) { TL.queuedLive.push(ev.packet); if (TL.events.length) TL.events.push(ev.packet); refreshStats(); return; }
@@ -376,7 +377,7 @@
 
   // ---------------------------------------------------------------- public view + share
   const PUBLIC = document.body.dataset.public === "yes";
-  function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+  function toast(msg, kind) { const t = document.createElement("div"); t.className = "toast" + (kind ? " " + kind : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), kind === "err" ? 4200 : 2600); }
   $("share").addEventListener("click", async () => {
     const url = API ? API + "/v2/public" : new URL("public", location.href).href;
     try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
@@ -600,6 +601,16 @@
   $("drawer-scrim").addEventListener("click", () => openDrawer(false));
   sidebar.addEventListener("click", (e) => { if (e.target.closest("a")) openDrawer(false); });
   $("view-close").addEventListener("click", () => { location.hash = "#/"; });
+  // desktop sidebar collapse (persisted); phone drawer swipes closed
+  const sbc = $("sb-collapse");
+  function setRail(collapsed) { document.body.classList.toggle("rail-collapsed", collapsed); sbc.textContent = collapsed ? "›" : "‹ collapse"; sbc.title = collapsed ? "expand the sidebar" : "collapse the sidebar"; try { localStorage.setItem("v2.rail", collapsed ? "1" : "0"); } catch (e) {} setTimeout(() => map.invalidateSize(), 50); }
+  sbc.addEventListener("click", () => setRail(!document.body.classList.contains("rail-collapsed")));
+  try { if (localStorage.getItem("v2.rail") === "1") setRail(true); } catch (e) {}
+  let swX = null;
+  sidebar.addEventListener("touchstart", (e) => { swX = e.touches[0].clientX; }, { passive: true });
+  sidebar.addEventListener("touchend", (e) => { if (swX != null && swX - e.changedTouches[0].clientX > 50) openDrawer(false); swX = null; }, { passive: true });
+  // tables wider than their card get a scroll hint
+  new ResizeObserver(() => { for (const w of document.querySelectorAll(".twrap")) w.classList.toggle("scrollable", w.scrollWidth > w.clientWidth + 4); }).observe(viewBody);
   function fmtTs(ts) { return ts ? new Date(ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; }
   function fmt1(v, unit) { return v == null ? "–" : (Math.round(v * 10) / 10) + (unit || ""); }
   function snrSpan(v) { return v == null ? "–" : `<span class="snr ${snrClass(v)}">${fmt1(v, " dB")}</span>`; }
@@ -1006,7 +1017,7 @@
     viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
     viewBody.scrollTop = 0;
     if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
-    try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load: ${escape(e.message || e)}</div>`; }
+    try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
   }
   function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   function route() {

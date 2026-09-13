@@ -459,3 +459,43 @@ table.vt tr.row td:first-child { border-left: 2px solid transparent; } table.vt 
 /* stat tile: inline sparkline for pkts/min */
 .stat .spark-mini { width: 60px; height: 14px; display: block; margin-top: 2px; }
 .stat .spark-mini polyline { fill: none; stroke: var(--on); stroke-width: 1.5; }
+
+
+/* =====================================================================================
+   Polish pass 2 — mobile gorgeousness, tables, sidebar collapse, card details
+   ===================================================================================== */
+.view-head { position: sticky; top: 0; z-index: 2; background: rgba(16,22,30,.6); backdrop-filter: blur(12px); }
+.twrap { position: relative; }
+.twrap.scrollable::after { content: "⇢ scroll"; position: sticky; float: right; right: 0; bottom: 4px; font: 10px var(--mono); color: var(--muted); background: rgba(16,22,30,.85); padding: 2px 6px; border-radius: 6px; margin-top: -20px; pointer-events: none; }
+/* desktop: collapsible sidebar (persisted) */
+body.rail-collapsed { --rail: 52px; }
+body.rail-collapsed .sidebar a span, body.rail-collapsed .sb-hint { display: none; }
+body.rail-collapsed .sidebar a { justify-content: center; padding: 9px 0; } body.rail-collapsed .sidebar a i { width: auto; font-size: 16px; }
+.sb-collapse { display: none; margin-top: 4px; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 6px; cursor: pointer; font-size: 12px; }
+@media (min-width: 1181px) { .sb-collapse { display: block; } }
+/* node card: SNR trend arrow + hardware chip */
+.trend { font-size: 12px; margin-left: 4px; } .trend.up { color: var(--on); } .trend.down { color: #ff8a8a; }
+/* toasts stack + variants */
+.toast { display: flex; align-items: center; gap: 8px; }
+.toast.err { border-color: rgba(255,107,107,.5); } .toast.ok { border-color: rgba(88,227,156,.5); }
+@media (max-width: 760px) {
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; }
+  .kpi { min-width: 0; } .kpi b { font-size: 19px; }
+  .vgrid { grid-template-columns: 1fr; }
+  .view-head { padding: 10px 12px; } .view-head h1 { font-size: 15px; }
+  .view-tools { width: 100%; order: 3; margin-left: 0; }
+  .view-head { flex-wrap: wrap; }
+  .feed .handle { padding: 12px 0 6px; } .feed .handle i { width: 48px; height: 5px; }
+  .chip { padding: 5px 11px; font-size: 12px; }           /* ≥ 30px tap targets */
+  .tool { width: 34px; height: 34px; }
+  .pkt { padding: 10px 10px 10px 9px; }
+  table.vt th, table.vt td { padding: 9px 8px; }
+  .card { padding: 12px; } .card-grid { grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+  .drawer-scrim { backdrop-filter: blur(2px); }
+  .sidebar a { padding: 12px 12px; font-size: 14px; }
+  .topbar .stats { padding-bottom: 2px; }
+  .stat .spark-mini { display: none; }
+  .palette { padding-top: max(12px, env(safe-area-inset-top)); } .palette-box { width: calc(100vw - 16px); }
+  .health-bar { font-size: 12px; }
+}
+@media (max-width: 400px) { .stat { min-width: 58px; } .stat .v { font-size: 14px; } .brand .title { font-size: 13px; } }
