@@ -16,6 +16,9 @@ All components share a common SQLite database for seamless integration.
 
 ```
 Wildcat-Mesh-System/
+├── wildcat/                # the v2 package: config, paths, CLI (meshd/bus/brain to come)
+├── config/wildcat.toml     # THE config file (example: wildcat.example.toml)
+├── docs/DECISIONS.md       # why things are the way they are
 ├── bbs/                    # TC²-BBS application
 │   ├── server.py          # Main BBS server
 │   ├── telemetry_logger.py # Telemetry capture service
@@ -23,11 +26,10 @@ Wildcat-Mesh-System/
 │   ├── message_processing.py
 │   ├── command_handlers.py
 │   ├── utils.py
-│   ├── config.ini         # BBS configuration
 │   └── requirements.txt   # Python dependencies
 ├── observatory/           # Observatory Dashboard
 │   ├── app.py            # Flask application
-│   ├── config.py         # Dashboard configuration
+│   ├── config.py         # shim over config/wildcat.toml
 │   ├── modules/          # Database and utilities
 │   ├── templates/        # HTML templates
 │   ├── static/           # CSS, JS, images
@@ -107,22 +109,15 @@ Wildcat-Mesh-System/
    ```bash
    python3 -m venv venv
    source venv/bin/activate
-   pip install -r bbs/requirements.txt
-   pip install -r observatory/requirements.txt
+   pip install -e '.[den]'        # the wildcat package + every service dependency
    ```
 
-3. **Configure BBS:**
-   Copy and edit `bbs/example_config.ini` to `bbs/config.ini`:
-   ```ini
-   [interface]
-   type = serial  # for USB devices (auto-detects port)
-   # OR for network devices:
-   # type = tcp
-   # hostname = 192.168.1.100
+3. **Configure (one file for everything):**
+   ```bash
+   cp config/wildcat.example.toml config/wildcat.toml   # edit [radio] at minimum
+   wildcat config validate
    ```
-
-4. **Configure Observatory:**
-   Edit `observatory/config.py` if needed (default: TCP at 192.168.86.37, port 5000)
+   See **Configuration** below. (`observatory/config.py` is now a shim over the same file.)
 
 ### Running as Services
 
@@ -233,28 +228,43 @@ This will give you a public URL like `https://abc123.ngrok-free.app` to share.
 
 ## Configuration
 
-### BBS (`bbs/config.ini`)
-```ini
-[interface]
-type = serial  # or tcp
-# hostname = 192.168.1.100  # for TCP mode
+**One file: `config/wildcat.toml`** (v2 / "The Den" — see `docs/DECISIONS.md`).
+It replaces `bbs/config.ini` *and* the constants that used to live in
+`observatory/config.py`. Every service reads it through `wildcat/config.py`,
+which validates it at boot and reports problems by `[table].key`.
 
-[sync]
-bbs_nodes = !12345678,!87654321  # Other BBS nodes to sync with
+```bash
+cp config/wildcat.example.toml config/wildcat.toml   # annotated, every key + default
+./venv/bin/wildcat config validate                  # exit 0 = good; exit 2 = says what's wrong
+./venv/bin/wildcat config show                      # the fully-resolved config (secrets redacted)
+./venv/bin/wildcat config path                      # the search order + which file wins
 ```
 
-### Observatory (`observatory/config.py`)
-```python
-# Database path (automatically configured for monorepo)
-DATABASE_PATH = '../shared/bulletins.db'
+Minimal example:
 
-# Meshtastic connection
-MESH_INTERFACE_TYPE = 'tcp'
-MESH_HOSTNAME = '192.168.86.37'
+```toml
+[radio]
+type = "tcp"             # or "serial" (USB, auto-detects a single node)
+host = "192.168.86.37"   # tcp only
 
-# Dashboard settings
-REFRESH_INTERVAL = 5  # seconds
-PORT = 5000
+[bbs]
+sync_nodes = ["!17d7e4b7"]   # other TC²-BBS nodes to sync with (optional)
+# [bbs.menu] omitted → the stock Wildcat menu. No more KeyError.
+
+[observatory]
+port = 5000
+```
+
+Where the file is looked for, in order: `--config` → `$WILDCAT_CONFIG` →
+`<repo>/config/wildcat.toml` → `/etc/wildcat/wildcat.toml` → legacy
+`<repo>/bbs/config.ini`. Nothing depends on the current directory anymore —
+`python3 bbs/server.py` works from `/`, from `bbs/`, or from systemd.
+
+**Still on the old `bbs/config.ini`?** It keeps working (it's read through a
+migrator, with a warning). Convert it once:
+
+```bash
+./venv/bin/wildcat config migrate --write   # writes config/wildcat.toml, verifies it
 ```
 
 ## Development
