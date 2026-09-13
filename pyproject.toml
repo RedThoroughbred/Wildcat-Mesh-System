@@ -23,6 +23,7 @@ den = [
     "flask-socketio==5.3.5",
     "python-socketio==5.10.0",
     "apscheduler==3.10.4",
+    "simple-websocket>=1.0",   # real WebSockets for Flask-SocketIO in threading mode
 ]
 dev = ["pytest>=7"]
 
