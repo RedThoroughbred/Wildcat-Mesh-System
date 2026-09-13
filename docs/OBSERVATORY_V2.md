@@ -179,21 +179,23 @@ ported and tested; v1 itself untouched at `/`).
 
 | v1 page | v2 view | Status |
 |---|---|---|
-| Dashboard | Home (live map + feed + KPIs) — plus a Dashboard card set | live map ✅ · dashboard cards ⏳ |
+| Dashboard | Home (live map + feed + KPIs) and `#/dashboard` | ✅ |
 | Map | Home | ✅ (+ links, pulses, coverage) |
 | Nodes table (search/sort/CSV) | `#/nodes` | ✅ |
 | Node detail (SNR/RSSI history, reliability, recent messages) | `#/node/<id>` | ✅ |
 | Channels (activity, top senders, heatmap, details, 24h/7d/30d) | `#/channels` | ✅ |
 | Channel detail | `#/channel/<n>` | ✅ |
-| BBS Messages (DM conversations, time window) | `#/messages` | API ✅ · view ⏳ |
-| Propagation (hourly SNR, best/worst, distribution) | `#/propagation` | API ✅ · view ⏳ |
-| Topology (neighbour graph + stats) | `#/topology` | API ✅ · view ⏳ (map already draws links) |
-| Admin (live logs, exports, BBS config/content, restart) | `#/admin` | API ✅ · view ⏳ (read-only in `/v2/public`) |
-| API docs | `#/api` | ⏳ |
-| CSV exports | linked from Nodes; messages ⏳ | partial |
+| BBS Messages (DM conversations) — plus Bulletins by board and privacy-safe Mail counts (new) | `#/messages` | ✅ |
+| Propagation (hourly SNR, best/worst, distribution, insights) | `#/propagation` | ✅ |
+| Topology (neighbour graph + stats) | `#/topology` | ✅ (honest NeighborInfo note; map draws the same links) |
+| Admin (broadcast/DM via the bus, exports, live logs, services + restart, BBS **config editor**, content editors) | `#/admin` | ✅ (read-only in `/v2/public`) |
+| API docs (with try-it) | `#/api` | ✅ |
+| CSV exports | `/v2/api/export/{nodes,messages,coverage}.csv` | ✅ (v2-native) |
+| Dashboard cards | `#/dashboard` | ✅ |
+| Mesh health + alerts (new) | `#/health` + top-bar badge | ✅ |
 
-Until a view lands it shows an honest "next increment" panel with a link to the
-classic page, so nothing is lost in the meantime.
+v2 links nowhere else: no "open in v1" anywhere. v1 stays served at `/` only
+until Seth retires it.
 
 ## 6. Roadmap (a) — Mobile: PWA now, native later
 
@@ -243,14 +245,32 @@ Order: (1) is a weekend and pays immediately; (2) is the real product; (3)–(4)
 follow (2). Nothing in the UI changes shape for any of it — that's the point of
 building the PWA first.
 
-## 7. Roadmap (b) — One Den, one map, one app for Meshtastic *and* MeshCore
+## 7. Exploration (not a plan) — could one Den watch Meshtastic *and* MeshCore?
 
-Northern Kentucky has both networks (Cincy Mesh on Meshtastic, OKI Mesh on
-MeshCore). They can't talk to each other on the air — different firmware,
-different routing, no sanctioned relay (WILDCAT_MESH_V2 §2.5) — but a *viewer*
-can watch both, and a *responder* can answer on whichever one asked.
+**Status: an idea, deliberately unfleshed.** Seth's call (2026-09-13): merging
+MeshCore "needs true fleshing out and research before it becomes any type of
+plan for architecture." So nothing below is committed, scheduled, or designed
+against; it is kept only so the *neutral envelope* decision (§2c) isn't
+accidentally undone. What would have to be researched first, honestly:
 
-How it works in this architecture, with zero UI changes:
+- **The protocol itself.** MeshCore's companion-radio serial API, its packet
+  types, path/route semantics, and how its node identity (public keys) maps
+  to anything a viewer can name. Which Python client, if any, is maintained.
+- **Whether a second radio is even wanted.** It's a different firmware on a
+  dedicated board; that's hardware, placement, and airtime on a network Seth
+  isn't part of yet.
+- **Community etiquette and consent.** OKI Mesh's norms for observers,
+  gateways, and bots; what they consider a bulletin vs spam; whether a Den
+  listening on their network is welcome at all.
+- **Licensing/legal.** Same Part 15 rules, but MeshCore's encryption defaults
+  and channel conventions differ.
+- **Value.** What Seth (and NKY) would actually get from one map of both that
+  they don't get from two apps.
+
+Only if those come back positive does an architecture conversation start. For
+the record, the reason the *envelope* stays neutral anyway: it costs nothing
+now and keeps that door unlocked. The sketch below is the only thing that was
+ever drawn, kept for context:
 
 ```
 Meshtastic node ──serial/tcp──► meshd            ──┐
@@ -280,11 +300,10 @@ MeshCore companion ──serial──► meshcored (Phase 6) ──┘        �
    network's `rx` to the other's `tx` unless a human builds an explicit gateway
    (the one-way bulletin experiment in §2.5), and the UI stays read-only.
 
-What the community gets: one URL (or one home-screen app) that shows *both*
-meshes live — who's on, where coverage is, what's being said — and one BBS/AI
-that answers on both. Nobody has that today. The MeshCore adapter itself is
-~300 lines against the companion-radio protocol (the `meshcore` Python package
-speaks it); the schedule is Phase 6 in WILDCAT_MESH_V2.
+If it ever happens, the payoff would be one URL showing both meshes live. But
+"~300 lines" estimates and Phase-6 slots are withdrawn until the research above
+is done — see WILDCAT_MESH_V2 §2.5, which already says no cross-network relay
+without both communities' say-so.
 
 ## 8. Non-goals / guard rails
 - No writes to the radio from the UI in v2.1 (read-only command center; sending
