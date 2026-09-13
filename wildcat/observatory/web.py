@@ -186,5 +186,15 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         from flask import request
         return request.sid  # type: ignore[attr-defined]
 
+    @bp.after_app_request
+    def _no_stale_assets(resp):
+        # No build step means no content hashes: force revalidation of the v2 page and its
+        # assets so an edit (or a git pull on the Pi) shows up on the next reload.
+        from flask import request
+        pth = request.path
+        if pth.startswith("/v2") or pth.startswith("/static/v2/") or pth.startswith("/static/vendor/"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
+
     socketio.on_event("connect", on_connect, namespace=NAMESPACE)
     return bp
