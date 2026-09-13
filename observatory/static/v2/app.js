@@ -782,8 +782,98 @@
         viewBody.querySelectorAll(".tn").forEach(g => g.addEventListener("click", () => { location.hash = "#/node/" + encodeURIComponent(g.dataset.id); }));
       }
     },
-    admin: { title: "Admin", soon: "live logs, exports, BBS config & content, service status" },
-    api: { title: "API", soon: "the /v2 API reference with try-it buttons" },
+    admin: {
+      title: "Admin", logType: "messages", timer: null,
+      async render() {
+        const self = VIEWS.admin, sv = await (await fetch("api/services")).json();
+        const m = sv.meshd || {};
+        const unitRow = (u, st) => `<tr><td><b>${escape(u)}</b></td><td><span class="nd ${st.ActiveState === "active" ? "on" : st.ActiveState === "failed" ? "bad" : ""}"></span>${escape(st.ActiveState || "?")} <span style="color:var(--muted)">${escape(st.SubState || "")}</span></td><td>${PUBLIC ? "" : `<button class="link-btn rs" data-unit="${escape(u)}">restart</button>`}</td></tr>`;
+        viewBody.innerHTML = `
+          <div class="kpis"><div class="kpi"><b><span class="nd ${sv.bus ? "on" : "bad"}"></span>${sv.bus ? "up" : "down"}</b><span>MQTT bus</span></div><div class="kpi"><b><span class="nd ${m.state === "connected" ? "on" : "warm"}"></span>${escape(m.state || "?")}</b><span>meshd · ${escape(m.radio || "")}</span></div><div class="kpi"><b>${sv.packets_seen}</b><span>packets since start</span></div><div class="kpi"><b>${Math.floor(sv.uptime / 3600)}h ${Math.floor(sv.uptime % 3600 / 60)}m</b><span>observatory uptime</span></div></div>
+          <div class="vgrid">
+            ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh</h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><select class="vsearch" id="tx-to" style="min-width:120px"><option value="^all">Broadcast (all)</option>${Object.values(S.roster).filter(n => n.id !== S.myId && (now() - (n.last_heard || 0)) < 86400).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0)).slice(0, 40).map(n => `<option value="${escape(n.id)}">DM ${escape(name(n))}</option>`).join("")}</select>
+              <input class="vsearch" id="tx-text" maxlength="200" placeholder="message (≤200 chars)" style="flex:1"><button class="link-btn" id="tx-send">Send</button></div><div id="tx-result" style="margin-top:6px;font-size:12px;color:var(--muted)"></div></div>`}
+            <div class="vcard"><h2>📥 Exports</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="link-btn" href="/export/nodes.csv">nodes.csv</a><a class="link-btn" href="/export/messages.csv">messages.csv (last 1000)</a><a class="link-btn" href="api/state" target="_blank">state.json</a><a class="link-btn" href="api/coverage?hours=2160" target="_blank">coverage.json</a></div></div>
+            <div class="vcard"><h2>🔧 Services</h2>${sv.systemd ? `<table class="vt"><tbody>${Object.entries(sv.units).map(([u, st]) => unitRow(u, st)).join("")}</tbody></table>` : `<div style="font-size:13px;color:var(--muted)">No systemd on this host (dev Mac) — processes are run by hand; see <code style="font:12px var(--mono)">logs/</code>. On the Pi this lists wildcat-meshd / bbs / telemetry / observatory / mosquitto with restart buttons.</div>`}</div>
+            <div class="vcard wide"><h2>📜 Live logs <span class="sel" id="log-types"></span></h2><div class="twrap" id="log-table" style="max-height:340px"></div></div>
+            <div class="vcard"><h2>⚙ BBS configuration <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500" id="cfg-src"></span></h2><pre id="cfg-toml" style="margin:0;font:12px var(--mono);color:#c9d3df;white-space:pre-wrap;max-height:320px;overflow:auto"></pre><div style="margin-top:6px;color:var(--muted);font-size:12px">Read-only here: edit <code style="font:12px var(--mono)">config/wildcat.toml</code>, run <code style="font:12px var(--mono)">wildcat config validate</code>, restart. Secrets are redacted.</div></div>
+            <div class="vcard"><h2>✏️ BBS content <span class="sel" id="content-tabs"></span></h2><textarea id="content-text" class="vsearch" style="width:100%;min-height:240px;font:12px var(--mono);resize:vertical" ${PUBLIC ? "readonly" : ""}></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:6px">${PUBLIC ? "" : '<button class="link-btn" id="content-save">Save (keeps a .bak)</button>'}<span id="content-status" style="color:var(--muted);font-size:12px"></span></div></div>
+          </div>`;
+        // send
+        const send = $("tx-send"); if (send) send.onclick = async () => { const text = $("tx-text").value.trim(); if (!text) return; send.disabled = true;
+          try { const r = await fetch("api/tx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: $("tx-to").value, text }) }); const j = await r.json();
+            $("tx-result").textContent = r.ok ? `queued to meshd (id ${j.id}) — watch wildcat/tx/result in the feed` : "refused: " + (j.error || r.status); if (r.ok) $("tx-text").value = ""; } catch (e) { $("tx-result").textContent = "failed: " + e; } send.disabled = false; };
+        viewBody.querySelectorAll(".rs").forEach(b => b.onclick = async () => { if (!confirm(`Restart ${b.dataset.unit}?`)) return; b.disabled = true; const r = await fetch("api/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unit: b.dataset.unit }) }); const j = await r.json(); toast(j.message || (r.ok ? "restarted" : "failed")); b.disabled = false; });
+        // logs
+        const types = [["messages", "Messages"], ["telemetry", "Telemetry"], ["positions", "Positions"], ["neighbors", "Neighbors"]];
+        const lt = $("log-types"); for (const [k, label] of types) { const c = document.createElement("button"); c.className = "chip" + (self.logType === k ? " on" : ""); c.textContent = label; c.onclick = () => { self.logType = k; for (const x of lt.children) x.classList.toggle("on", x === c); loadLogs(); }; lt.appendChild(c); }
+        async function loadLogs() {
+          const d = await (await fetch(`api/logs?type=${self.logType}&limit=100`)).json(), rows = d.rows || [];
+          const cols = { messages: ["ts", "short_name", "id", "channel", "text", "snr", "rssi"], telemetry: ["ts", "id", "battery", "voltage", "channel_util", "air_util_tx", "temperature"], positions: ["ts", "id", "lat", "lon", "alt", "sats"], neighbors: ["ts", "id", "neighbor", "snr"] }[self.logType];
+          $("log-table").innerHTML = rows.length ? `<table class="vt"><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c === "ts" ? "dim" : typeof r[c] === "number" ? "num" : ""}">${c === "ts" ? ago(r[c]) : escape(r[c] == null ? "–" : (typeof r[c] === "number" && !Number.isInteger(r[c]) ? r[c].toFixed(2) : r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table>` : '<div class="empty">nothing logged yet</div>';
+        }
+        loadLogs(); clearInterval(self.timer); self.timer = setInterval(() => { if (location.hash.startsWith("#/admin")) loadLogs(); else clearInterval(self.timer); }, 5000);
+        // config
+        fetch("api/config").then(r => r.json()).then(c => { $("cfg-toml").textContent = c.toml; $("cfg-src").textContent = `${c.source} [${c.kind}]`; });
+        // content
+        let cur = "fortunes"; const ct = $("content-tabs");
+        for (const [k, label] of [["fortunes", "fortunes.txt"], ["trivia", "trivia.txt"], ["messages", "messages.json"]]) { const c = document.createElement("button"); c.className = "chip" + (k === cur ? " on" : ""); c.textContent = label; c.onclick = () => { cur = k; for (const x of ct.children) x.classList.toggle("on", x === c); loadContent(); }; ct.appendChild(c); }
+        async function loadContent() { const d = await (await fetch("api/content/" + cur)).json(); $("content-text").value = d.text || ""; $("content-status").textContent = d.exists ? d.path : `${d.path} (does not exist yet)`; }
+        loadContent();
+        const cs = $("content-save"); if (cs) cs.onclick = async () => { const r = await fetch("api/content/" + cur, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: $("content-text").value }) }); const j = await r.json(); $("content-status").textContent = r.ok ? `saved (${j.lines} lines, backup at .bak) — the BBS reads fortunes/trivia on each use; messages.json needs a BBS restart` : "error: " + j.error; };
+      }
+    },
+    api: {
+      title: "API",
+      async render() {
+        const base = new URL("api/", location.href).href;
+        const eps = [
+          ["GET", "api/state", "everything the map needs: roster, links, recent packets, stats, brain exchanges"],
+          ["GET", "api/health", "liveness: bus, meshd state, node count"],
+          ["GET", "api/nodes", "every known node + message statistics"],
+          ["GET", "api/node/!9e766b18", "a node's 24 h signal/telemetry samples (card)"],
+          ["GET", "api/node/!9e766b18/full", "node detail: stats, reliability bands, recent messages"],
+          ["GET", "api/channels?hours=24", "activity, details, top senders, hour×channel heatmap"],
+          ["GET", "api/channel/0?hours=24", "broadcasts on one channel"],
+          ["GET", "api/messages?hours=168", "direct-message conversations with the Den"],
+          ["GET", "api/bulletins?board=General", "BBS boards + privacy-safe mail counts"],
+          ["GET", "api/propagation?days=7", "hourly SNR trend, best/worst links, distribution"],
+          ["GET", "api/topology", "NeighborInfo edges (DB) + live inferred links"],
+          ["GET", "api/coverage?hours=720", "measured rx points + summary"],
+          ["GET", "api/history?hours=6", "recorded events for the timeline / replay"],
+          ["GET", "api/logs?type=telemetry&limit=50", "raw recent rows: messages | telemetry | positions | neighbors"],
+          ["GET", "api/dashboard", "mesh stats, 24 h channel activity, low battery, top senders"],
+          ["GET", "api/services", "bus / meshd / systemd unit status"],
+          ["GET", "api/config", "the resolved config as TOML (secrets redacted)"],
+          ["POST", "api/tx", '{"to": "^all" | "!nodeid", "text": "…"} → queued on wildcat/tx'],
+          ["POST", "api/content/fortunes", '{"text": "…"} → writes the BBS content file (keeps .bak)'],
+          ["POST", "api/restart", '{"unit": "wildcat-bbs"} → systemd restart (Pi only)'],
+        ];
+        viewBody.innerHTML = `<div class="vcard" style="margin-bottom:12px"><h2>Base URL</h2><code style="font:13px var(--mono)">${escape(base)}</code><p style="margin:8px 0 0;color:var(--muted);font-size:12px">JSON everywhere. Read endpoints are open on the LAN (like v1). Live updates: Socket.IO namespace <code style="font:12px var(--mono)">/v2</code>, events <code style="font:12px var(--mono)">snapshot · packet · roster · status · rxpoint · brain</code>. Everything speaks the neutral envelope (docs/OBSERVATORY_V2.md §2c) — node ids are opaque strings, <code style="font:12px var(--mono)">proto</code> says which radio.</p></div>
+          <div class="vcard"><h2>Endpoints</h2><table class="vt"><thead><tr><th></th><th>Path</th><th>What</th><th></th></tr></thead><tbody>${eps.map(([m, pth, what], i) => `<tr><td class="num">${m}</td><td class="num">${escape(pth)}</td><td style="white-space:normal">${escape(what)}</td><td>${m === "GET" ? `<button class="link-btn try" data-p="${escape(pth)}" data-i="${i}">try</button>` : ""}</td></tr><tr id="try-${i}" hidden><td colspan="4"><pre style="margin:0;font:11px var(--mono);max-height:220px;overflow:auto;white-space:pre-wrap;color:#c9d3df"></pre></td></tr>`).join("")}</tbody></table></div>
+          <div class="vcard" style="margin-top:12px"><h2>Classic v1 API</h2><div style="font-size:13px">Still served: <code style="font:12px var(--mono)">/api/v1/stats · nodes · messages · positions · top-senders · channel-activity · channel-details · hourly-activity · neighbor-info</code> and <code style="font:12px var(--mono)">/export/nodes.csv · messages.csv</code>. <a class="link-btn" href="/api">v1 docs →</a></div></div>`;
+        viewBody.querySelectorAll(".try").forEach(b => b.onclick = async () => { const row = $("try-" + b.dataset.i), pre = row.querySelector("pre"); row.hidden = false; pre.textContent = "…"; try { const r = await fetch(b.dataset.p); const t = await r.text(); pre.textContent = t.length > 6000 ? t.slice(0, 6000) + "\n… (truncated)" : t; } catch (e) { pre.textContent = String(e); } });
+      }
+    },
+    dashboard: {
+      title: "Dashboard",
+      async render() {
+        const d = await (await fetch("api/dashboard")).json(), st = await (await fetch("api/state")).json();
+        const t = now(), R = Object.values(st.roster || {}), active = R.filter(n => (n.last_heard || 0) >= t - 3600).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0));
+        const recent = (st.packets || []).slice(-20).reverse();
+        viewBody.innerHTML = `
+          <div class="kpis"><div class="kpi"><b>${d.mesh.messages_24h}</b><span>messages · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div><div class="kpi"><b>${active.length}</b><span>active nodes · 1h</span></div><div class="kpi"><b>${R.length}</b><span>nodes known</span></div><div class="kpi"><b>${st.stats ? Math.round(st.stats.per_min) : "–"}</b><span>packets / min</span></div></div>
+          <div class="vgrid">
+            <div class="vcard"><h2>📻 Recent activity</h2>${recent.length ? recent.map(p => `<div class="msgrow"><div class="m"><b>${escape(p.from_name || p.from)}</b><span style="color:var(--muted);font-size:11px;text-transform:uppercase;margin-right:6px">${escape(p.kind)}</span>${escape(p.summary || "")}</div><div class="r">${ago(p.ts)}${p.snr != null ? "<br>" + snrSpan(p.snr) : ""}</div></div>`).join("") : '<div class="empty">quiet</div>'}</div>
+            <div class="vcard"><h2>🟢 Active nodes · 1h</h2>${active.length ? `<table class="vt"><tbody>${active.slice(0, 25).map(n => `<tr class="row" data-id="${escape(n.id)}"><td>${dot(n)}<b>${escape(name(n))}</b> <span style="color:var(--muted)">${escape(n.long_name || "")}</span></td><td class="num">${n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops"}</td><td class="num">${snrSpan(n.snr)}</td><td class="dim">${ago(n.last_heard)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody heard in the last hour</div>'}</div>
+            <div class="vcard"><h2>📊 Channel activity · 24h</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in 24 h</div>'}</div>
+            <div class="vcard"><h2>🔋 Low battery</h2>${d.low_battery.length ? `<table class="vt"><tbody>${d.low_battery.map(b => `<tr class="row" data-id="${escape(b.id)}"><td><b>${escape((S.roster[b.id] || {}).short_name || b.id.slice(-4))}</b></td><td class="num" style="color:${b.battery < 10 ? "#ff8a8a" : "var(--warm)"}">${b.battery}%</td><td class="num">${b.voltage != null ? b.voltage.toFixed(2) + " V" : ""}</td><td class="dim">${ago(b.ts)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no node under 20% — nice</div>'}</div>
+            <div class="vcard"><h2>👥 Top senders · 24h</h2>${d.top.length ? `<table class="vt"><tbody>${d.top.map(x => `<tr class="row" data-id="${escape(x.id)}"><td><b>${escape(x.short_name || x.id.slice(-4))}</b></td><td class="num">${x.message_count}</td><td class="num">${snrSpan(x.avg_snr)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no messages yet</div>'}</div>
+          </div>`;
+        viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
+      }
+    },
   };
   function setNav(view) { sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === view)); }
   async function showView(name, arg) {

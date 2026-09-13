@@ -279,7 +279,7 @@ table.vt td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); 
 table.vt td.dim { color: var(--muted); }
 .twrap { overflow: auto; max-height: calc(100vh - 260px); }
 .nd { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; background: var(--cold); }
-.nd.on { background: var(--on); box-shadow: 0 0 6px var(--on); } .nd.warm { background: var(--warm); } .nd.base { background: var(--terracotta); }
+.nd.on { background: var(--on); box-shadow: 0 0 6px var(--on); } .nd.bad { background: #ff6b6b; } .nd.warm { background: var(--warm); } .nd.base { background: var(--terracotta); }
 .snr.good { color: var(--on); } .snr.ok { color: var(--warm); } .snr.bad { color: #ff8a8a; }
 .chart { width: 100%; height: 180px; display: block; }
 .chart text { font: 10px var(--mono); fill: var(--muted); }
