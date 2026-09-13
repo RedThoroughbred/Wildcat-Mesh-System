@@ -4,7 +4,8 @@
     wildcat config validate    # parse + validate; exit 0/2; prints every problem
     wildcat config show        # the fully-resolved config as TOML (defaults filled in)
     wildcat config migrate     # legacy bbs/config.ini → TOML (add --write to save it)
-    wildcat doctor             # (Phase 1 step 3) preflight: config, deps, radio, db, mqtt
+    wildcat doctor             # preflight: python, config, deps, db, content, radio, mqtt, systemd
+    wildcat db backup          # online SQLite backup into backups/ (the nightly timer runs this)
 
 Exit codes: 0 ok · 1 runtime failure · 2 config problem.
 """
@@ -105,6 +106,44 @@ def cmd_config_migrate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_db_backup(args: argparse.Namespace) -> int:
+    """Online SQLite backup via the backup API (safe with WAL + live writers), then prune."""
+    import sqlite3
+    import time as _time
+    try:
+        cfg = load(args.config)
+    except ConfigError as e:
+        print(f"CONFIG ERROR\n{e}", file=sys.stderr)
+        return EXIT_CONFIG
+    src = cfg.database.path
+    if not src.is_file():
+        print(f"nothing to back up: {src} does not exist", file=sys.stderr)
+        return EXIT_FAIL
+    out_dir = Path(args.dir).expanduser().resolve() if args.dir else paths.repo_root() / "backups"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = _time.strftime("%Y%m%d-%H%M%S")
+    dest = out_dir / f"{src.stem}-{stamp}{src.suffix}"
+    n = 1
+    while dest.exists():                       # two runs in one second must not clobber
+        n += 1
+        dest = out_dir / f"{src.stem}-{stamp}-{n}{src.suffix}"
+    with sqlite3.connect(str(src), timeout=cfg.database.busy_timeout_ms / 1000) as conn, \
+            sqlite3.connect(str(dest)) as bak:
+        conn.backup(bak)
+    check = sqlite3.connect(str(dest)).execute("PRAGMA quick_check").fetchone()[0]
+    if check != "ok":
+        print(f"backup written but quick_check says {check}: {dest}", file=sys.stderr)
+        return EXIT_FAIL
+    pruned = 0
+    if args.keep and args.keep > 0:
+        olds = sorted(out_dir.glob(f"{src.stem}-*{src.suffix}"))
+        for old in olds[:-args.keep]:
+            old.unlink()
+            pruned += 1
+    print(f"backup ok: {dest} ({dest.stat().st_size / 1e6:.1f} MB); pruned {pruned}, keeping {args.keep}")
+    return EXIT_OK
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from . import doctor  # Phase 1 step 3
@@ -144,9 +183,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--force", action="store_true", help="overwrite an existing output file")
     s.set_defaults(func=cmd_config_migrate)
 
+    pdb = sub.add_parser("db", help="database maintenance")
+    dsub = pdb.add_subparsers(dest="db_cmd", required=True)
+    s = dsub.add_parser("backup", help="online backup of [database].path into backups/ (+ prune)")
+    _add_config_arg(s)
+    s.add_argument("--dir", help=f"destination (default: {paths.repo_root() / 'backups'})")
+    s.add_argument("--keep", type=int, default=30, help="how many dated backups to keep (0 = all)")
+    s.set_defaults(func=cmd_db_backup)
+
     d = sub.add_parser("doctor", help="preflight checks: config, deps, database, radio, mqtt")
     _add_config_arg(d)
     d.add_argument("--no-network", action="store_true", help="skip radio / broker reachability probes")
+    d.add_argument("--no-color", action="store_true")
     d.set_defaults(func=cmd_doctor)
     return p
 
