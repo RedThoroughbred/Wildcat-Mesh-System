@@ -12,6 +12,7 @@
 | 6 | A map card opened before navigating survived into the next Home visit | Low | Cards weren't part of view state | Opening a view closes the card |
 | 7 | Brand wasn't a link home; nav entries lacked tooltips in rail mode | Low | — | Brand links to `#/`; every entry has a title |
 | 8 | Unknown hash (typo) showed nothing and the URL stayed wrong | Low | No fallback | Toast + `#/` |
+| 9 | Feed cards weren't tappable, so "open a node from the feed" didn't exist | Low | Never built | Tap a packet → the node's map card (with a fix) or its page |
 
 Verified good already (no change): refresh on `#/node/<id>` / `#/channels` / `#/channel/<n>` restores the view; deep links in a fresh tab; Esc and × from every view; map/list/feed all land on the same node view; drawer closes on tap; Back/Forward walk the history (hash routing).
 
