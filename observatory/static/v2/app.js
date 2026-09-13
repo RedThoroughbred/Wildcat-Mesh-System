@@ -582,7 +582,7 @@
   const tlBadge = document.createElement("div"); tlBadge.className = "replay-badge"; tlBadge.textContent = "REPLAY"; document.body.appendChild(tlBadge);
   function tlBadgeText() { tlBadge.textContent = `REPLAY · ${Math.min(TL.cursor, TL.events.length)} / ${TL.events.length} · ${TL.speed}×`; }
   function tlLoad() {
-    fetch("api/history?hours=" + TL.hours).then(r => r.json()).then(d => { TL.events = d.events || []; TL.since = d.since; tlDraw(); tlLabel(); }).catch(() => { $("tl-label").textContent = "history unavailable"; });
+    fetch("api/history?hours=" + TL.hours).then(r => r.json()).then(d => { TL.events = d.events || []; TL.since = d.since; tlDraw(); tlLabel(); if (TL.autoplay) { TL.autoplay = false; if (TL.events.length && !document.body.classList.contains("replaying")) tlEnterReplay(0); else if (!TL.events.length) toast("Nothing recorded yet to replay"); } }).catch(() => { $("tl-label").textContent = "history unavailable"; });
   }
   function tlDraw() {
     const bars = $("tl-bars"); bars.innerHTML = "";
@@ -764,7 +764,13 @@
   function openDrawer(on) { sidebar.classList.toggle("open", on); $("drawer-scrim").classList.toggle("open", on); }
   $("menu-btn").addEventListener("click", () => openDrawer(!sidebar.classList.contains("open")));
   $("drawer-scrim").addEventListener("click", () => openDrawer(false));
-  sidebar.addEventListener("click", (e) => { if (e.target.closest("a")) openDrawer(false); });
+  sidebar.addEventListener("click", (e) => {
+    const a = e.target.closest("a"); if (!a) return; openDrawer(false);
+    if (a.dataset.view === "home") {            // "Live map" always means: the live map, now
+      if (document.body.classList.contains("replaying")) tlExitReplay();
+      if (location.hash === "#/" || location.hash === "" ) { e.preventDefault(); closeView(); }
+    }
+  });
   $("view-close").addEventListener("click", () => { location.hash = "#/"; });
   // desktop sidebar collapse (persisted); phone drawer swipes closed
   const sbc = $("sb-collapse");
@@ -851,7 +857,7 @@
           avg_snr: n.stats ? n.stats.avg_snr : null, best_snr: n.stats ? n.stats.best_snr : null, worst_snr: n.stats ? n.stats.worst_snr : null,
           avg_rssi: n.stats ? n.stats.avg_rssi : null, last: n.last_heard || (n.stats && n.stats.last_seen) || 0, hasPos: n.position ? 1 : 0 }));
         const t = now() - 3600, online = rows.filter(r => r.last >= t).length;
-        viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
         const search = document.createElement("input"); search.className = "vsearch"; search.placeholder = "search name, id, hardware…";
         const exp = document.createElement("a"); exp.className = "link-btn"; exp.href = A("api/export/nodes.csv"); exp.textContent = "⇩ CSV";
         viewTools.replaceChildren(search, exp);
@@ -870,7 +876,7 @@
     node: {
       title: "Node",
       async render(id) {
-        const r = await fetch("api/node/" + encodeURIComponent(id) + "/full"); if (!r.ok) { viewBody.innerHTML = '<div class="empty">unknown node</div>'; return; }
+        const r = await fetch("api/node/" + encodeURIComponent(id) + "/full"); if (!r.ok) { if (this.seq !== S.viewSeq) return; viewBody.innerHTML = '<div class="empty">unknown node</div>'; return; }
         const d = await r.json(), n = d.node, st = d.stats || {}, rel = d.reliability || {};
         viewTitle.innerHTML = `${dot(n)}${escape(n.short_name || id.slice(-4))} <span style="color:var(--muted);font-weight:500">${escape(n.long_name || "")}</span>`;
         const center = document.createElement("button"); center.className = "link-btn"; center.textContent = "⌖ on map"; center.onclick = () => { location.hash = "#/"; setTimeout(() => { const p = pos(S.roster[id]); if (p) { map.flyTo(p, 14); showCard(id); } }, 50); };
@@ -879,7 +885,7 @@
         const sig = d.signal || [], tel = d.telemetry || [];
         const lastSig = sig.length ? sig[sig.length - 1] : {};
         const bands = rel.bands || {}, tot = Math.max(1, rel.messages || 0);
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis">
             <div class="kpi"><b>${ago(n.last_heard || st.last_seen)}</b><span>last heard</span></div>
             <div class="kpi"><b>${n.hops_away == null ? "–" : n.hops_away === 0 ? "direct" : n.hops_away}</b><span>hops away</span></div>
@@ -915,7 +921,7 @@
         const cells = {}; for (const r of d.hourly) (cells[r.channel] = cells[r.channel] || {})[r.hour] = r.count;
         const chans = d.activity.map(a => a.channel);
         const total = d.activity.reduce((a, c) => a + c.count, 0);
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${total}</b><span>messages · ${h}h</span></div><div class="kpi"><b>${chans.length}</b><span>active channels</span></div><div class="kpi"><b>${d.mesh.active_nodes}</b><span>nodes · 1h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div>
           <div class="vgrid">
             <div class="vcard"><h2>Channel activity</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in this window</div>'}</div>
@@ -933,7 +939,7 @@
         const h = this.hours, d = await (await fetch(`api/channel/${ch}?hours=${h}`)).json();
         viewTitle.textContent = chName(+ch); viewTools.replaceChildren(hoursSel(h, H24, v => { VIEWS.channel.hours = v; route(); }));
         const det = d.details || {};
-        viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>broadcasts · ${h}h</span></div><div class="kpi"><b>${det.unique_senders || 0}</b><span>senders</span></div><div class="kpi"><b>${fmt1(det.avg_snr, " dB")}</b><span>avg SNR</span></div></div>
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>broadcasts · ${h}h</span></div><div class="kpi"><b>${det.unique_senders || 0}</b><span>senders</span></div><div class="kpi"><b>${fmt1(det.avg_snr, " dB")}</b><span>avg SNR</span></div></div>
           <div class="vcard"><h2>Messages</h2>${d.messages.length ? d.messages.map(m => `<div class="msgrow"><div class="m"><b>${escape(m.short_name || m.sender_id.slice(-4))}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}<br>${snrSpan(m.snr)} ${m.rssi != null ? m.rssi + " dBm" : ""}</div></div>`).join("") : '<div class="empty">no broadcasts on this channel in the window</div>'}</div>`;
       }
     },
@@ -952,7 +958,7 @@
           const me = d.my_id, threads = new Map();
           for (const m of d.messages) { const other = m.from_bbs ? m.to : m.sender_id; if (!other) continue; (threads.get(other) || threads.set(other, []).get(other)).push(m); }
           const rows = [...threads.entries()].sort((a, b) => b[1][0].ts - a[1][0].ts);
-          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>direct messages · ${h}h</span></div><div class="kpi"><b>${threads.size}</b><span>nodes in conversation</span></div><div class="kpi"><b>${d.messages.filter(m => m.from_bbs).length}</b><span>replies from the Den</span></div></div>`
+          if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>direct messages · ${h}h</span></div><div class="kpi"><b>${threads.size}</b><span>nodes in conversation</span></div><div class="kpi"><b>${d.messages.filter(m => m.from_bbs).length}</b><span>replies from the Den</span></div></div>`
             + (rows.length ? rows.map(([nid, ms]) => { const nm = (S.roster[nid] && S.roster[nid].short_name) || (ms.find(m => !m.from_bbs) || {}).short_name || nid.slice(-4);
               return `<div class="vcard" style="margin-bottom:12px"><h2><span class="nd ${S.roster[nid] ? ageClass(S.roster[nid]) : ""}"></span>${escape(nm)} <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500">${escape(nid)} · ${ms.length} messages · last ${ago(ms[0].ts)}</span><span class="sel">${PUBLIC ? "" : `<button class="link-btn reply" data-id="${escape(nid)}">✎ reply</button>`}<a class="link-btn" href="#/node/${encodeURIComponent(nid)}">node →</a></span></h2>${
                 ms.slice().reverse().map(m => `<div class="msgrow${m.from_bbs ? " den" : ""}"><div class="m"><b>${m.from_bbs ? "Den" : escape(m.short_name || nm)}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}${m.snr != null ? "<br>" + snrSpan(m.snr) : ""}</div></div>`).join("")}</div>`; }).join("")
@@ -964,12 +970,12 @@
           for (const [k, label] of [[null, "All"], ...d.boards.map(b => [b.board, `${b.board} · ${b.count}`])]) { const c = document.createElement("button"); c.className = "chip" + ((self.board || null) === k ? " on" : ""); c.textContent = label; c.onclick = () => { self.board = k; route(); }; boards.appendChild(c); }
           viewTools.appendChild(boards);
           const urgent = (d.boards.find(b => b.board.toLowerCase() === "urgent") || {}).count || 0;
-          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.boards.reduce((a, b) => a + b.count, 0)}</b><span>bulletins</span></div><div class="kpi"><b>${d.boards.length}</b><span>boards</span></div><div class="kpi"><b style="color:${urgent ? "#ff8a8a" : "inherit"}">${urgent}</b><span>urgent</span></div></div>`
+          if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.boards.reduce((a, b) => a + b.count, 0)}</b><span>bulletins</span></div><div class="kpi"><b>${d.boards.length}</b><span>boards</span></div><div class="kpi"><b style="color:${urgent ? "#ff8a8a" : "inherit"}">${urgent}</b><span>urgent</span></div></div>`
             + (d.bulletins.length ? `<div class="vgrid">${d.bulletins.map(b => `<div class="vcard${b.board.toLowerCase() === "urgent" ? " urgent" : ""}"><h2>${escape(b.board)} <span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500">${escape(b.date)}</span></h2><div style="font-weight:700;margin-bottom:4px">${escape(b.subject)}</div><div style="font-size:13px;color:#c9d3df;white-space:pre-wrap">${escape(b.content)}</div><div style="margin-top:8px;color:var(--muted);font-size:11px">— ${escape(b.sender)}</div></div>`).join("")}</div>`
               : '<div class="empty">no bulletins yet — post one from the BBS: PB,,General,subject,text</div>');
         } else {
           const d = await (await fetch("api/bulletins")).json(), m = d.mail;
-          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${m.total}</b><span>mail waiting</span></div><div class="kpi"><b>${m.recipients}</b><span>recipients</span></div></div>
+          if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${m.total}</b><span>mail waiting</span></div><div class="kpi"><b>${m.recipients}</b><span>recipients</span></div></div>
             <div class="vcard"><h2>Mailboxes</h2><p style="margin:0 0 10px;color:var(--muted);font-size:12px">Mail is private between mesh users — the Den shows counts only, never contents. Users read theirs with CM on the BBS.</p>${
               m.per_recipient.length ? `<table class="vt"><thead><tr><th>Recipient</th><th>Waiting</th><th>Latest</th></tr></thead><tbody>${m.per_recipient.map(r => `<tr><td><b>${escape((S.roster[r.recipient] || {}).short_name || r.recipient)}</b> <span style="color:var(--muted)">${escape(r.recipient)}</span></td><td class="num">${r.waiting}</td><td class="dim">${escape(r.latest || "–")}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no mail waiting</div>'}</div>`;
         }
@@ -990,7 +996,7 @@
         if (hourly.length && hourly.length < 12) insights.push(`Only ${hourly.length} of 24 hours have data in this window — trends firm up as the Den runs longer.`);
         if (!hourly.length) insights.push("No SNR samples in this window yet.");
         const link = (r) => `<tr class="row" data-id="${escape(r.id)}"><td><b>${escape(r.short_name || r.id.slice(-4))}</b></td><td class="num">${snrSpan(r.snr)}</td><td class="num">${r.rssi != null ? r.rssi + " dBm" : "–"}</td><td class="dim">${ago(r.ts)}</td></tr>`;
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${total}</b><span>receptions with SNR · ${self.days}d</span></div><div class="kpi"><b>${hourly.length ? fmt1(hourly.reduce((a, r) => a + r.avg_snr * r.message_count, 0) / Math.max(1, total), " dB") : "–"}</b><span>weighted avg SNR</span></div><div class="kpi"><b>${best ? best.hour + ":00" : "–"}</b><span>best hour</span></div><div class="kpi"><b>${worst ? worst.hour + ":00" : "–"}</b><span>worst hour</span></div></div>
           <div class="vgrid">
             <div class="vcard wide"><h2>Average SNR by hour of day <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500">local time · ${self.days} day${self.days === 1 ? "" : "s"}</span></h2>${hourly.length >= 2 ? lineChart(byHour.map((r, hh) => r ? { x: hh + ":00", y: r.avg_snr } : null).filter(Boolean), { lo: -10, hi: 10, wide: true }) : '<div class="empty">not enough hourly data yet</div>'}</div>
@@ -1031,7 +1037,7 @@
         const col = (n) => ({ on: "#58e39c", warm: "#f2c04e", cold: "#5b6b80", base: "#e0704b" })[ageClass(n)];
         const svg = `<svg class="topo" viewBox="0 0 ${W} ${H}">${edges.map(e => { const a = P[idx.get(e.a)], b = P[idx.get(e.b)]; if (!a || !b) return ""; return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" class="te ${e.kind}"><title>${escape(name(S.roster[e.a] || { id: e.a }))} ↔ ${escape(name(S.roster[e.b] || { id: e.b }))}${e.snr != null ? " · SNR " + e.snr.toFixed(1) : ""} · ${e.kind === "neighbor" ? "NeighborInfo" : "heard direct"}</title></line>`; }).join("")}${
           nodes.map((x, i) => `<g class="tn" data-id="${escape(x.id)}" transform="translate(${P[i].x.toFixed(1)},${P[i].y.toFixed(1)})"><circle r="${x.id === S.myId ? 11 : 7}" fill="${col(x.n)}"/><text y="${x.id === S.myId ? 24 : 19}" text-anchor="middle">${escape(name(x.n))}</text></g>`).join("")}</svg>`;
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${nodes.length}</b><span>nodes in graph</span></div><div class="kpi"><b>${online}</b><span>online</span></div><div class="kpi"><b>${edges.length}</b><span>links</span></div><div class="kpi"><b>${(density * 100).toFixed(0)}%</b><span>density</span></div><div class="kpi"><b>${reporters}</b><span>NeighborInfo reporters · 7d</span></div></div>
           ${reporters === 0 ? `<div class="vcard" style="margin-bottom:12px;border-color:rgba(242,192,78,.4)"><h2>⚠ No NeighborInfo reports yet</h2><div style="font-size:13px;line-height:1.5">No node has sent a NeighborInfo packet in 7 days, so the ${directEdges} link${directEdges === 1 ? "" : "s"} below are <b>inferred</b>: packets the base heard with zero hops used (from ↔ base, real SNR). That's honest but base-centric. <b>Enable the NeighborInfo module on STAY</b> (and GO) — <code style="font:12px var(--mono)">meshtastic --set neighbor_info.enabled true --set neighbor_info.update_interval 900</code> — and the mesh's real who-hears-whom appears here and on the map, no Den changes needed.</div></div>` : ""}
           <div class="vcard wide" style="padding:6px">${nodes.length ? svg : '<div class="empty">no links yet — the base hasn\'t heard anyone directly</div>'}</div>
@@ -1045,7 +1051,7 @@
         const self = VIEWS.admin, sv = await (await fetch("api/services")).json();
         const m = sv.meshd || {};
         const unitRow = (u, st) => `<tr><td><b>${escape(u)}</b></td><td><span class="nd ${st.ActiveState === "active" ? "on" : st.ActiveState === "failed" ? "bad" : ""}"></span>${escape(st.ActiveState || "?")} <span style="color:var(--muted)">${escape(st.SubState || "")}</span></td><td>${PUBLIC ? "" : `<button class="link-btn rs" data-unit="${escape(u)}">restart</button>`}</td></tr>`;
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b><span class="nd ${sv.bus ? "on" : "bad"}"></span>${sv.bus ? "up" : "down"}</b><span>MQTT bus</span></div><div class="kpi"><b><span class="nd ${m.state === "connected" ? "on" : "warm"}"></span>${escape(m.state || "?")}</b><span>meshd · ${escape(m.radio || "")}</span></div><div class="kpi"><b>${sv.packets_seen}</b><span>packets since start</span></div><div class="kpi"><b>${Math.floor(sv.uptime / 3600)}h ${Math.floor(sv.uptime % 3600 / 60)}m</b><span>observatory uptime</span></div></div>
           <div class="vgrid">
             ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh <span class="sel"><button class="link-btn" id="open-console">open the console ✎</button></span></h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
@@ -1137,7 +1143,7 @@
           ["POST", "api/content/fortunes", '{"text": "…"} → writes the BBS content file (keeps .bak)'],
           ["POST", "api/restart", '{"unit": "wildcat-bbs"} → systemd restart (Pi only)'],
         ];
-        viewBody.innerHTML = `<div class="vcard" style="margin-bottom:12px"><h2>Base URL</h2><code style="font:13px var(--mono)">${escape(base)}</code><p style="margin:8px 0 0;color:var(--muted);font-size:12px">JSON everywhere. Read endpoints are open on the LAN (like v1). Live updates: Socket.IO namespace <code style="font:12px var(--mono)">/v2</code>, events <code style="font:12px var(--mono)">snapshot · packet · roster · status · rxpoint · brain</code>. Everything speaks the neutral envelope (docs/OBSERVATORY_V2.md §2c) — node ids are opaque strings, <code style="font:12px var(--mono)">proto</code> says which radio.</p></div>
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="vcard" style="margin-bottom:12px"><h2>Base URL</h2><code style="font:13px var(--mono)">${escape(base)}</code><p style="margin:8px 0 0;color:var(--muted);font-size:12px">JSON everywhere. Read endpoints are open on the LAN (like v1). Live updates: Socket.IO namespace <code style="font:12px var(--mono)">/v2</code>, events <code style="font:12px var(--mono)">snapshot · packet · roster · status · rxpoint · brain</code>. Everything speaks the neutral envelope (docs/OBSERVATORY_V2.md §2c) — node ids are opaque strings, <code style="font:12px var(--mono)">proto</code> says which radio.</p></div>
           <div class="vcard"><h2>Endpoints</h2><table class="vt"><thead><tr><th></th><th>Path</th><th>What</th><th></th></tr></thead><tbody>${eps.map(([m, pth, what], i) => `<tr><td class="num">${m}</td><td class="num">${escape(pth)}</td><td style="white-space:normal">${escape(what)}</td><td>${m === "GET" ? `<button class="link-btn try" data-p="${escape(pth)}" data-i="${i}">try</button>` : ""}</td></tr><tr id="try-${i}" hidden><td colspan="4"><pre style="margin:0;font:11px var(--mono);max-height:220px;overflow:auto;white-space:pre-wrap;color:#c9d3df"></pre></td></tr>`).join("")}</tbody></table></div>
           <div class="vcard" style="margin-top:12px"><h2>Exports</h2><div style="font-size:13px"><code style="font:12px var(--mono)">GET api/export/nodes.csv · api/export/messages.csv · api/export/coverage.csv</code></div></div>`;
         viewBody.querySelectorAll(".try").forEach(b => b.onclick = async () => { const row = $("try-" + b.dataset.i), pre = row.querySelector("pre"); row.hidden = false; pre.textContent = "…"; try { const r = await fetch(b.dataset.p); const t = await r.text(); pre.textContent = t.length > 6000 ? t.slice(0, 6000) + "\n… (truncated)" : t; } catch (e) { pre.textContent = String(e); } });
@@ -1151,7 +1157,7 @@
         const utilColor = g.channel_util == null ? "#5b6b80" : g.channel_util >= 40 ? "#ff6b6b" : g.channel_util >= 25 ? "#f2c04e" : "#58e39c";
         const rate = h.rate || [], rateNow = rate.slice(-6).reduce((a, b) => a + b.n, 0) / 30;
         viewTools.replaceChildren();
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="vgrid">
             <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Mesh score</h2><div class="score ${h.level}">${h.score}</div><div style="color:var(--muted);font-size:12px;margin-top:4px">${h.counts.alerts ? `${h.counts.alerts} alert${h.counts.alerts === 1 ? "" : "s"}${h.counts.crit ? ` · ${h.counts.crit} critical` : ""}` : "all clear"}</div></div>
             <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Channel utilization</h2>${arc(g.channel_util, 50, utilColor)}<div style="color:var(--muted);font-size:11px;margin-top:6px">the whole channel as this node hears it · keep under 25%</div></div>
@@ -1170,7 +1176,7 @@
         const d = await (await fetch("api/dashboard")).json(), st = await (await fetch("api/state")).json();
         const t = now(), R = Object.values(st.roster || {}), active = R.filter(n => (n.last_heard || 0) >= t - 3600).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0));
         const recent = (st.packets || []).slice(-20).reverse();
-        viewBody.innerHTML = `
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${d.mesh.messages_24h}</b><span>messages · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div><div class="kpi"><b>${active.length}</b><span>active nodes · 1h</span></div><div class="kpi"><b>${R.length}</b><span>nodes known</span></div><div class="kpi"><b>${st.stats ? Math.round(st.stats.per_min) : "–"}</b><span>packets / min</span></div></div>
           <div class="vgrid">
             <div class="vcard"><h2>📻 Recent activity</h2>${recent.length ? recent.map(p => `<div class="msgrow pkt" data-kind="${escape(p.kind)}" style="display:grid"><div class="m"><b>${escape(p.from_name || p.from)}</b><span class="kind" style="margin-right:6px">${escape(p.kind)}</span>${escape(p.summary || "")}</div><div class="r">${ago(p.ts)}${p.snr != null ? "<br>" + snrSpan(p.snr) : ""}</div></div>`).join("") : '<div class="empty">quiet</div>'}</div>
@@ -1192,25 +1198,33 @@
       (function step(t) { const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3); b.textContent = (target * e).toFixed(dec) + suffix; if (k < 1) requestAnimationFrame(step); else b.textContent = txt; })(t0);
     }
   }
-  function setNav(view) { sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === view)); }
+  const NAV_PARENT = { node: "nodes", channel: "channels" };
+  function setNav(view) { const v = NAV_PARENT[view] || view; sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === v)); }
   async function showView(name, arg) {
     const v = VIEWS[name]; if (!v) return;
+    v.seq = S.viewSeq = (S.viewSeq || 0) + 1;                     // stale renders (fast nav) must not paint
+    if (document.body.classList.contains("replaying")) tlExitReplay();   // replay is a Home-only mode
+    if (!$("card").hidden) { $("card").hidden = true; S.selected = null; }
     if (!viewEl.hidden) { viewEl.classList.remove("swap"); void viewEl.offsetWidth; viewEl.classList.add("swap"); }
     document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name); $("health-bar").hidden = true;
     viewTitle.textContent = v.title; viewTools.replaceChildren();
     viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
     viewBody.scrollTop = 0;
     if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
-    try { await v.render(arg); countUp(); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
+    try { await v.render(arg); if (v.seq === S.viewSeq) countUp(); } catch (e) { if (v.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
   }
   function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
+  // Some sidebar entries are ACTIONS on the Home map, not places. They run, then the URL
+  // is put back to #/ so what the address bar says always matches what's on screen.
+  function actionDone() { history.replaceState(null, "", location.pathname + location.search + "#/"); setNav("home"); }
   function route() {
     const h = location.hash || "#/", m = h.match(/^#\/([a-z]+)(?:\/(.+))?/);
     const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;
-    if (name === "home" || h === "#/") { closeView(); return; }
-    if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } setNav("coverage"); return; }
-    if (name === "replay") { closeView(); setNav("replay"); if (!document.body.classList.contains("replaying")) tlEnterReplay(0); return; }
-    if (name === "cat") { closeView(); setNav("cat"); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
+    if (name === "home" || h === "#/" || h === "#") { closeView(); return; }
+    if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } toast("Coverage layer on"); actionDone(); return; }
+    if (name === "replay") { closeView(); actionDone(); if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
+    if (name === "cat") { closeView(); actionDone(); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
+    if (!VIEWS[name]) { toast("No such page: " + name, "err"); location.replace(location.pathname + location.search + "#/"); return; }
     showView(name, arg);
   }
   window.addEventListener("hashchange", route);
