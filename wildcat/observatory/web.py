@@ -278,6 +278,21 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return jsonify({"bus": s.bus_connected, "meshd": s.meshd, "my_id": s.my_id, "uptime": _t.time() - bridge.started_at,
                         "packets_seen": s.total, "mqtt_enabled": bridge.cfg.mqtt.enabled, "units": units, "systemd": bool(units)})
 
+    @bp.route("/api/health-report")
+    def api_health_report():
+        import time as _t
+        from . import health as Hm
+        from .bridge import history
+        now = _t.time()
+        events = history(_db(), int(now - 26 * 3600), bridge.state.my_id, limit=20000)
+        with bridge.state.lock:
+            roster = {k: dict(v) for k, v in bridge.state.roster.items()}
+            meshd, bus, my = dict(bridge.state.meshd), bridge.state.bus_connected, bridge.state.my_id
+            last_ts = bridge.state.packets[-1]["ts"] if bridge.state.packets else None
+        rep = Hm.compute(now, my, roster, meshd, bus, Hm.rate_buckets([e["ts"] for e in events], now),
+                         Q.low_battery(_db()), Hm.regular_counts(events, now), last_ts)
+        return jsonify(rep)
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state
