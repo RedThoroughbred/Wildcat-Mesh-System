@@ -681,7 +681,43 @@
           <div class="vcard"><h2>Messages</h2>${d.messages.length ? d.messages.map(m => `<div class="msgrow"><div class="m"><b>${escape(m.short_name || m.sender_id.slice(-4))}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}<br>${snrSpan(m.snr)} ${m.rssi != null ? m.rssi + " dBm" : ""}</div></div>`).join("") : '<div class="empty">no broadcasts on this channel in the window</div>'}</div>`;
       }
     },
-    messages: { title: "Messages", soon: "conversations with the Den (DMs), with a time window" },
+    messages: {
+      title: "Messages", hours: 168, tab: "conversations", board: null,
+      async render() {
+        const self = VIEWS.messages, h = self.hours;
+        const tabs = document.createElement("div"); tabs.className = "sel";
+        for (const [k, label] of [["conversations", "Conversations"], ["bulletins", "Bulletins"], ["mail", "Mail"]]) {
+          const b = document.createElement("button"); b.className = "chip" + (self.tab === k ? " on" : ""); b.textContent = label; b.onclick = () => { self.tab = k; route(); }; tabs.appendChild(b);
+        }
+        viewTools.replaceChildren(tabs);
+        if (self.tab === "conversations") {
+          viewTools.appendChild(hoursSel(h, H24, v => { self.hours = v; route(); }));
+          const d = await (await fetch("api/messages?hours=" + h)).json();
+          const me = d.my_id, threads = new Map();
+          for (const m of d.messages) { const other = m.from_bbs ? m.to : m.sender_id; if (!other) continue; (threads.get(other) || threads.set(other, []).get(other)).push(m); }
+          const rows = [...threads.entries()].sort((a, b) => b[1][0].ts - a[1][0].ts);
+          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>direct messages · ${h}h</span></div><div class="kpi"><b>${threads.size}</b><span>nodes in conversation</span></div><div class="kpi"><b>${d.messages.filter(m => m.from_bbs).length}</b><span>replies from the Den</span></div></div>`
+            + (rows.length ? rows.map(([nid, ms]) => { const nm = (S.roster[nid] && S.roster[nid].short_name) || (ms.find(m => !m.from_bbs) || {}).short_name || nid.slice(-4);
+              return `<div class="vcard" style="margin-bottom:12px"><h2><span class="nd ${S.roster[nid] ? ageClass(S.roster[nid]) : ""}"></span>${escape(nm)} <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500">${escape(nid)} · ${ms.length} messages · last ${ago(ms[0].ts)}</span><span class="sel"><a class="link-btn" href="#/node/${encodeURIComponent(nid)}">node →</a></span></h2>${
+                ms.slice().reverse().map(m => `<div class="msgrow${m.from_bbs ? " den" : ""}"><div class="m"><b>${m.from_bbs ? "Den" : escape(m.short_name || nm)}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}${m.snr != null ? "<br>" + snrSpan(m.snr) : ""}</div></div>`).join("")}</div>`; }).join("")
+              : '<div class="empty">no direct messages in this window — DM the Den from any node to start one</div>');
+        } else if (self.tab === "bulletins") {
+          const d = await (await fetch("api/bulletins" + (self.board ? "?board=" + encodeURIComponent(self.board) : ""))).json();
+          const boards = document.createElement("div"); boards.className = "sel";
+          for (const [k, label] of [[null, "All"], ...d.boards.map(b => [b.board, `${b.board} · ${b.count}`])]) { const c = document.createElement("button"); c.className = "chip" + ((self.board || null) === k ? " on" : ""); c.textContent = label; c.onclick = () => { self.board = k; route(); }; boards.appendChild(c); }
+          viewTools.appendChild(boards);
+          const urgent = (d.boards.find(b => b.board.toLowerCase() === "urgent") || {}).count || 0;
+          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.boards.reduce((a, b) => a + b.count, 0)}</b><span>bulletins</span></div><div class="kpi"><b>${d.boards.length}</b><span>boards</span></div><div class="kpi"><b style="color:${urgent ? "#ff8a8a" : "inherit"}">${urgent}</b><span>urgent</span></div></div>`
+            + (d.bulletins.length ? `<div class="vgrid">${d.bulletins.map(b => `<div class="vcard${b.board.toLowerCase() === "urgent" ? " urgent" : ""}"><h2>${escape(b.board)} <span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500">${escape(b.date)}</span></h2><div style="font-weight:700;margin-bottom:4px">${escape(b.subject)}</div><div style="font-size:13px;color:#c9d3df;white-space:pre-wrap">${escape(b.content)}</div><div style="margin-top:8px;color:var(--muted);font-size:11px">— ${escape(b.sender)}</div></div>`).join("")}</div>`
+              : '<div class="empty">no bulletins yet — post one from the BBS: PB,,General,subject,text</div>');
+        } else {
+          const d = await (await fetch("api/bulletins")).json(), m = d.mail;
+          viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${m.total}</b><span>mail waiting</span></div><div class="kpi"><b>${m.recipients}</b><span>recipients</span></div></div>
+            <div class="vcard"><h2>Mailboxes</h2><p style="margin:0 0 10px;color:var(--muted);font-size:12px">Mail is private between mesh users — the Den shows counts only, never contents. Users read theirs with CM on the BBS.</p>${
+              m.per_recipient.length ? `<table class="vt"><thead><tr><th>Recipient</th><th>Waiting</th><th>Latest</th></tr></thead><tbody>${m.per_recipient.map(r => `<tr><td><b>${escape((S.roster[r.recipient] || {}).short_name || r.recipient)}</b> <span style="color:var(--muted)">${escape(r.recipient)}</span></td><td class="num">${r.waiting}</td><td class="dim">${escape(r.latest || "–")}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no mail waiting</div>'}</div>`;
+        }
+      }
+    },
     propagation: { title: "Propagation", soon: "hourly SNR trends, best & worst links, SNR distribution" },
     topology: { title: "Topology", soon: "the neighbour graph from NeighborInfo + direct-hop inference" },
     admin: { title: "Admin", soon: "live logs, exports, BBS config & content, service status" },
