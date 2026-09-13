@@ -88,3 +88,29 @@ def test_admin_endpoints(client, tmp_path):
     assert client.post("/v2/api/restart", json={"unit": "evil"}).status_code == 400
     sv = client.get("/v2/api/services").get_json()
     assert sv["mqtt_enabled"] is False and "uptime" in sv
+
+
+def test_exports_and_config_editor(tmp_path):
+    (tmp_path / "content").mkdir()
+    toml = tmp_path / "wildcat.toml"
+    toml.write_text('radio.type = "serial"\n[database]\npath = "%s"\n[bbs]\ncontent_dir = "%s"\n' % (tmp_path / "b.db", tmp_path / "content"))
+    from wildcat.config import load_file
+    cfg = load_file(toml)
+    app = flask.Flask("obs-test2", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    app.register_blueprint(create_blueprint(bridge, sio))
+    c = app.test_client()
+    r = c.get("/v2/api/export/nodes.csv")
+    assert r.status_code == 200 and r.mimetype == "text/csv" and r.data.startswith(b"id,short_name")
+    assert c.get("/v2/api/export/messages.csv").status_code == 200 and c.get("/v2/api/export/coverage.csv").status_code == 200
+    g = c.get("/v2/api/config").get_json()
+    assert g["editable"] is True and g["bbs"]["menu"]["main"][0] == "W"
+    r = c.post("/v2/api/config", json={"name": "Test BBS", "sync_nodes": ["!17d7e4b7"], "menu": {"main": ["q", "x"]}})
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json(); assert j["bbs"]["name"] == "Test BBS" and j["bbs"]["menu"]["main"] == ["Q", "X"] and j["bbs"]["sync_nodes"] == ["!17d7e4b7"]
+    assert (tmp_path / "wildcat.toml.bak").exists()
+    again = load_file(toml)
+    assert again.bbs.name == "Test BBS" and again.bbs.menu.main == ["Q", "X"] and again.radio.type == "serial"
+    bad = c.post("/v2/api/config", json={"menu": {"main": ["QQ"]}})
+    assert bad.status_code == 400 and "[bbs.menu].main" in bad.get_json()["error"]

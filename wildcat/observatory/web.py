@@ -190,8 +190,13 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     @bp.route("/api/config")
     def api_config():
         from ..config import to_toml
-        return jsonify({"source": str(bridge.cfg.source), "kind": bridge.cfg.source_kind,
-                        "toml": to_toml(bridge.cfg, redact=True), "warnings": bridge.cfg.warnings})
+        c = bridge.cfg
+        return jsonify({"source": str(c.source), "kind": c.source_kind, "editable": c.source_kind == "toml",
+                        "toml": to_toml(c, redact=True), "warnings": c.warnings,
+                        "bbs": {"name": c.bbs.name, "sync_nodes": c.bbs.sync_nodes, "allowed_nodes": c.bbs.allowed_nodes,
+                                "weather_api_key": "***" if c.bbs.weather_api_key else "",
+                                "menu": {"main": c.bbs.menu.main, "bbs": c.bbs.menu.bbs, "utilities": c.bbs.menu.utilities}},
+                        "radio": {"type": c.radio.type, "host": c.radio.host, "port": c.radio.port}})
 
     CONTENT_FILES = {"fortunes": "fortunes.txt", "trivia": "trivia.txt", "messages": "messages.json"}
 
@@ -292,6 +297,84 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         rep = Hm.compute(now, my, roster, meshd, bus, Hm.rate_buckets([e["ts"] for e in events], now),
                          Q.low_battery(_db()), Hm.regular_counts(events, now), last_ts)
         return jsonify(rep)
+
+    # ---- v2-native exports (no links out to v1) ----------------------------------------
+    def _csv(rows, cols, filename):
+        import csv, io
+        from flask import Response
+        buf = io.StringIO(); w = csv.writer(buf); w.writerow(cols)
+        for r in rows:
+            w.writerow([r.get(c, "") if r.get(c) is not None else "" for c in cols])
+        return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+    @bp.route("/api/export/nodes.csv")
+    def export_nodes():
+        stats = Q.node_stats(_db())
+        with bridge.state.lock:
+            roster = {k: dict(v) for k, v in bridge.state.roster.items()}
+        rows = []
+        for nid in sorted(set(roster) | set(stats)):
+            n, st = roster.get(nid, {}), stats.get(nid, {})
+            pos = n.get("position") or {}
+            rows.append({"id": nid, "short_name": n.get("short_name") or st.get("short_name"), "long_name": n.get("long_name") or st.get("long_name"),
+                         "hw": n.get("hw") or st.get("hw"), "role": n.get("role") or st.get("role"), "proto": n.get("proto"),
+                         "last_heard": n.get("last_heard") or st.get("last_seen"), "hops_away": n.get("hops_away"), "snr": n.get("snr"),
+                         "battery": n.get("battery"), "voltage": n.get("voltage"), "lat": pos.get("lat"), "lon": pos.get("lon"),
+                         "message_count": st.get("message_count"), "avg_snr": st.get("avg_snr"), "best_snr": st.get("best_snr"),
+                         "worst_snr": st.get("worst_snr"), "avg_rssi": st.get("avg_rssi"), "first_seen": st.get("first_seen")})
+        return _csv(rows, ["id", "short_name", "long_name", "hw", "role", "proto", "last_heard", "hops_away", "snr", "battery", "voltage",
+                           "lat", "lon", "message_count", "avg_snr", "best_snr", "worst_snr", "avg_rssi", "first_seen"], "wildcat-nodes.csv")
+
+    @bp.route("/api/export/messages.csv")
+    def export_messages():
+        rows = Q.recent_logs(_db(), "messages", 1000)
+        return _csv(rows, ["ts", "id", "short_name", "to_id", "channel", "text", "snr", "rssi"], "wildcat-messages.csv")
+
+    @bp.route("/api/export/coverage.csv")
+    def export_coverage():
+        import time as _t
+        rows = bridge.coverage.recent(int(_t.time() - 90 * 86400), limit=50000)
+        return _csv(rows, ["ts", "node_id", "proto", "lat", "lon", "alt", "snr", "rssi", "hops", "pos_age", "kind", "source"], "wildcat-coverage.csv")
+
+    # ---- config editor: the safe, BBS-facing subset, written back as TOML --------------
+    EDITABLE = ("name", "sync_nodes", "allowed_nodes", "weather_api_key")
+
+    @bp.route("/api/config", methods=["POST"])
+    def api_config_save():
+        """Edit [bbs] name / sync_nodes / allowed_nodes / weather key and [bbs.menu] lists.
+        Validated through the same schema as boot; the file is rewritten as TOML with a .bak."""
+        import shutil
+        from flask import request
+        from ..config import ConfigError, build, to_toml, set_config, tomllib
+        body = request.get_json(silent=True) or {}
+        cfg = bridge.cfg
+        if cfg.source is None or cfg.source_kind != "toml":
+            return jsonify({"error": "config is not a wildcat.toml (run `wildcat config migrate --write` first)"}), 400
+        data = tomllib.loads(to_toml(cfg))            # current effective config, every key explicit
+        b = data.setdefault("bbs", {})
+        for k in EDITABLE:
+            if k in body:
+                b[k] = body[k]
+        if isinstance(body.get("menu"), dict):
+            m = b.setdefault("menu", {})
+            for k in ("main", "bbs", "utilities"):
+                if k in body["menu"]:
+                    m[k] = body["menu"][k]
+        try:
+            new = build(data, label=str(cfg.source), source=cfg.source, source_kind="toml")
+        except ConfigError as e:
+            return jsonify({"error": str(e)}), 400
+        try:
+            shutil.copy2(cfg.source, str(cfg.source) + ".bak")
+            cfg.source.write_text("# rewritten by Observatory v2's config editor — every key explicit; comments from the\n"
+                                  "# example file are in config/wildcat.example.toml\n\n" + to_toml(new), encoding="utf-8")
+        except OSError as e:
+            return jsonify({"error": str(e)}), 500
+        set_config(new); bridge.cfg = new
+        return jsonify({"ok": True, "path": str(cfg.source), "bbs": {"name": new.bbs.name, "sync_nodes": new.bbs.sync_nodes,
+                        "allowed_nodes": new.bbs.allowed_nodes, "weather_api_key": "***" if new.bbs.weather_api_key else "",
+                        "menu": {"main": new.bbs.menu.main, "bbs": new.bbs.menu.bbs, "utilities": new.bbs.menu.utilities}},
+                        "warnings": new.warnings, "note": "restart the BBS to apply"})
 
     @bp.route("/api/health")
     def api_health():
