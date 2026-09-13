@@ -4,6 +4,13 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  // API base: same-origin when Flask serves this page; a native shell (Capacitor) sets
+  // window.WILDCAT_API_BASE (or the user stores v2.apiBase) to point at the Den.
+  let API = "";
+  try { API = (window.WILDCAT_API_BASE || localStorage.getItem("v2.apiBase") || "").replace(/\/+$/, ""); } catch (e) {}
+  const A = (p) => API ? `${API}/v2/${p}` : p;
+  const _fetch = window.fetch.bind(window);
+  const fetch = (p, o) => _fetch(typeof p === "string" && (p.startsWith("api/") || p === "sw.js") ? A(p) : p, o);
   const now = () => Date.now() / 1000;
   const ONLINE = 15 * 60, WARM = 60 * 60, LINK_FADE = 3 * 3600;
 
@@ -347,7 +354,7 @@
 
   // ---------------------------------------------------------------- boot
   fetch("api/state").then(r => r.json()).then(applySnapshot).catch(() => setStatus(false, null));
-  const sock = io("/v2", { transports: ["websocket", "polling"] });
+  const sock = io(API ? API + "/v2" : "/v2", { transports: ["websocket", "polling"] });
   sock.on("snapshot", applySnapshot);
   sock.on("packet", applyPacket);
   sock.on("rxpoint", addRxPoint);
@@ -361,7 +368,7 @@
   const PUBLIC = document.body.dataset.public === "yes";
   function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
   $("share").addEventListener("click", async () => {
-    const url = new URL("public", location.href).href;
+    const url = API ? API + "/v2/public" : new URL("public", location.href).href;
     try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
     catch (e) { prompt("Read-only public link:", url); }
   });
@@ -479,6 +486,60 @@
   $("tl-scrub").addEventListener("input", (e) => { const pos = +e.target.value / 1000; if (pos >= 0.999 && !document.body.classList.contains("replaying")) return; if (document.body.classList.contains("replaying")) { cancelAnimationFrame(TL.timer); TL.playing = false; } tlEnterReplay(pos); });
   $("tl-speeds").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; TL.speed = +b.dataset.speed; for (const c of $("tl-speeds").children) c.classList.toggle("on", c === b); tlLabel(document.body.classList.contains("replaying") ? TL.clock : null); });
   if (!PUBLIC && window.innerWidth > 760) { tlLoad(); setInterval(tlLoad, 5 * 60 * 1000); }
+
+  // ---------------------------------------------------------------- health badge + home bar (polled)
+  async function pollHealth() {
+    try {
+      const h = await (await fetch("api/health-report")).json();
+      const n = h.counts.alerts, btn = $("alerts"), bar = $("health-bar");
+      btn.hidden = !n; $("alerts-n").textContent = n; btn.classList.toggle("crit", h.level === "crit"); btn.onclick = () => { location.hash = "#/health"; };
+      const nb = $("nav-alerts"); nb.hidden = !n; nb.textContent = n;
+      const g = h.gauges || {};
+      if (n && !document.body.classList.contains("viewing") && !PUBLIC && window.innerWidth > 760) {
+        bar.hidden = false; bar.classList.toggle("crit", h.level === "crit");
+        $("health-bar-text").innerHTML = `<b>${escape(h.alerts[0].text)}</b>${n > 1 ? ` <span style="color:var(--muted)">+${n - 1} more</span>` : ""}${g.channel_util != null ? ` <span style="color:var(--muted)">· util ${fmt1(g.channel_util, "%")}</span>` : ""}`;
+      } else bar.hidden = true;
+    } catch (e) {}
+  }
+  pollHealth(); setInterval(pollHealth, 60000);
+
+  // ---------------------------------------------------------------- quick find (⌘K or /)
+  const pal = $("palette"), palIn = $("palette-input"), palList = $("palette-list"); let palSel = 0, palItems = [];
+  function palOpen() { pal.hidden = false; palIn.value = ""; palRender(""); setTimeout(() => palIn.focus(), 30); }
+  function palClose() { pal.hidden = true; }
+  function palRender(q) {
+    q = q.trim().toLowerCase();
+    const R = Object.values(S.roster);
+    palItems = (q ? R.filter(n => [n.short_name, n.long_name, n.id, n.hw].some(v => v && String(v).toLowerCase().includes(q))) : R.slice().sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0))).slice(0, 12);
+    palSel = 0;
+    palList.innerHTML = palItems.length ? palItems.map((n, i) => `<div class="pal${i === 0 ? " sel" : ""}" data-i="${i}">${dot(n)}<span class="n">${escape(name(n))}</span><span class="l">${escape(n.long_name || "")}</span><span class="d">${n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops"} · ${ago(n.last_heard)}</span></div>`).join("") : '<div class="empty">no match</div>';
+  }
+  function palGo(i) { const n = palItems[i]; if (!n) return; palClose(); if (pos(n) && (location.hash === "#/" || !location.hash)) { map.flyTo(pos(n), 14, { duration: .7 }); showCard(n.id); } else location.hash = "#/node/" + encodeURIComponent(n.id); }
+  palIn.addEventListener("input", () => palRender(palIn.value));
+  palIn.addEventListener("keydown", (e) => { if (e.key === "Escape") palClose(); else if (e.key === "ArrowDown") { palSel = Math.min(palItems.length - 1, palSel + 1); } else if (e.key === "ArrowUp") { palSel = Math.max(0, palSel - 1); } else if (e.key === "Enter") { palGo(palSel); return; } else return;
+    [...palList.children].forEach((el, i) => el.classList.toggle("sel", i === palSel)); });
+  palList.addEventListener("click", (e) => { const el = e.target.closest(".pal"); if (el) palGo(+el.dataset.i); });
+  pal.addEventListener("click", (e) => { if (e.target === pal) palClose(); });
+  $("palette-btn").addEventListener("click", palOpen);
+  document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape" && !pal.hidden) palClose(); });
+
+  // ---------------------------------------------------------------- range rings around the base
+  const ringLayer = L.layerGroup();
+  function drawRings() {
+    ringLayer.clearLayers(); const c = pos(S.roster[S.myId]); if (!c) return;
+    for (const km of [1, 2, 5, 10]) {
+      L.circle(c, { radius: km * 1000, className: "range-ring", weight: 1, interactive: false }).addTo(ringLayer);
+      const lat = c[0] + (km * 1000) / 111320;
+      L.marker([lat, c[1]], { icon: L.divIcon({ className: "ring-lbl", html: `${km} km`, iconSize: [40, 12], iconAnchor: [20, 6] }), interactive: false }).addTo(ringLayer);
+    }
+  }
+  function setRings(on) { if (on) { drawRings(); ringLayer.addTo(map); } else map.removeLayer(ringLayer); try { localStorage.setItem("v2.rings", on ? "1" : "0"); } catch (e) {} }
+  $("rings-on").addEventListener("change", e => setRings(e.target.checked));
+  try { if (localStorage.getItem("v2.rings") === "1") { $("rings-on").checked = true; setTimeout(() => setRings(true), 1500); } } catch (e) {}
+
+  // ---------------------------------------------------------------- label declutter by zoom
+  function declutter() { const z = map.getZoom(); document.body.classList.toggle("z-far", z < 10); document.body.classList.toggle("z-mid", z >= 10 && z < 12); }
+  map.on("zoomend", declutter); declutter();
 
   // ---------------------------------------------------------------- PWA: service worker, install, mobile sheet
   if ("serviceWorker" in navigator) {
@@ -598,7 +659,7 @@
         const t = now() - 3600, online = rows.filter(r => r.last >= t).length;
         viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
         const search = document.createElement("input"); search.className = "vsearch"; search.placeholder = "search name, id, hardware…";
-        const exp = document.createElement("a"); exp.className = "link-btn"; exp.href = "/export/nodes.csv"; exp.textContent = "⇩ CSV";
+        const exp = document.createElement("a"); exp.className = "link-btn"; exp.href = A("api/export/nodes.csv"); exp.textContent = "⇩ CSV";
         viewTools.replaceChildren(search, exp);
         const tb = table($("nodes-table"), [
           { key: "name", label: "Node", render: r => `${dot(r)}<b>${escape(r.name)}</b> <span class="dim" style="color:var(--muted)">${escape(r.long_name || "")}</span>` },
@@ -794,10 +855,20 @@
             ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh</h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
               <div style="display:flex;gap:6px;flex-wrap:wrap"><select class="vsearch" id="tx-to" style="min-width:120px"><option value="^all">Broadcast (all)</option>${Object.values(S.roster).filter(n => n.id !== S.myId && (now() - (n.last_heard || 0)) < 86400).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0)).slice(0, 40).map(n => `<option value="${escape(n.id)}">DM ${escape(name(n))}</option>`).join("")}</select>
               <input class="vsearch" id="tx-text" maxlength="200" placeholder="message (≤200 chars)" style="flex:1"><button class="link-btn" id="tx-send">Send</button></div><div id="tx-result" style="margin-top:6px;font-size:12px;color:var(--muted)"></div></div>`}
-            <div class="vcard"><h2>📥 Exports</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="link-btn" href="/export/nodes.csv">nodes.csv</a><a class="link-btn" href="/export/messages.csv">messages.csv (last 1000)</a><a class="link-btn" href="api/state" target="_blank">state.json</a><a class="link-btn" href="api/coverage?hours=2160" target="_blank">coverage.json</a></div></div>
+            <div class="vcard"><h2>📥 Exports</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="link-btn" href="${A("api/export/nodes.csv")}">nodes.csv</a><a class="link-btn" href="${A("api/export/messages.csv")}">messages.csv (last 1000)</a><a class="link-btn" href="${A("api/export/coverage.csv")}">coverage.csv</a><a class="link-btn" href="${A("api/state")}" target="_blank">state.json</a></div></div>
             <div class="vcard"><h2>🔧 Services</h2>${sv.systemd ? `<table class="vt"><tbody>${Object.entries(sv.units).map(([u, st]) => unitRow(u, st)).join("")}</tbody></table>` : `<div style="font-size:13px;color:var(--muted)">No systemd on this host (dev Mac) — processes are run by hand; see <code style="font:12px var(--mono)">logs/</code>. On the Pi this lists wildcat-meshd / bbs / telemetry / observatory / mosquitto with restart buttons.</div>`}</div>
             <div class="vcard wide"><h2>📜 Live logs <span class="sel" id="log-types"></span></h2><div class="twrap" id="log-table" style="max-height:340px"></div></div>
-            <div class="vcard"><h2>⚙ BBS configuration <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500" id="cfg-src"></span></h2><pre id="cfg-toml" style="margin:0;font:12px var(--mono);color:#c9d3df;white-space:pre-wrap;max-height:320px;overflow:auto"></pre><div style="margin-top:6px;color:var(--muted);font-size:12px">Read-only here: edit <code style="font:12px var(--mono)">config/wildcat.toml</code>, run <code style="font:12px var(--mono)">wildcat config validate</code>, restart. Secrets are redacted.</div></div>
+            <div class="vcard"><h2>⚙ BBS configuration <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500" id="cfg-src"></span></h2>
+              <div id="cfg-form" style="display:grid;gap:8px;font-size:13px">
+                <label>BBS name<input class="vsearch" id="cfg-name" style="width:100%"></label>
+                <label>Sync with other BBS nodes <span style="color:var(--muted)">(ids, comma-separated)</span><input class="vsearch" id="cfg-sync" style="width:100%" placeholder="!17d7e4b7, !18e9f5a3"></label>
+                <label>Urgent-board posters <span style="color:var(--muted)">(ids; blank = anyone)</span><input class="vsearch" id="cfg-allow" style="width:100%"></label>
+                <label>Main menu letters<input class="vsearch" id="cfg-main" style="width:100%" placeholder="W, N, R, Q, G, B, U, X"></label>
+                <label>BBS menu letters<input class="vsearch" id="cfg-bbs" style="width:100%"></label>
+                <label>Utilities menu letters<input class="vsearch" id="cfg-util" style="width:100%"></label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${PUBLIC ? "" : '<button class="link-btn" id="cfg-save">Save to wildcat.toml (keeps a .bak)</button>'}<span id="cfg-status" style="color:var(--muted);font-size:12px"></span></div>
+              </div>
+              <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">effective config (TOML, secrets redacted)</summary><pre id="cfg-toml" style="margin:6px 0 0;font:12px var(--mono);color:#c9d3df;white-space:pre-wrap;max-height:300px;overflow:auto"></pre></details></div>
             <div class="vcard"><h2>✏️ BBS content <span class="sel" id="content-tabs"></span></h2><textarea id="content-text" class="vsearch" style="width:100%;min-height:240px;font:12px var(--mono);resize:vertical" ${PUBLIC ? "readonly" : ""}></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:6px">${PUBLIC ? "" : '<button class="link-btn" id="content-save">Save (keeps a .bak)</button>'}<span id="content-status" style="color:var(--muted);font-size:12px"></span></div></div>
           </div>`;
         // send
@@ -815,7 +886,23 @@
         }
         loadLogs(); clearInterval(self.timer); self.timer = setInterval(() => { if (location.hash.startsWith("#/admin")) loadLogs(); else clearInterval(self.timer); }, 5000);
         // config
-        fetch("api/config").then(r => r.json()).then(c => { $("cfg-toml").textContent = c.toml; $("cfg-src").textContent = `${c.source} [${c.kind}]`; });
+        fetch("api/config").then(r => r.json()).then(c => {
+          $("cfg-toml").textContent = c.toml; $("cfg-src").textContent = `${c.source} [${c.kind}]`;
+          const b = c.bbs || {}, m = b.menu || {};
+          $("cfg-name").value = b.name || ""; $("cfg-sync").value = (b.sync_nodes || []).join(", "); $("cfg-allow").value = (b.allowed_nodes || []).join(", ");
+          $("cfg-main").value = (m.main || []).join(", "); $("cfg-bbs").value = (m.bbs || []).join(", "); $("cfg-util").value = (m.utilities || []).join(", ");
+          if (!c.editable) { $("cfg-status").textContent = "not editable: the Den is running from the legacy INI — run `wildcat config migrate --write`"; for (const i of $("cfg-form").querySelectorAll("input,button")) i.disabled = true; }
+        });
+        const csv = (v) => v.split(",").map(x => x.trim()).filter(Boolean);
+        const cfgSave = $("cfg-save"); if (cfgSave) cfgSave.onclick = async () => {
+          cfgSave.disabled = true; $("cfg-status").textContent = "validating…";
+          const body = { name: $("cfg-name").value, sync_nodes: csv($("cfg-sync").value), allowed_nodes: csv($("cfg-allow").value),
+            menu: { main: csv($("cfg-main").value), bbs: csv($("cfg-bbs").value), utilities: csv($("cfg-util").value) } };
+          try { const r = await fetch("api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json();
+            $("cfg-status").textContent = r.ok ? `saved to ${j.path} — ${j.note}` + (j.warnings.length ? ` · ${j.warnings.length} warning(s)` : "") : "rejected: " + j.error;
+            if (r.ok) { fetch("api/config").then(x => x.json()).then(c => { $("cfg-toml").textContent = c.toml; }); } }
+          catch (e) { $("cfg-status").textContent = "failed: " + e; }
+          cfgSave.disabled = false; };
         // content
         let cur = "fortunes"; const ct = $("content-tabs");
         for (const [k, label] of [["fortunes", "fortunes.txt"], ["trivia", "trivia.txt"], ["messages", "messages.json"]]) { const c = document.createElement("button"); c.className = "chip" + (k === cur ? " on" : ""); c.textContent = label; c.onclick = () => { cur = k; for (const x of ct.children) x.classList.toggle("on", x === c); loadContent(); }; ct.appendChild(c); }
@@ -845,15 +932,39 @@
           ["GET", "api/logs?type=telemetry&limit=50", "raw recent rows: messages | telemetry | positions | neighbors"],
           ["GET", "api/dashboard", "mesh stats, 24 h channel activity, low battery, top senders"],
           ["GET", "api/services", "bus / meshd / systemd unit status"],
-          ["GET", "api/config", "the resolved config as TOML (secrets redacted)"],
+          ["GET", "api/config", "the resolved config: editable BBS subset + TOML (secrets redacted)"],
+          ["POST", "api/config", '{"name", "sync_nodes", "allowed_nodes", "menu": {…}} → validates, rewrites wildcat.toml (.bak)'],
+          ["GET", "api/health-report", "mesh health: gauges, packets/min buckets, alerts, quiet nodes, low battery"],
+          ["GET", "api/export/nodes.csv", "CSV exports: nodes · messages · coverage"],
           ["POST", "api/tx", '{"to": "^all" | "!nodeid", "text": "…"} → queued on wildcat/tx'],
           ["POST", "api/content/fortunes", '{"text": "…"} → writes the BBS content file (keeps .bak)'],
           ["POST", "api/restart", '{"unit": "wildcat-bbs"} → systemd restart (Pi only)'],
         ];
         viewBody.innerHTML = `<div class="vcard" style="margin-bottom:12px"><h2>Base URL</h2><code style="font:13px var(--mono)">${escape(base)}</code><p style="margin:8px 0 0;color:var(--muted);font-size:12px">JSON everywhere. Read endpoints are open on the LAN (like v1). Live updates: Socket.IO namespace <code style="font:12px var(--mono)">/v2</code>, events <code style="font:12px var(--mono)">snapshot · packet · roster · status · rxpoint · brain</code>. Everything speaks the neutral envelope (docs/OBSERVATORY_V2.md §2c) — node ids are opaque strings, <code style="font:12px var(--mono)">proto</code> says which radio.</p></div>
           <div class="vcard"><h2>Endpoints</h2><table class="vt"><thead><tr><th></th><th>Path</th><th>What</th><th></th></tr></thead><tbody>${eps.map(([m, pth, what], i) => `<tr><td class="num">${m}</td><td class="num">${escape(pth)}</td><td style="white-space:normal">${escape(what)}</td><td>${m === "GET" ? `<button class="link-btn try" data-p="${escape(pth)}" data-i="${i}">try</button>` : ""}</td></tr><tr id="try-${i}" hidden><td colspan="4"><pre style="margin:0;font:11px var(--mono);max-height:220px;overflow:auto;white-space:pre-wrap;color:#c9d3df"></pre></td></tr>`).join("")}</tbody></table></div>
-          <div class="vcard" style="margin-top:12px"><h2>Classic v1 API</h2><div style="font-size:13px">Still served: <code style="font:12px var(--mono)">/api/v1/stats · nodes · messages · positions · top-senders · channel-activity · channel-details · hourly-activity · neighbor-info</code> and <code style="font:12px var(--mono)">/export/nodes.csv · messages.csv</code>. <a class="link-btn" href="/api">v1 docs →</a></div></div>`;
+          <div class="vcard" style="margin-top:12px"><h2>Exports</h2><div style="font-size:13px"><code style="font:12px var(--mono)">GET api/export/nodes.csv · api/export/messages.csv · api/export/coverage.csv</code></div></div>`;
         viewBody.querySelectorAll(".try").forEach(b => b.onclick = async () => { const row = $("try-" + b.dataset.i), pre = row.querySelector("pre"); row.hidden = false; pre.textContent = "…"; try { const r = await fetch(b.dataset.p); const t = await r.text(); pre.textContent = t.length > 6000 ? t.slice(0, 6000) + "\n… (truncated)" : t; } catch (e) { pre.textContent = String(e); } });
+      }
+    },
+    health: {
+      title: "Mesh health",
+      async render() {
+        const h = await (await fetch("api/health-report")).json();
+        const g = h.gauges || {}, arc = (v, max, color) => `<div class="gauge2"><svg viewBox="0 0 120 120"><circle class="t" cx="60" cy="60" r="50"/><circle class="a" cx="60" cy="60" r="50" style="stroke:${color};stroke-dashoffset:${(314 * (1 - Math.max(0, Math.min(1, (v || 0) / max)))).toFixed(1)}"/></svg><div class="v"><div><b>${v == null ? "–" : fmt1(v, "%")}</b></div></div></div>`;
+        const utilColor = g.channel_util == null ? "#5b6b80" : g.channel_util >= 40 ? "#ff6b6b" : g.channel_util >= 25 ? "#f2c04e" : "#58e39c";
+        const rate = h.rate || [], rateNow = rate.slice(-6).reduce((a, b) => a + b.n, 0) / 30;
+        viewTools.replaceChildren();
+        viewBody.innerHTML = `
+          <div class="vgrid">
+            <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Mesh score</h2><div class="score ${h.level}">${h.score}</div><div style="color:var(--muted);font-size:12px;margin-top:4px">${h.counts.alerts ? `${h.counts.alerts} alert${h.counts.alerts === 1 ? "" : "s"}${h.counts.crit ? ` · ${h.counts.crit} critical` : ""}` : "all clear"}</div></div>
+            <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Channel utilization</h2>${arc(g.channel_util, 50, utilColor)}<div style="color:var(--muted);font-size:11px;margin-top:6px">the whole channel as this node hears it · keep under 25%</div></div>
+            <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Air-time TX</h2>${arc(g.air_util_tx, 20, g.air_util_tx != null && g.air_util_tx >= 10 ? "#f2c04e" : "#6fc3ff")}<div style="color:var(--muted);font-size:11px;margin-top:6px">how much this node itself transmits</div></div>
+            <div class="vcard"><h2>Packets per minute · last 6 h</h2>${rate.length ? lineChart(rate.map((b, i) => ({ x: i % 12 === 0 ? new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "", y: b.n / 5 })), { lo: 0 }) : '<div class="empty">no history</div>'}<div style="color:var(--muted);font-size:11px">now ≈ ${rateNow.toFixed(1)} / min (5-min buckets)</div></div>
+            <div class="vcard wide"><h2>Alerts</h2>${h.alerts.length ? h.alerts.map(a => `<div class="alert ${a.level}"><span class="k">${escape(a.kind)}</span><span>${escape(a.text)}${a.node ? ` <a class="link-btn" style="margin-left:8px;padding:2px 7px" href="#/node/${encodeURIComponent(a.node)}">node</a>` : ""}</span></div>`).join("") : '<div class="empty">nothing to worry about right now</div>'}</div>
+            <div class="vcard"><h2>Gone quiet</h2><div style="color:var(--muted);font-size:11px;margin-bottom:6px">regular nodes (≥3 pkts in the prior day) silent for 2 h+</div>${h.quiet.length ? `<table class="vt"><tbody>${h.quiet.map(q => `<tr class="row" data-id="${escape(q.id)}"><td><b>${escape(q.name)}</b></td><td class="num">${Math.floor(q.silent_for / 3600)}h ${Math.floor(q.silent_for % 3600 / 60)}m</td><td class="dim">was ${q.was}/day</td></tr>`).join("")}</tbody></table>` : '<div class="empty">everyone regular is still talking</div>'}</div>
+            <div class="vcard"><h2>Low battery</h2>${h.low_battery.length ? `<table class="vt"><tbody>${h.low_battery.map(b => `<tr class="row" data-id="${escape(b.id)}"><td><b>${escape((S.roster[b.id] || {}).short_name || b.id.slice(-4))}</b></td><td class="num" style="color:${b.battery < 10 ? "#ff8a8a" : "var(--warm)"}">${b.battery}%</td><td class="num">${b.voltage != null ? b.voltage.toFixed(2) + " V" : ""}</td><td class="dim">${ago(b.ts)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no node under 20%</div>'}</div>
+          </div>`;
+        viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
       }
     },
     dashboard: {
@@ -878,12 +989,12 @@
   function setNav(view) { sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === view)); }
   async function showView(name, arg) {
     const v = VIEWS[name]; if (!v) return;
-    document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name);
+    document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name); $("health-bar").hidden = true;
     viewTitle.textContent = v.title; viewTools.replaceChildren(); viewBody.innerHTML = '<div class="empty">loading…</div>';
     if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
     try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load: ${escape(e.message || e)}</div>`; }
   }
-  function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => map.invalidateSize(), 50); }
+  function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   function route() {
     const h = location.hash || "#/", m = h.match(/^#\/([a-z]+)(?:\/(.+))?/);
     const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;

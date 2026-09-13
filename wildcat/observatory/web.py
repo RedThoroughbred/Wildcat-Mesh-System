@@ -398,6 +398,12 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         pth = request.path
         if pth.startswith("/v2") or pth.startswith("/static/v2/") or pth.startswith("/static/vendor/"):
             resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        if pth.startswith("/v2/api/"):
+            # A native shell (Capacitor: capacitor://localhost / http://localhost) calls this API
+            # cross-origin. Read endpoints are LAN-trust already; writes stay LAN-trust like v1.
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         return resp
 
     socketio.on_event("connect", on_connect, namespace=NAMESPACE)

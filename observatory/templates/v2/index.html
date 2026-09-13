@@ -39,12 +39,23 @@
     <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
   </div>
   <div class="tools">
+    <button class="tool alert-btn" id="alerts" title="mesh health" hidden><span id="alerts-n">0</span></button>
+    <button class="tool" id="palette-btn" title="Find a node (⌘K or /)">⌕</button>
     <button class="tool" id="sound" title="Chime on new messages (off)" aria-pressed="false">🔕</button>
     <button class="tool" id="share" title="Copy a read-only public link">⇗</button>
     <span class="public-badge" title="Read-only public view">public view</span>
   </div>
   <button class="install" id="install" hidden title="Install as an app">⤓ Install</button>
 </header>
+
+<div class="glass health-bar" id="health-bar" hidden><span class="hb-dot"></span><span id="health-bar-text"></span><a href="#/health" class="link-btn">details</a></div>
+
+<div class="palette" id="palette" hidden>
+  <div class="glass palette-box">
+    <input id="palette-input" placeholder="Find a node — name, id, hardware…  (Esc to close)" autocomplete="off">
+    <div class="palette-list" id="palette-list"></div>
+  </div>
+</div>
 
 <div class="glass timeline" id="timeline">
   <div class="tl-head">
@@ -71,12 +82,12 @@
   <a href="#/propagation" data-view="propagation"><i>∿</i><span>Propagation</span></a>
   <a href="#/topology" data-view="topology"><i>⬡</i><span>Topology</span></a>
   <a href="#/coverage" data-view="coverage"><i>◍</i><span>Coverage</span></a>
+  <a href="#/health" data-view="health"><i>♥</i><span>Health<b class="nav-badge" id="nav-alerts" hidden></b></span></a>
   <a href="#/replay" data-view="replay"><i>▶</i><span>Replay</span></a>
   <a href="#/cat" data-view="cat"><i>🐈</i><span>Ask the Cat</span></a>
   <div class="sb-gap"></div>
   <a href="#/admin" data-view="admin" class="admin-only"><i>⚙</i><span>Admin</span></a>
   <a href="#/api" data-view="api"><i>{}</i><span>API</span></a>
-  <a href="/" class="v1-link" title="the original dashboard"><i>↩</i><span>Classic v1</span></a>
 </nav>
 <div class="drawer-scrim" id="drawer-scrim"></div>
 
@@ -146,6 +157,9 @@
   <div class="lay-sub" id="cov-opts" hidden>
     <label class="lay"><input type="checkbox" id="cov-direct" checked> <span>heard direct only</span></label>
     <label class="lay"><input type="checkbox" id="cov-bins" checked> <span>hex bins (≥3 samples)</span></label>
+  </div>
+  <div class="lay-sub">
+    <label class="lay"><input type="checkbox" id="rings-on"> <span>Range rings</span><span class="hint">1 · 2 · 5 · 10 km</span></label>
     <div class="cov-scale"><i style="background:#ff6b6b"></i>&lt;−8<i style="background:#ff9a5c"></i>−8…−3<i style="background:#f2c04e"></i>−3…3<i style="background:#b6e05a"></i>3…8<i style="background:#58e39c"></i>&gt;8 dB</div>
     <div class="cov-summary" id="cov-summary">loading…</div>
   </div>
