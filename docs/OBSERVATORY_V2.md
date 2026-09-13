@@ -169,6 +169,32 @@ observatory/static/v2/app.js + app.css   — vanilla JS, vendored Leaflet + Sock
 
 v1 pages stay exactly as they are until v2 covers them; then `/` redirects.
 
+## 5b. v1 superset — every classic option, reimagined (in progress)
+
+Seth: "I miss all the options from v1." v2 stays map-first but now carries a
+navigation shell (glass sidebar ≥1180 px, icon rail down to 761 px, slide-in
+drawer on phones) and hash-routed **views** over the dimmed map, each reading
+the same tables v1 reads through `wildcat/observatory/queries.py` (v1's SQL,
+ported and tested; v1 itself untouched at `/`).
+
+| v1 page | v2 view | Status |
+|---|---|---|
+| Dashboard | Home (live map + feed + KPIs) — plus a Dashboard card set | live map ✅ · dashboard cards ⏳ |
+| Map | Home | ✅ (+ links, pulses, coverage) |
+| Nodes table (search/sort/CSV) | `#/nodes` | ✅ |
+| Node detail (SNR/RSSI history, reliability, recent messages) | `#/node/<id>` | ✅ |
+| Channels (activity, top senders, heatmap, details, 24h/7d/30d) | `#/channels` | ✅ |
+| Channel detail | `#/channel/<n>` | ✅ |
+| BBS Messages (DM conversations, time window) | `#/messages` | API ✅ · view ⏳ |
+| Propagation (hourly SNR, best/worst, distribution) | `#/propagation` | API ✅ · view ⏳ |
+| Topology (neighbour graph + stats) | `#/topology` | API ✅ · view ⏳ (map already draws links) |
+| Admin (live logs, exports, BBS config/content, restart) | `#/admin` | API ✅ · view ⏳ (read-only in `/v2/public`) |
+| API docs | `#/api` | ⏳ |
+| CSV exports | linked from Nodes; messages ⏳ | partial |
+
+Until a view lands it shows an honest "next increment" panel with a link to the
+classic page, so nothing is lost in the meantime.
+
 ## 6. Roadmap (a) — Mobile: PWA now, native later
 
 **Now (shipped in this branch): an installable PWA.** `/v2` carries a web-app
