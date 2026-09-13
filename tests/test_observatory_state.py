@@ -96,3 +96,31 @@ def test_summaries():
     assert summarize({"kind": "neighbors", "neighbors": [{}, {}]}) == "hears 2 neighbours"
     assert summarize({"kind": "text", "text": "x" * 200}).endswith("…")
     assert summarize({"kind": "other", "portnum": "PAXCOUNTER_APP"}) == "PAXCOUNTER_APP"
+
+
+# ---- node detail (card) ---------------------------------------------------------------
+
+def test_signal_ring_and_node_detail(tmp_path):
+    import sqlite3
+    from wildcat.observatory.bridge import node_detail
+    T = 1_700_000_000
+    s = fresh()
+    for i in range(3):
+        s.apply_packet(env("telemetry", "!a0388880", rx={"time": T + i, "snr": 5.0 + i, "rssi": -80 - i, "hops": 0},
+                           received_at=T + i, telemetry={}), now=T + i)
+    db = tmp_path / "b.db"; c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, snr REAL, rssi INTEGER);
+      CREATE TABLE telemetry_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, battery_level INTEGER, voltage REAL, channel_util REAL, air_util_tx REAL, temperature REAL);
+    """)
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,snr,rssi) VALUES (?,?,?,?)", (T - 100, "!a0388880", 2.5, -95))
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,snr,rssi) VALUES (?,?,?,?)", (T + 1, "!a0388880", 99.0, -1))  # same ts as a live sample → live wins
+    c.execute("INSERT INTO telemetry_logs (timestamp,node_id,battery_level,voltage,channel_util,air_util_tx,temperature) VALUES (?,?,?,?,?,?,?)", (T - 50, "!a0388880", 90, 4.0, 3.0, 0.5, None))
+    c.commit(); c.close()
+    d = node_detail(s, str(db), "!a0388880", hours=1, now=T + 10)
+    assert d["node"]["short_name"] == "STAY"
+    assert [x["snr"] for x in d["signal"]] == [2.5, 5.0, 6.0, 7.0]
+    assert d["telemetry"][0]["battery"] == 90 and d["counts"]["packets_24h"] == 3
+    assert node_detail(s, str(db), "!nobody", now=T) is None
+    # window excludes old rows
+    assert [x["snr"] for x in node_detail(s, str(db), "!a0388880", hours=0.01, now=T + 10)["signal"]] == [5.0, 6.0, 7.0]

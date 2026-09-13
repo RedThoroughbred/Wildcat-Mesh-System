@@ -117,6 +117,7 @@ class MeshDaemon:
                                        "count": len(nodes), "roster": packets.roster(nodes), "nodes": nodes},
                          retain=True)
         self._next_nodes_at = self.clock() + self.cfg.meshd.nodes_publish_interval
+        self._publish_status("connected")          # keep rxCount/txSent/txQueued fresh on the retained topic
 
     def _publish_status(self, state: str, error: Optional[str] = None) -> None:
         my = None
@@ -149,6 +150,8 @@ class MeshDaemon:
             self.bus.publish(TX_RESULT_TOPIC, {"id": item["id"], "index": item["index"], "count": item["count"],
                                                "ok": False, "error": str(e)})
             raise
+        log.info("SENT %s/%s to !%08x (id=%s packet=%s): %r", item["index"] + 1, item["count"], item["dest"],
+                 item["id"], getattr(r, "id", None), item["text"][:60])
         self.bus.publish(TX_RESULT_TOPIC, {"id": item["id"], "index": item["index"], "count": item["count"],
                                            "ok": True, "packetId": getattr(r, "id", None), "to": item["dest"]})
 

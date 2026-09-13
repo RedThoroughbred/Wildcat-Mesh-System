@@ -149,19 +149,64 @@
   }
 
   // ---------------------------------------------------------------- node card
-  function showCard(id) {
-    const n = S.roster[id]; if (!n) return; S.selected = id;
-    $("card-short").textContent = name(n); $("card-ring").className = "ring " + ageClass(n);
-    $("card-long").textContent = n.long_name || name(n); $("card-id").textContent = n.id; $("card-proto").textContent = n.proto || "";
-    $("c-heard").textContent = ago(n.last_heard);
-    $("c-hops").textContent = n.id === S.myId ? "this node" : n.hops_away != null ? (n.hops_away === 0 ? "direct" : n.hops_away) : "–";
+  const ARC = 2 * Math.PI * 27;
+  function snrPct(v) { return v == null ? 0 : Math.max(0, Math.min(1, (v + 20) / 32)); }   // −20 dB → 0 … +12 dB → 1
+  function sparkline(id, series, key, opts) {
+    const svg = $(id); if (!svg) return;
+    const pts = series.filter(s => s[key] != null);
+    svg.innerHTML = "";
+    if (pts.length < 2) { svg.innerHTML = `<text x="2" y="18" fill="#8a97a8" font-size="9">${pts.length ? "1 sample" : "no history"}</text>`; return; }
+    const W = 120, H = 28, t0 = pts[0].ts, t1 = pts[pts.length - 1].ts || t0 + 1;
+    let lo = Math.min(...pts.map(p => p[key])), hi = Math.max(...pts.map(p => p[key]));
+    if (opts && opts.lo != null) lo = Math.min(lo, opts.lo); if (opts && opts.hi != null) hi = Math.max(hi, opts.hi);
+    if (hi - lo < 1e-6) { hi = lo + 1; }
+    const xy = pts.map(p => [((p.ts - t0) / Math.max(1, t1 - t0)) * (W - 4) + 2, H - 3 - ((p[key] - lo) / (hi - lo)) * (H - 6)]);
+    const line = xy.map(c => c.map(v => v.toFixed(1)).join(",")).join(" ");
+    const color = opts && opts.color ? opts.color : "#6fc3ff";
+    svg.innerHTML = `<polygon class="area" points="${xy[0][0].toFixed(1)},${H} ${line} ${xy[xy.length - 1][0].toFixed(1)},${H}" style="fill:${color}22"/>`
+      + `<polyline points="${line}" style="stroke:${color}"/>`
+      + `<circle cx="${xy[xy.length - 1][0].toFixed(1)}" cy="${xy[xy.length - 1][1].toFixed(1)}" r="2" fill="${color}"/>`;
+  }
+  let cardReq = 0, cardLast = 0;
+  function showCard(id, refetch) {
+    const n = S.roster[id]; if (!n) return;
+    const opening = S.selected !== id; S.selected = id;
+    const cls = ageClass(n);
+    $("card-short").textContent = name(n); $("card-long").textContent = n.long_name || name(n);
+    $("card-id").textContent = n.id; $("card-proto").textContent = n.proto || "";
+    $("card-pulse").className = "pulse-dot " + cls;
+    $("c-heard").textContent = n.id === S.myId ? "this node · live" : ago(n.last_heard);
+    $("c-hops").textContent = n.id === S.myId ? "" : n.hops_away != null ? (n.hops_away === 0 ? "· heard direct" : `· ${n.hops_away} hop${n.hops_away === 1 ? "" : "s"} away`) : "";
+    const g = $("card-gauge"); g.className = "gauge " + cls;
+    const arc = $("g-arc"), q = n.id === S.myId ? 1 : snrPct(n.snr);
+    arc.style.strokeDashoffset = (ARC * (1 - q)).toFixed(1);
+    arc.style.stroke = n.id === S.myId ? "var(--terracotta)" : snrColor(n.snr); arc.style.color = arc.style.stroke;
     $("c-snr").textContent = n.snr != null ? n.snr.toFixed(1) + " dB" : "–";
-    $("c-batt").textContent = n.battery != null ? (n.battery > 100 ? "on power" : n.battery + "%") + (n.voltage != null ? ` · ${n.voltage.toFixed(2)} V` : "") : "–";
-    $("c-hw").textContent = n.hw || "–"; $("c-role").textContent = n.role || "–";
+    $("c-rssi").textContent = n.rssi != null ? n.rssi + " dBm" : "–";
+    const b = n.battery;
+    $("c-batt").textContent = b != null ? (b > 100 ? "on power" : b + "%") + (n.voltage != null ? ` · ${n.voltage.toFixed(2)} V` : "") : "–";
+    const bar = $("c-batt-bar"); bar.style.width = (b == null ? 0 : b > 100 ? 100 : b) + "%"; bar.className = b != null && b <= 100 ? (b < 15 ? "crit" : b < 35 ? "low" : "") : "";
+    $("c-hw").textContent = n.hw || "–"; $("c-role").textContent = n.role ? n.role.replace("CLIENT_", "").replace("_", " ") : "–";
+    $("c-util").textContent = n.channel_util != null ? n.channel_util.toFixed(1) + "%" : "–";
     const p = pos(n); $("c-pos").textContent = p ? `${p[0].toFixed(5)}, ${p[1].toFixed(5)}` + (n.position.alt != null ? ` · ${Math.round(n.position.alt)} m` : "") : "no position";
+    $("c-center").hidden = !p;
     $("card").hidden = false;
+    if (opening || refetch) {
+      const t = performance.now(); if (!opening && t - cardLast < 4000) return; cardLast = t;
+      const req = ++cardReq;
+      fetch("api/node/" + encodeURIComponent(id) + "?hours=24").then(r => r.json()).then(d => {
+        if (req !== cardReq || S.selected !== id) return;
+        const sig = d.signal || [], tel = d.telemetry || [];
+        sparkline("sp-snr", sig, "snr", { lo: -10, hi: 10, color: snrColor(sig.length ? sig[sig.length - 1].snr : null) });
+        sparkline("sp-rssi", sig, "rssi", { lo: -125, hi: -70, color: "#6fc3ff" });
+        sparkline("sp-batt", tel.filter(x => x.battery != null && x.battery <= 100), "battery", { lo: 0, hi: 100, color: "#58e39c" });
+        $("c-pkts").textContent = d.counts ? d.counts.packets_24h : "–";
+        if (sig.length && n.rssi == null) { const last = sig[sig.length - 1]; if (last.rssi != null) $("c-rssi").textContent = last.rssi + " dBm"; }
+      }).catch(() => {});
+    }
   }
   $("card-close").onclick = () => { $("card").hidden = true; S.selected = null; };
+  $("c-center").onclick = () => { const p = pos(S.roster[S.selected]); if (p) map.flyTo(p, Math.max(map.getZoom(), 13), { duration: .8 }); };
 
   // ---------------------------------------------------------------- fit
   function km(a, b) {
@@ -200,6 +245,7 @@
   function applyPacket(ev) {
     if (ev.my_id) S.myId = ev.my_id;
     S.times.push(now());
+    if (ev.node && ev.packet && ev.packet.rssi != null) ev.node.rssi = ev.packet.rssi;
     upsertNode(ev.node);
     for (const l of ev.links || []) upsertLink(l);
     addPacket(ev.packet, true);
@@ -209,7 +255,7 @@
       if (p.hops === 0) pulse(p.from, S.myId, false);
       else if (p.hops != null) pulse(p.from, S.myId, true);
     }
-    if (S.selected === p.from) showCard(p.from);
+    if (S.selected === p.from) showCard(p.from, true);
     refreshStats();
   }
 
@@ -299,7 +345,7 @@
   sock.on("roster", (r) => { S.myId = r.my_id || S.myId; for (const id in r.roster) upsertNode(r.roster[id]); refreshLinks(); refreshStats(); fitOnce(); });
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
   sock.on("disconnect", () => setStatus(false, null));
-  setInterval(() => { refreshAges(); refreshLinks(); refreshTimes(); refreshStats(); }, 15000);
+  setInterval(() => { refreshAges(); refreshLinks(); refreshTimes(); refreshStats(); if (S.selected) showCard(S.selected); }, 15000);
 
   function escape(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 })();

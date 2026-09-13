@@ -77,6 +77,7 @@ class State:
         self.link_ttl = link_ttl
         self.total = 0
         self.by_kind: Dict[str, int] = {}
+        self.signal: Dict[str, Deque[Dict[str, Any]]] = {}      # per node: recent rx samples (live only)
         self._times: Deque[float] = deque(maxlen=5000)
         self.lock = threading.RLock()
 
@@ -140,6 +141,11 @@ class State:
             node = self._touch_node(frm, now)
             if env.get("proto"):
                 node["proto"] = env["proto"]
+            if rx.get("snr") is not None or rx.get("rssi") is not None:
+                ring = self.signal.get(frm)
+                if ring is None:
+                    ring = self.signal[frm] = deque(maxlen=300)
+                ring.append({"ts": int(env.get("received_at") or now), "snr": rx.get("snr"), "rssi": rx.get("rssi"), "hops": rx.get("hops")})
             if rx.get("snr") is not None:
                 node["snr"] = rx["snr"]
             if rx.get("hops") is not None:
@@ -203,6 +209,46 @@ class State:
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
+
+
+def node_detail(state: State, db_path: str, nid: str, hours: float = 24.0, now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """Everything the node card shows: the roster row, signal samples (live ring ∪ message_logs
+    ∪ rx_points), telemetry history (telemetry_logs), and this node's recent packets."""
+    now = time.time() if now is None else now
+    since = int(now - hours * 3600)
+    with state.lock:
+        node = state.roster.get(nid)
+        if node is None:
+            return None
+        node = dict(node)
+        samples = {s["ts"]: dict(s) for s in state.signal.get(nid, ()) if s["ts"] >= since}
+        packets = [p for p in state.packets if p["from"] == nid][-30:]
+    telemetry: List[Dict[str, Any]] = []
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path, timeout=2)
+            conn.row_factory = sqlite3.Row
+            try:
+                have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "message_logs" in have:
+                    for r in conn.execute("SELECT timestamp ts, snr, rssi FROM message_logs WHERE sender_id=? AND timestamp>=?"
+                                          " AND (snr IS NOT NULL OR rssi IS NOT NULL) ORDER BY timestamp DESC LIMIT 500", (nid, since)):
+                        samples.setdefault(r["ts"], {"ts": r["ts"], "snr": r["snr"], "rssi": r["rssi"], "hops": None})
+                if "rx_points" in have:
+                    for r in conn.execute("SELECT ts, snr, rssi, hops FROM rx_points WHERE node_id=? AND ts>=? ORDER BY ts DESC LIMIT 500", (nid, since)):
+                        samples.setdefault(r["ts"], {"ts": r["ts"], "snr": r["snr"], "rssi": r["rssi"], "hops": r["hops"]})
+                if "telemetry_logs" in have:
+                    telemetry = [dict(r) for r in conn.execute(
+                        "SELECT timestamp ts, battery_level battery, voltage, channel_util, air_util_tx, temperature"
+                        " FROM telemetry_logs WHERE node_id=? AND timestamp>=? ORDER BY timestamp DESC LIMIT 500", (nid, since))]
+                    telemetry.reverse()
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            log.warning("node_detail db: %s", e)
+    signal = sorted(samples.values(), key=lambda s: s["ts"])
+    return {"node": node, "since": since, "signal": signal, "telemetry": telemetry, "packets": packets,
+            "counts": {"signal": len(signal), "telemetry": len(telemetry), "packets_24h": len(packets)}}
 
 
 def seed_from_db(state: State, db_path: str) -> int:

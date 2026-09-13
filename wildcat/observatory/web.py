@@ -29,6 +29,19 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return jsonify({"since": since, "points": bridge.coverage.recent(since, limit=5000),
                         "summary": bridge.coverage.summary(since)})
 
+    @bp.route("/api/node/<nid>")
+    def api_node(nid):
+        from flask import request
+        from .bridge import node_detail
+        try:
+            hours = float(request.args.get("hours", 24))
+        except ValueError:
+            hours = 24
+        d = node_detail(bridge.state, str(bridge.cfg.database.path), nid, hours)
+        if d is None:
+            return jsonify({"error": "unknown node"}), 404
+        return jsonify(d)
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state

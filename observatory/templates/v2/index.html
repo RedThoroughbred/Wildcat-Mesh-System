@@ -50,21 +50,31 @@
 <section class="glass card" id="card" hidden>
   <button class="close" id="card-close" aria-label="close">×</button>
   <div class="card-head">
-    <div class="ring" id="card-ring"><span id="card-short">––</span></div>
-    <div>
+    <div class="gauge" id="card-gauge">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle class="g-track" cx="32" cy="32" r="27"/>
+        <circle class="g-arc" id="g-arc" cx="32" cy="32" r="27"/>
+      </svg>
+      <span class="g-short" id="card-short">––</span>
+    </div>
+    <div class="card-title">
       <div class="card-name" id="card-long">–</div>
-      <div class="card-id"><span id="card-id">–</span> <span class="proto" id="card-proto"></span></div>
+      <div class="card-id"><span id="card-id">–</span><span class="proto" id="card-proto"></span></div>
+      <div class="card-heard"><i class="pulse-dot" id="card-pulse"></i><span id="c-heard">–</span><span class="dim" id="c-hops"></span></div>
     </div>
   </div>
   <div class="card-grid">
-    <div><span class="k">last heard</span><span class="v" id="c-heard">–</span></div>
-    <div><span class="k">hops</span><span class="v" id="c-hops">–</span></div>
-    <div><span class="k">SNR</span><span class="v" id="c-snr">–</span></div>
-    <div><span class="k">battery</span><span class="v" id="c-batt">–</span></div>
-    <div><span class="k">hardware</span><span class="v" id="c-hw">–</span></div>
-    <div><span class="k">role</span><span class="v" id="c-role">–</span></div>
+    <div><span class="k">SNR</span><span class="v" id="c-snr">–</span><svg class="spark" id="sp-snr" viewBox="0 0 120 28" preserveAspectRatio="none"></svg></div>
+    <div><span class="k">RSSI</span><span class="v" id="c-rssi">–</span><svg class="spark" id="sp-rssi" viewBox="0 0 120 28" preserveAspectRatio="none"></svg></div>
+    <div><span class="k">battery</span><span class="v" id="c-batt">–</span><div class="batt"><i id="c-batt-bar"></i></div><svg class="spark" id="sp-batt" viewBox="0 0 120 28" preserveAspectRatio="none"></svg></div>
   </div>
-  <div class="card-foot" id="c-pos"></div>
+  <div class="card-meta">
+    <span><b id="c-hw">–</b><em>hardware</em></span>
+    <span><b id="c-role">–</b><em>role</em></span>
+    <span><b id="c-pkts">–</b><em>pkts 24h</em></span>
+    <span><b id="c-util">–</b><em>ch util</em></span>
+  </div>
+  <div class="card-foot"><span id="c-pos"></span><button class="mini" id="c-center" title="center map">⌖ center</button></div>
 </section>
 
 <div class="glass layers" id="layers">
