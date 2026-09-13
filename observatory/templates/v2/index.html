@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Wildcat Mesh · The Den</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}">
+</head>
+<body>
+<div id="map" aria-label="Live mesh map"></div>
+
+<header class="glass topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <div class="title">Wildcat Mesh</div>
+      <div class="sub">The Den · Observatory</div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="v" id="s-heard">–</span><span class="l">heard 1h</span></div>
+    <div class="stat"><span class="v" id="s-map">–</span><span class="l">on map</span></div>
+    <div class="stat"><span class="v" id="s-nodes">–</span><span class="l">nodes</span></div>
+    <div class="stat"><span class="v" id="s-rate">–</span><span class="l">pkts/min</span></div>
+    <div class="stat"><span class="v" id="s-util">–</span><span class="l">ch util</span></div>
+  </div>
+  <div class="status" id="status" title="bus / radio status">
+    <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
+  </div>
+</header>
+
+<aside class="glass feed" id="feed">
+  <div class="feed-head">
+    <div class="feed-title">Live<span class="live-dot"></span></div>
+    <div class="filters" id="filters">
+      <button class="chip on" data-kind="all">all</button>
+      <button class="chip" data-kind="text">text</button>
+      <button class="chip" data-kind="position">pos</button>
+      <button class="chip" data-kind="telemetry">telem</button>
+      <button class="chip" data-kind="neighbors">nbrs</button>
+      <button class="chip" data-kind="nodeinfo">info</button>
+    </div>
+  </div>
+  <div class="feed-list" id="feed-list"></div>
+  <div class="feed-empty" id="feed-empty">Listening on the bus…</div>
+</aside>
+
+<section class="glass card" id="card" hidden>
+  <button class="close" id="card-close" aria-label="close">×</button>
+  <div class="card-head">
+    <div class="ring" id="card-ring"><span id="card-short">––</span></div>
+    <div>
+      <div class="card-name" id="card-long">–</div>
+      <div class="card-id"><span id="card-id">–</span> <span class="proto" id="card-proto"></span></div>
+    </div>
+  </div>
+  <div class="card-grid">
+    <div><span class="k">last heard</span><span class="v" id="c-heard">–</span></div>
+    <div><span class="k">hops</span><span class="v" id="c-hops">–</span></div>
+    <div><span class="k">SNR</span><span class="v" id="c-snr">–</span></div>
+    <div><span class="k">battery</span><span class="v" id="c-batt">–</span></div>
+    <div><span class="k">hardware</span><span class="v" id="c-hw">–</span></div>
+    <div><span class="k">role</span><span class="v" id="c-role">–</span></div>
+  </div>
+  <div class="card-foot" id="c-pos"></div>
+</section>
+
+<div class="glass legend" id="legend">
+  <span><i class="sw base"></i>this node</span>
+  <span><i class="sw on"></i>&lt; 15 min</span>
+  <span><i class="sw warm"></i>&lt; 1 h</span>
+  <span><i class="sw cold"></i>older</span>
+  <span><i class="sw link"></i>heard directly</span>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='v2/app.js') }}"></script>
+</body>
+</html>

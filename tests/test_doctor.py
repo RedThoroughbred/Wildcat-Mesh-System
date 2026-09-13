@@ -200,12 +200,14 @@ def test_database_warns_on_missing_tables_and_non_wal(tmp_path):
 
 # ---- content -----------------------------------------------------------------------------
 
-def test_content_real_repo_dir(repo_root):
-    cfg = build({**SERIAL, "bbs": {"content_dir": str(repo_root / "bbs")}})
+def test_content_dir_reports_present_and_missing(tmp_path):
+    (tmp_path / "messages.json").write_text("{}")
+    cfg = build({**SERIAL, "bbs": {"content_dir": str(tmp_path)}})
     r = Report(); doctor.check_content(r, cfg)
     st = statuses(r, "content")
     assert st[0][0] == OK and "messages.json" in st[0][1]
-    assert any(s == WARN and "fortunes.txt" in d for s, d, _ in st)   # git-ignored, so absent here
+    assert any(s == WARN and "fortunes.txt" in d for s, d, _ in st)
+    assert any(s == WARN and "trivia.txt" in d for s, d, _ in st)
 
 
 # ---- systemd -------------------------------------------------------------------------------

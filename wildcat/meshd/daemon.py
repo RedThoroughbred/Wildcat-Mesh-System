@@ -113,7 +113,8 @@ class MeshDaemon:
         except Exception:
             log.exception("could not snapshot nodes")
             return
-        self.bus.publish(NODES_TOPIC, {"ts": self.clock(), "myNodeNum": my, "count": len(nodes), "nodes": nodes},
+        self.bus.publish(NODES_TOPIC, {"ts": self.clock(), "myNodeNum": my, "my_id": packets.node_id(my),
+                                       "count": len(nodes), "roster": packets.roster(nodes), "nodes": nodes},
                          retain=True)
         self._next_nodes_at = self.clock() + self.cfg.meshd.nodes_publish_interval
 

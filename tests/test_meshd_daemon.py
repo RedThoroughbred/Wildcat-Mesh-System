@@ -69,7 +69,7 @@ def test_rx_is_enveloped_onto_the_bus():
     d, bus, pub, clock, radios, _ = make(); d.start()
     pub.send("meshtastic.receive", packet=TEXT, interface=radios[0])
     env = bus.last("rx/text")
-    assert env["text"] == "M" and env["from"] == 111 and env["receivedAt"] == clock.now()
+    assert env["text"] == "M" and env["from"] == "!0000006f" and env["from_num"] == 111 and env["received_at"] == clock.now()
     assert d.rx_count == 1
 
 

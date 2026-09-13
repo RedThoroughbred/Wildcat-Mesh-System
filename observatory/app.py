@@ -52,6 +52,13 @@ logging.basicConfig(
 # Initialize database tables
 initialize_observatory_tables()
 
+# Observatory v2 (/v2): live map + feed fed from the MQTT bus. v1 pages are untouched.
+from wildcat.observatory.bridge import Bridge  # noqa: E402
+from wildcat.observatory.web import create_blueprint  # noqa: E402
+v2_bridge = Bridge(wildcat_config(), socketio)
+app.register_blueprint(create_blueprint(v2_bridge, socketio))
+v2_bridge.start()
+
 
 # Template filters
 @app.template_filter('format_time')
