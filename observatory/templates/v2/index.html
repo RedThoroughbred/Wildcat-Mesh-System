@@ -21,6 +21,7 @@
 
 <header class="glass topbar">
   <div class="brand">
+    <button class="menu-btn" id="menu-btn" aria-label="menu">☰</button>
     <span class="mark" aria-hidden="true"></span>
     <div>
       <div class="title">Wildcat Mesh</div>
@@ -60,6 +61,28 @@
   <span>Add Wildcat to your home screen: tap <b>Share</b> <span class="share-glyph">⎋</span> then <b>Add to Home Screen</b>.</span>
   <button id="ios-hint-close" aria-label="dismiss">×</button>
 </div>
+
+<nav class="glass sidebar" id="sidebar" aria-label="sections">
+  <a href="#/" data-view="home"><i>◉</i><span>Live map</span></a>
+  <a href="#/nodes" data-view="nodes"><i>⌘</i><span>Nodes</span></a>
+  <a href="#/channels" data-view="channels"><i>≋</i><span>Channels</span></a>
+  <a href="#/messages" data-view="messages"><i>✉</i><span>Messages</span></a>
+  <a href="#/propagation" data-view="propagation"><i>∿</i><span>Propagation</span></a>
+  <a href="#/topology" data-view="topology"><i>⬡</i><span>Topology</span></a>
+  <a href="#/coverage" data-view="coverage"><i>◍</i><span>Coverage</span></a>
+  <a href="#/replay" data-view="replay"><i>▶</i><span>Replay</span></a>
+  <a href="#/cat" data-view="cat"><i>🐈</i><span>Ask the Cat</span></a>
+  <div class="sb-gap"></div>
+  <a href="#/admin" data-view="admin" class="admin-only"><i>⚙</i><span>Admin</span></a>
+  <a href="#/api" data-view="api"><i>{}</i><span>API</span></a>
+  <a href="/" class="v1-link" title="the original dashboard"><i>↩</i><span>Classic v1</span></a>
+</nav>
+<div class="drawer-scrim" id="drawer-scrim"></div>
+
+<section class="glass view" id="view" hidden>
+  <header class="view-head"><h1 id="view-title">–</h1><div class="view-tools" id="view-tools"></div><button class="close" id="view-close" aria-label="back to the map">×</button></header>
+  <div class="view-body" id="view-body"></div>
+</section>
 
 <aside class="glass feed" id="feed" data-sheet="half">
   <button class="handle" id="sheet-handle" aria-label="expand or collapse the feed"><i></i></button>

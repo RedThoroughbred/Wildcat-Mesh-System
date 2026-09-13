@@ -520,5 +520,193 @@
   const _addPacket = addPacket;
   addPacket = function (p, fresh) { _addPacket(p, fresh); feedTitle.dataset.count = list.children.length + " pkts"; };
 
+  // ================================================================ views: hash router + sidebar/drawer
+  const sidebar = $("sidebar"), viewEl = $("view"), viewBody = $("view-body"), viewTitle = $("view-title"), viewTools = $("view-tools");
+  function openDrawer(on) { sidebar.classList.toggle("open", on); $("drawer-scrim").classList.toggle("open", on); }
+  $("menu-btn").addEventListener("click", () => openDrawer(!sidebar.classList.contains("open")));
+  $("drawer-scrim").addEventListener("click", () => openDrawer(false));
+  sidebar.addEventListener("click", (e) => { if (e.target.closest("a")) openDrawer(false); });
+  $("view-close").addEventListener("click", () => { location.hash = "#/"; });
+  function fmtTs(ts) { return ts ? new Date(ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; }
+  function fmt1(v, unit) { return v == null ? "–" : (Math.round(v * 10) / 10) + (unit || ""); }
+  function snrSpan(v) { return v == null ? "–" : `<span class="snr ${snrClass(v)}">${fmt1(v, " dB")}</span>`; }
+  function dot(n) { return `<i class="nd ${ageClass(n)}"></i>`; }
+  function hoursSel(cur, opts, cb) {
+    const wrap = document.createElement("div"); wrap.className = "sel";
+    for (const [h, label] of opts) { const b = document.createElement("button"); b.className = "chip" + (h === cur ? " on" : ""); b.textContent = label; b.onclick = () => cb(h); wrap.appendChild(b); }
+    return wrap;
+  }
+  const H24 = [[24, "24h"], [168, "7d"], [720, "30d"]];
+
+  // ---- tiny SVG charts (no CDN) ----
+  function barChart(items, opts) {   // items: [{label, value, cls?}]
+    const W = 600, H = 180, padL = 34, padB = 22, padT = 8, n = Math.max(1, items.length), max = Math.max(1, ...items.map(i => i.value));
+    const bw = (W - padL - 6) / n, s = [`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`];
+    for (let g = 0; g <= 4; g++) { const y = padT + (H - padT - padB) * g / 4; s.push(`<line class="grid" x1="${padL}" x2="${W}" y1="${y}" y2="${y}"/><text x="${padL - 4}" y="${y + 3}" text-anchor="end">${Math.round(max * (1 - g / 4))}</text>`); }
+    items.forEach((it, i) => { const h = (H - padT - padB) * it.value / max, x = padL + i * bw + 1, y = H - padB - h;
+      s.push(`<rect class="bar ${it.cls || ""}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${escape(it.label)}: ${it.value}</title></rect>`);
+      if (n <= 32 || i % Math.ceil(n / 16) === 0) s.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(it.label))}</text>`); });
+    return s.join("") + "</svg>";
+  }
+  function lineChart(pts, opts) {   // pts: [{x(label), y}], opts.lo/hi
+    const W = 600, H = 180, padL = 36, padB = 22, padT = 8, n = pts.length;
+    if (n < 2) return '<div class="empty">not enough data yet</div>';
+    let lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y));
+    if (opts && opts.lo != null) lo = Math.min(lo, opts.lo); if (opts && opts.hi != null) hi = Math.max(hi, opts.hi); if (hi - lo < 1e-6) hi = lo + 1;
+    const X = i => padL + (W - padL - 6) * i / (n - 1), Y = v => H - padB - (H - padT - padB) * (v - lo) / (hi - lo);
+    const s = [`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`];
+    for (let g = 0; g <= 4; g++) { const v = hi - (hi - lo) * g / 4, y = Y(v); s.push(`<line class="grid" x1="${padL}" x2="${W}" y1="${y}" y2="${y}"/><text x="${padL - 4}" y="${y + 3}" text-anchor="end">${fmt1(v)}</text>`); }
+    const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ");
+    s.push(`<polygon class="area" points="${X(0).toFixed(1)},${H - padB} ${line} ${X(n - 1).toFixed(1)},${H - padB}"/><polyline points="${line}"/>`);
+    pts.forEach((p, i) => { if (n <= 26 || i % Math.ceil(n / 12) === 0) s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(p.x))}</text>`); s.push(`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="2.5" fill="#6fc3ff"><title>${escape(String(p.x))}: ${fmt1(p.y)}</title></circle>`); });
+    return s.join("") + "</svg>";
+  }
+  function heatmap(rows, cells) {   // rows: [{key,label}], cells: {rowKey: {hour: count}}
+    let max = 1; for (const r of rows) for (let h = 0; h < 24; h++) max = Math.max(max, (cells[r.key] || {})[h] || 0);
+    const s = ['<div class="hm"><div></div>']; for (let h = 0; h < 24; h++) s.push(`<div class="hr">${h % 3 === 0 ? h : ""}</div>`);
+    for (const r of rows) { s.push(`<div class="lab">${escape(r.label)}</div>`); for (let h = 0; h < 24; h++) { const v = (cells[r.key] || {})[h] || 0; s.push(`<div class="c" data-v="${v}" style="--p:${(v / max).toFixed(2)}" title="${escape(r.label)} · ${h}:00 · ${v} msg"></div>`); } }
+    return s.join("") + "</div>";
+  }
+  function chName(c) { return c === 0 ? "LongFast (primary)" : c == null ? "?" : "Channel " + c; }
+
+  // ---- table helper with sort + search ----
+  function table(el, cols, rows, opts) {   // cols: [{key, label, num?, render?}]
+    const st = { key: opts.sort || cols[0].key, asc: !!opts.asc, q: "" };
+    function render() {
+      const q = st.q.toLowerCase();
+      let r = rows.filter(x => !q || cols.some(c => String(x[c.key] == null ? "" : x[c.key]).toLowerCase().includes(q)) || (opts.search && opts.search(x).toLowerCase().includes(q)));
+      r.sort((a, b) => { const va = a[st.key], vb = b[st.key]; if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1; return (va < vb ? -1 : va > vb ? 1 : 0) * (st.asc ? 1 : -1); });
+      el.innerHTML = `<div class="twrap"><table class="vt"><thead><tr>${cols.map(c => `<th data-k="${c.key}" class="${c.key === st.key ? "sorted" + (st.asc ? " asc" : "") : ""}">${c.label}</th>`).join("")}</tr></thead><tbody>${
+        r.map(x => `<tr class="row" data-id="${escape(x.id || "")}">${cols.map(c => `<td class="${c.num ? "num" : ""}${c.dim ? " dim" : ""}">${c.render ? c.render(x) : escape(x[c.key] == null ? "–" : x[c.key])}</td>`).join("")}</tr>`).join("")
+      }</tbody></table>${r.length ? "" : '<div class="empty">nothing matches</div>'}</div>`;
+      el.querySelectorAll("th").forEach(th => th.onclick = () => { const k = th.dataset.k; if (st.key === k) st.asc = !st.asc; else { st.key = k; st.asc = false; } render(); });
+      if (opts.onRow) el.querySelectorAll("tr.row").forEach(tr => tr.onclick = () => opts.onRow(tr.dataset.id));
+    }
+    render();
+    return { search: (q) => { st.q = q; render(); } };
+  }
+
+  // ---- views ----
+  const VIEWS = {
+    nodes: {
+      title: "Nodes",
+      async render() {
+        const d = await (await fetch("api/nodes")).json();
+        const rows = d.nodes.map(n => ({ ...n, id: n.id, name: n.short_name || n.id.slice(-4), msgs: n.stats ? n.stats.message_count : 0,
+          avg_snr: n.stats ? n.stats.avg_snr : null, best_snr: n.stats ? n.stats.best_snr : null, worst_snr: n.stats ? n.stats.worst_snr : null,
+          avg_rssi: n.stats ? n.stats.avg_rssi : null, last: n.last_heard || (n.stats && n.stats.last_seen) || 0, hasPos: n.position ? 1 : 0 }));
+        const t = now() - 3600, online = rows.filter(r => r.last >= t).length;
+        viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
+        const search = document.createElement("input"); search.className = "vsearch"; search.placeholder = "search name, id, hardware…";
+        const exp = document.createElement("a"); exp.className = "link-btn"; exp.href = "/export/nodes.csv"; exp.textContent = "⇩ CSV";
+        viewTools.replaceChildren(search, exp);
+        const tb = table($("nodes-table"), [
+          { key: "name", label: "Node", render: r => `${dot(r)}<b>${escape(r.name)}</b> <span class="dim" style="color:var(--muted)">${escape(r.long_name || "")}</span>` },
+          { key: "id", label: "ID", dim: true }, { key: "hw", label: "Hardware", dim: true }, { key: "role", label: "Role", dim: true, render: r => escape(r.role ? r.role.replace("CLIENT_", "") : "–") },
+          { key: "last", label: "Last heard", render: r => ago(r.last) }, { key: "hops_away", label: "Hops", num: true, render: r => r.hops_away == null ? "–" : r.hops_away === 0 ? "direct" : r.hops_away },
+          { key: "snr", label: "SNR now", num: true, render: r => snrSpan(r.snr) }, { key: "avg_snr", label: "avg", num: true, render: r => snrSpan(r.avg_snr) },
+          { key: "best_snr", label: "best", num: true, render: r => snrSpan(r.best_snr) }, { key: "worst_snr", label: "worst", num: true, render: r => snrSpan(r.worst_snr) },
+          { key: "avg_rssi", label: "RSSI", num: true, render: r => r.avg_rssi == null ? "–" : r.avg_rssi + " dBm" },
+          { key: "msgs", label: "Msgs", num: true }, { key: "battery", label: "Batt", num: true, render: r => r.battery == null ? "–" : r.battery > 100 ? "⚡" : r.battery + "%" },
+        ], rows, { sort: "last", search: r => `${r.long_name || ""} ${r.hw || ""}`, onRow: id => { location.hash = "#/node/" + encodeURIComponent(id); } });
+        search.oninput = () => tb.search(search.value);
+      }
+    },
+    node: {
+      title: "Node",
+      async render(id) {
+        const r = await fetch("api/node/" + encodeURIComponent(id) + "/full"); if (!r.ok) { viewBody.innerHTML = '<div class="empty">unknown node</div>'; return; }
+        const d = await r.json(), n = d.node, st = d.stats || {}, rel = d.reliability || {};
+        viewTitle.innerHTML = `${dot(n)}${escape(n.short_name || id.slice(-4))} <span style="color:var(--muted);font-weight:500">${escape(n.long_name || "")}</span>`;
+        const center = document.createElement("button"); center.className = "link-btn"; center.textContent = "⌖ on map"; center.onclick = () => { location.hash = "#/"; setTimeout(() => { const p = pos(S.roster[id]); if (p) { map.flyTo(p, 14); showCard(id); } }, 50); };
+        viewTools.replaceChildren(center);
+        const sig = d.signal || [], tel = d.telemetry || [];
+        const lastSig = sig.length ? sig[sig.length - 1] : {};
+        const bands = rel.bands || {}, tot = Math.max(1, rel.messages || 0);
+        viewBody.innerHTML = `
+          <div class="kpis">
+            <div class="kpi"><b>${ago(n.last_heard || st.last_seen)}</b><span>last heard</span></div>
+            <div class="kpi"><b>${n.hops_away == null ? "–" : n.hops_away === 0 ? "direct" : n.hops_away}</b><span>hops away</span></div>
+            <div class="kpi"><b>${fmt1(n.snr != null ? n.snr : lastSig.snr, " dB")}</b><span>SNR now</span></div>
+            <div class="kpi"><b>${st.message_count || 0}</b><span>messages</span></div>
+            <div class="kpi"><b>${rel.reliability_pct == null ? "–" : rel.reliability_pct + "%"}</b><span>good-signal share · 7d</span></div>
+            <div class="kpi"><b>${n.battery == null ? "–" : n.battery > 100 ? "⚡ mains" : n.battery + "%"}</b><span>battery${n.voltage != null ? " · " + n.voltage.toFixed(2) + " V" : ""}</span></div>
+          </div>
+          <div class="vgrid">
+            <div class="vcard wide"><h2>Signal quality · 7 days <span class="sel" style="color:var(--muted);text-transform:none;letter-spacing:0">${sig.length} samples</span></h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.snr })).filter(x => x.y != null), { lo: -10, hi: 10 })}</div>
+            <div class="vcard"><h2>RSSI</h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.rssi })).filter(x => x.y != null), { lo: -125, hi: -70 })}</div>
+            <div class="vcard"><h2>${tel.some(x => x.battery != null && x.battery <= 100) ? "Battery" : "Voltage"}</h2>${tel.some(x => x.battery != null && x.battery <= 100) ? lineChart(tel.filter(x => x.battery != null && x.battery <= 100).map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.battery })), { lo: 0, hi: 100 }) : lineChart(tel.filter(x => x.voltage != null).map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.voltage })), {})}</div>
+            <div class="vcard"><h2>Connection quality · 7 days</h2>
+              <div class="bands">${["excellent", "good", "fair", "poor", "unknown"].map(k => `<i class="${k}" style="width:${(100 * (bands[k] || 0) / tot).toFixed(1)}%" title="${k}: ${bands[k] || 0}"></i>`).join("")}</div>
+              <div style="font-size:12px;color:var(--muted)">excellent ≥8 dB · good ≥3 · fair ≥−3 · poor below · ${rel.messages || 0} messages</div>
+              <div style="margin-top:10px">${(rel.per_day || []).length ? barChart(rel.per_day.map(x => ({ label: x.day.slice(5), value: x.count }))) : '<div class="empty">no messages in 7 days</div>'}</div></div>
+            <div class="vcard"><h2>Details</h2><table class="vt"><tbody>
+              <tr><td class="dim">ID</td><td class="num">${escape(id)}</td></tr><tr><td class="dim">Protocol</td><td>${escape(n.proto || "–")}</td></tr>
+              <tr><td class="dim">Hardware</td><td>${escape(n.hw || "–")}</td></tr><tr><td class="dim">Role</td><td>${escape(n.role || "–")}</td></tr>
+              <tr><td class="dim">First seen</td><td>${fmtTs(st.first_seen)}</td></tr><tr><td class="dim">Best / worst SNR</td><td>${snrSpan(st.best_snr)} / ${snrSpan(st.worst_snr)}</td></tr>
+              <tr><td class="dim">Avg RSSI</td><td class="num">${st.avg_rssi == null ? "–" : st.avg_rssi + " dBm"}</td></tr><tr><td class="dim">Position</td><td class="num">${n.position && n.position.lat != null ? n.position.lat.toFixed(5) + ", " + n.position.lon.toFixed(5) : "–"}</td></tr>
+              <tr><td class="dim">Ch. util</td><td class="num">${fmt1(n.channel_util, "%")}</td></tr></tbody></table></div>
+            <div class="vcard wide"><h2>Recent messages</h2>${(d.messages || []).length ? d.messages.map(m => `<div class="msgrow"><div class="m">${escape(m.text)}</div><div class="r">${ago(m.ts)}<br>${snrSpan(m.snr)} ${m.rssi != null ? m.rssi + " dBm" : ""}</div></div>`).join("") : '<div class="empty">no messages logged from this node</div>'}</div>
+          </div>`;
+      }
+    },
+    channels: {
+      title: "Channels",
+      hours: 24,
+      async render() {
+        const h = this.hours, d = await (await fetch("api/channels?hours=" + h)).json();
+        viewTools.replaceChildren(hoursSel(h, H24, v => { VIEWS.channels.hours = v; route(); }));
+        const cells = {}; for (const r of d.hourly) (cells[r.channel] = cells[r.channel] || {})[r.hour] = r.count;
+        const chans = d.activity.map(a => a.channel);
+        const total = d.activity.reduce((a, c) => a + c.count, 0);
+        viewBody.innerHTML = `
+          <div class="kpis"><div class="kpi"><b>${total}</b><span>messages · ${h}h</span></div><div class="kpi"><b>${chans.length}</b><span>active channels</span></div><div class="kpi"><b>${d.mesh.active_nodes}</b><span>nodes · 1h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div>
+          <div class="vgrid">
+            <div class="vcard"><h2>Channel activity</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in this window</div>'}</div>
+            <div class="vcard"><h2>Top senders</h2>${d.top_senders.length ? `<table class="vt"><thead><tr><th>Node</th><th>Msgs</th><th>avg SNR</th></tr></thead><tbody>${d.top_senders.map(t => `<tr class="row" data-id="${escape(t.id)}"><td><b>${escape(t.short_name || t.id.slice(-4))}</b></td><td class="num">${t.message_count}</td><td class="num">${snrSpan(t.avg_snr)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody yet</div>'}</div>
+            <div class="vcard wide"><h2>Activity heatmap · hour of day × channel</h2>${chans.length ? heatmap(chans.map(c => ({ key: c, label: chName(c).replace(" (primary)", "") })), cells) : '<div class="empty">no data</div>'}</div>
+            <div class="vcard wide"><h2>Channel details</h2>${d.details.length ? `<table class="vt"><thead><tr><th>Channel</th><th>Messages</th><th>Senders</th><th>avg SNR</th><th>First</th><th>Last</th></tr></thead><tbody>${d.details.map(c => `<tr class="row" data-ch="${c.channel}"><td><b>${escape(chName(c.channel))}</b></td><td class="num">${c.message_count}</td><td class="num">${c.unique_senders}</td><td class="num">${snrSpan(c.avg_snr)}</td><td class="dim">${fmtTs(c.first_message)}</td><td class="dim">${ago(c.last_message)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no data</div>'}</div>
+          </div>`;
+        viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
+        viewBody.querySelectorAll("tr[data-ch]").forEach(tr => tr.onclick = () => { location.hash = "#/channel/" + tr.dataset.ch; });
+      }
+    },
+    channel: {
+      title: "Channel", hours: 24,
+      async render(ch) {
+        const h = this.hours, d = await (await fetch(`api/channel/${ch}?hours=${h}`)).json();
+        viewTitle.textContent = chName(+ch); viewTools.replaceChildren(hoursSel(h, H24, v => { VIEWS.channel.hours = v; route(); }));
+        const det = d.details || {};
+        viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>broadcasts · ${h}h</span></div><div class="kpi"><b>${det.unique_senders || 0}</b><span>senders</span></div><div class="kpi"><b>${fmt1(det.avg_snr, " dB")}</b><span>avg SNR</span></div></div>
+          <div class="vcard"><h2>Messages</h2>${d.messages.length ? d.messages.map(m => `<div class="msgrow"><div class="m"><b>${escape(m.short_name || m.sender_id.slice(-4))}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}<br>${snrSpan(m.snr)} ${m.rssi != null ? m.rssi + " dBm" : ""}</div></div>`).join("") : '<div class="empty">no broadcasts on this channel in the window</div>'}</div>`;
+      }
+    },
+    messages: { title: "Messages", soon: "conversations with the Den (DMs), with a time window" },
+    propagation: { title: "Propagation", soon: "hourly SNR trends, best & worst links, SNR distribution" },
+    topology: { title: "Topology", soon: "the neighbour graph from NeighborInfo + direct-hop inference" },
+    admin: { title: "Admin", soon: "live logs, exports, BBS config & content, service status" },
+    api: { title: "API", soon: "the /v2 API reference with try-it buttons" },
+  };
+  function setNav(view) { sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === view)); }
+  async function showView(name, arg) {
+    const v = VIEWS[name]; if (!v) return;
+    document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name);
+    viewTitle.textContent = v.title; viewTools.replaceChildren(); viewBody.innerHTML = '<div class="empty">loading…</div>';
+    if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
+    try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load: ${escape(e.message || e)}</div>`; }
+  }
+  function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => map.invalidateSize(), 50); }
+  function route() {
+    const h = location.hash || "#/", m = h.match(/^#\/([a-z]+)(?:\/(.+))?/);
+    const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;
+    if (name === "home" || h === "#/") { closeView(); return; }
+    if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } setNav("coverage"); return; }
+    if (name === "replay") { closeView(); setNav("replay"); if (!document.body.classList.contains("replaying")) tlEnterReplay(0); return; }
+    if (name === "cat") { closeView(); setNav("cat"); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
+    showView(name, arg);
+  }
+  window.addEventListener("hashchange", route);
+  route();
+
   function escape(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 })();

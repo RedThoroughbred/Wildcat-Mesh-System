@@ -1,5 +1,6 @@
 /* Observatory v2 — dark mission-control glass over a full-bleed map. */
 :root {
+  --rail: 196px;              /* sidebar width; the left-anchored panels shift by it */
   --bg: #0b0f14;
   --glass: rgba(16, 22, 30, 0.62);
   --glass-strong: rgba(16, 22, 30, 0.82);
@@ -89,7 +90,7 @@ body.replaying .feed-tabs .ftab.on::after { content: " · replay"; color: var(--
 body.replaying .replay-badge { display: block; }
 
 @media (max-width: 1180px) and (min-width: 761px) {   /* narrow desktops / tablets: park it bottom-left above the legend */
-  .timeline { left: 12px; transform: none; width: 360px; bottom: 50px; }
+  .timeline { left: calc(12px + var(--rail) + 12px); transform: none; width: 360px; bottom: 50px; }
   .card:not([hidden]) ~ .timeline { display: none; }
 }
 
@@ -175,7 +176,7 @@ body.replaying .replay-badge { display: block; }
 .link-line.hot { stroke-width: 3; }
 
 /* ---- node card ---- */
-.card { left: 12px; bottom: 12px; width: 340px; padding: 14px 16px 12px; }
+.card { left: calc(12px + var(--rail) + 12px); bottom: 12px; width: 340px; padding: 14px 16px 12px; }
 .card .close { position: absolute; top: 6px; right: 10px; background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; }
 .card-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
 .gauge { position: relative; width: 64px; height: 64px; flex: none; }
@@ -215,7 +216,7 @@ body.replaying .replay-badge { display: block; }
 .mini:hover { border-color: var(--terracotta); }
 
 /* ---- layers panel ---- */
-.layers { top: 84px; left: 12px; width: 250px; padding: 10px 12px; font-size: 12.5px; }
+.layers { top: 84px; left: calc(12px + var(--rail) + 12px); width: 250px; padding: 10px 12px; font-size: 12.5px; }
 .lay { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 0; }
 .lay input { accent-color: var(--terracotta); width: 15px; height: 15px; margin: 0; }
 .lay .hint { margin-left: auto; color: var(--muted); font-size: 11px; }
@@ -232,8 +233,8 @@ body.replaying .replay-badge { display: block; }
 @media (max-width: 760px) { .layers { top: auto; bottom: calc(38vh + 24px); width: auto; right: 12px; } .card:not([hidden]) ~ .layers { display: none; } }
 
 /* ---- legend ---- */
-.legend { left: 12px; bottom: 12px; display: flex; gap: 12px; padding: 8px 12px; color: var(--muted); font-size: 11px; }
-.card:not([hidden]) ~ .legend { bottom: auto; top: 84px; left: 274px; }   /* beside the layers panel, not under it */
+.legend { left: calc(12px + var(--rail) + 12px); bottom: 12px; display: flex; gap: 12px; padding: 8px 12px; color: var(--muted); font-size: 11px; }
+.card:not([hidden]) ~ .legend { bottom: auto; top: 84px; left: calc(12px + var(--rail) + 12px + 262px); }   /* beside the layers panel, not under it */
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .sw.base { background: var(--terracotta); box-shadow: 0 0 6px var(--terracotta); } .sw.on { background: var(--on); } .sw.warm { background: var(--warm); } .sw.cold { background: var(--cold); }
 .sw.link { border-radius: 2px; height: 3px; width: 16px; background: var(--link); vertical-align: 2px; }
@@ -250,6 +251,17 @@ body.replaying .replay-badge { display: block; }
   .status span:last-child { display: none; }
   .install { padding: 5px 9px; font-size: 11px; }
   .timeline, .replay-badge { display: none !important; }
+  :root { --rail: 0px; }
+  .menu-btn { display: inline-block; }
+  .sidebar { top: 0; bottom: 0; left: 0; width: 240px; border-radius: 0 18px 18px 0; transform: translateX(-110%); transition: transform .28s cubic-bezier(.2,.8,.2,1); z-index: 2000; padding-top: calc(16px + env(safe-area-inset-top)); }
+  .sidebar.open { transform: none; }
+  .drawer-scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1900; opacity: 0; pointer-events: none; transition: opacity .28s; }
+  .drawer-scrim.open { opacity: 1; pointer-events: auto; }
+  .view { top: calc(88px + env(safe-area-inset-top)); left: 0; right: 0; bottom: 0; border-radius: 18px 18px 0 0; }
+  .view-body { padding: 10px 12px calc(16px + env(safe-area-inset-bottom)); }
+  .twrap { max-height: none; }
+  .card { left: 8px; }
+  .layers { left: 8px; }
   .tool { width: 30px; height: 30px; font-size: 13px; }
   .feed { top: auto; left: 0; right: 0; bottom: 0; width: auto; border-radius: 18px 18px 0 0; border-bottom: 0;
           padding-bottom: env(safe-area-inset-bottom); transition: height .32s cubic-bezier(.2,.8,.2,1); }

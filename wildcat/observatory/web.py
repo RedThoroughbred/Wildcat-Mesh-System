@@ -80,6 +80,98 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             return jsonify({"error": "unknown node"}), 404
         return jsonify(d)
 
+    # ---- the v1 pages' data, v2-native (wildcat/observatory/queries.py) ---------------------
+    from . import queries as Q
+
+    def _db() -> str:
+        return str(bridge.cfg.database.path)
+
+    def _hours(default: int, cap: int = 24 * 90) -> int:
+        from flask import request
+        try:
+            return max(1, min(cap, int(request.args.get("hours", default))))
+        except ValueError:
+            return default
+
+    @bp.route("/api/nodes")
+    def api_nodes():
+        """Every known node: the live roster row merged with its message statistics."""
+        stats = Q.node_stats(_db())
+        with bridge.state.lock:
+            roster = {k: dict(v) for k, v in bridge.state.roster.items()}
+        for nid, st in stats.items():
+            row = roster.setdefault(nid, {"id": nid, "proto": None, "short_name": st.get("short_name") or nid[-4:],
+                                          "long_name": st.get("long_name"), "hw": st.get("hw"), "role": st.get("role"),
+                                          "position": None, "hops_away": None, "snr": None, "battery": None, "voltage": None,
+                                          "last_heard": st.get("last_seen")})
+            row["stats"] = {k: st[k] for k in ("message_count", "first_seen", "last_seen", "avg_snr", "best_snr", "worst_snr", "avg_rssi")}
+        return jsonify({"my_id": bridge.state.my_id, "nodes": list(roster.values()), "mesh": Q.mesh_stats(_db())})
+
+    @bp.route("/api/node/<nid>/full")
+    def api_node_full(nid):
+        from .bridge import node_detail
+        d = node_detail(bridge.state, _db(), nid, 24 * 7)
+        if d is None:
+            st = Q.node_stats(_db()).get(nid)
+            if st is None:
+                return jsonify({"error": "unknown node"}), 404
+            d = {"node": {"id": nid, "short_name": st.get("short_name") or nid[-4:], "long_name": st.get("long_name"),
+                          "hw": st.get("hw"), "role": st.get("role"), "position": None, "last_heard": st.get("last_seen")},
+                 "signal": [], "telemetry": [], "packets": [], "counts": {"signal": 0, "telemetry": 0, "packets_24h": 0}}
+        d["stats"] = Q.node_stats(_db()).get(nid)
+        d["messages"] = Q.node_messages(_db(), nid)
+        d["reliability"] = Q.node_reliability(_db(), nid)
+        return jsonify(d)
+
+    @bp.route("/api/channels")
+    def api_channels():
+        h = _hours(24)
+        return jsonify({"hours": h, "mesh": Q.mesh_stats(_db()), "activity": Q.channel_activity(_db(), h),
+                        "details": Q.channel_details(_db(), h), "top_senders": Q.top_senders(_db(), h),
+                        "hourly": Q.hourly_activity(_db(), h)})
+
+    @bp.route("/api/channel/<int:channel>")
+    def api_channel(channel):
+        h = _hours(24)
+        return jsonify({"channel": channel, "hours": h, "messages": Q.channel_messages(_db(), channel, h),
+                        "details": next((d for d in Q.channel_details(_db(), h) if d["channel"] == channel), None)})
+
+    @bp.route("/api/propagation")
+    def api_propagation():
+        from flask import request
+        try:
+            days = max(1, min(90, int(request.args.get("days", 7))))
+        except ValueError:
+            days = 7
+        return jsonify({"days": days, "hourly": Q.hourly_snr_trends(_db(), days), **Q.best_worst(_db(), days),
+                        "distribution": Q.snr_distribution(_db(), days)})
+
+    @bp.route("/api/messages")
+    def api_messages():
+        h = _hours(168)
+        return jsonify({"hours": h, "my_id": bridge.state.my_id, "messages": Q.bbs_messages(_db(), bridge.state.my_id, h)})
+
+    @bp.route("/api/topology")
+    def api_topology():
+        with bridge.state.lock:
+            live = list(bridge.state.links.values())
+        return jsonify({"edges": Q.neighbor_edges(_db()), "live": live})
+
+    @bp.route("/api/logs")
+    def api_logs():
+        from flask import request
+        kind = request.args.get("type", "messages")
+        try:
+            limit = int(request.args.get("limit", 100))
+        except ValueError:
+            limit = 100
+        return jsonify({"type": kind, "rows": Q.recent_logs(_db(), kind, limit)})
+
+    @bp.route("/api/dashboard")
+    def api_dashboard():
+        return jsonify({"mesh": Q.mesh_stats(_db()), "activity": Q.channel_activity(_db(), 24),
+                        "low_battery": Q.low_battery(_db()), "top": Q.top_senders(_db(), 24, 5)})
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state
