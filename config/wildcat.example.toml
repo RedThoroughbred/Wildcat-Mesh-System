@@ -1,0 +1,79 @@
+# config/wildcat.toml — THE one config file for The Den (Wildcat Mesh v2).
+#
+#   cp config/wildcat.example.toml config/wildcat.toml   # then edit
+#   wildcat config validate                              # check it
+#   wildcat doctor                                       # check everything else
+#
+# Every key has a default. Delete a line (or a whole [table]) and you get the
+# stock value — a missing [bbs.menu] gives you the standard Wildcat menu, it
+# does NOT crash the BBS. Bad values are reported at boot with the table and
+# key name, and the service refuses to start.
+#
+# Relative paths resolve against the repo root (the folder above config/),
+# never against the current working directory.
+#
+# Resolution order: --config flag → $WILDCAT_CONFIG → <repo>/config/wildcat.toml
+# → /etc/wildcat/wildcat.toml → legacy <repo>/bbs/config.ini (auto-migrated,
+# with a warning). Run `wildcat config path` to see which one wins.
+
+[radio]
+type = "tcp"               # "tcp" (ESP32 nodes over Wi-Fi/Ethernet) or "serial" (USB)
+host = "192.168.86.37"     # tcp only. `wildcat doctor` tells you when this goes stale.
+# port = "/dev/ttyUSB0"    # serial only; omit to auto-detect a single USB node
+# tcp_port = 4403          # Meshtastic's API port — leave it
+channel_index = 0          # which channel the BBS answers on (0 = primary)
+hop_limit = 3              # leave at 3; raising it costs everyone airtime
+
+[mqtt]                     # local Mosquitto bus — Phase 1 step 5 (meshd). Off until then.
+enabled = false
+host = "localhost"
+port = 1883
+topic_prefix = "wildcat"   # topics become wildcat/rx/text, wildcat/tx, …
+
+[bbs]
+name = "Wildcat TC² BBS — Northern Kentucky Mesh"
+sync_nodes = []            # other TC²-BBS nodes to sync mail/bulletins with, e.g. ["!17d7e4b7"]
+allowed_nodes = []         # nodes allowed to post to the Urgent board; [] = anyone
+# content_dir = "bbs"      # where messages.json / fortunes.txt / trivia.txt live
+# weather_api_key = ""     # OpenWeatherMap key for [W]eather; blank = built-in legacy key
+
+[bbs.menu]                 # omit this whole table for the stock menus
+main = ["W", "N", "R", "Q", "G", "B", "U", "X"]   # [W]eather [N]etwork [R]esources [Q]uote [G]ames [B]ulletins [U]tilities E[X]it
+bbs = ["M", "B", "C", "J", "X"]                    # [M]ail [B]ulletins [C]hannel dir [J]S8Call E[X]it
+utilities = ["S", "F", "W", "X"]                   # [S]tats [F]ortune [W]all of Shame E[X]it
+
+# [bbs.js8call]            # optional JS8Call bridge; needs BOTH host and port to turn on
+# host = "192.168.1.100"
+# port = 2442
+# db_file = "js8call.db"
+# groups = ["@GRP1", "@GRP2"]
+# store_messages = true
+# urgent_groups = ["@URGNT"]
+
+[database]
+path = "shared/bulletins.db"   # one SQLite file shared by every Den service
+busy_timeout_ms = 5000         # several writers, one file: wait instead of "database is locked"
+wal = true
+
+[observatory]
+host = "0.0.0.0"
+port = 5000
+debug = false              # true exposes the Werkzeug debugger (remote code exec) to the LAN. Don't.
+# secret_key = "change-me" # Flask session key
+refresh_interval = 5
+max_recent_messages = 20
+active_node_threshold = 3600
+bbs_node_id = "!9e766b18"  # the BBS radio's node id, for the "BBS conversations" view
+
+[brain]                    # Ask the Cat — Phase 2. Validated now so the file format is settled.
+enabled = false
+trigger_prefix = "?"
+persona = "Bobcat"
+max_reply_chars = 320      # ≈ 2 LoRa packets
+max_chunks = 3             # 1–5
+per_node_per_hour = 6
+per_node_per_day = 30
+global_per_hour = 40
+max_channel_util_pct = 20  # stop answering strangers when the node reports airtime above this
+providers = ["anthropic", "ollama", "canned"]   # tried in order
+admin_nodes = []           # e.g. ["!8880xxxx", "!668cxxxx"] — STAY, GO

@@ -1,0 +1,3 @@
+# One-shot install for the Pi: pip install -r requirements.txt
+# (equivalent to `pip install -e '.[den]'`, plus the editable wildcat package)
+-e .[den]

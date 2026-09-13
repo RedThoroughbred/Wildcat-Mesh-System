@@ -35,3 +35,10 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# local dev venv / tooling
+.venv/
+.pytest_cache/
+
+# live config (contains node IPs / API keys) — copy from config/wildcat.example.toml
+config/wildcat.toml
