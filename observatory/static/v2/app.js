@@ -359,12 +359,14 @@
   window.addEventListener("appinstalled", () => { $("install").hidden = true; });
   const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-  try {
-    if (isIOS && !standalone && !localStorage.getItem("v2.iosHint")) {
-      setTimeout(() => { $("ios-hint").hidden = false; setTimeout(() => { $("ios-hint").hidden = true; }, 12000); }, 4000);
-    }
-  } catch (e) {}
-  $("ios-hint-close").onclick = () => { $("ios-hint").hidden = true; try { localStorage.setItem("v2.iosHint", "1"); } catch (e) {} };
+  function dismissHint() { $("ios-hint").hidden = true; try { localStorage.setItem("v2.iosHint", "1"); } catch (e) {} }
+  let hintSeen = false;
+  try { hintSeen = localStorage.getItem("v2.iosHint") === "1"; } catch (e) {}
+  if (isIOS && !standalone && !hintSeen) {
+    setTimeout(() => { $("ios-hint").hidden = false; setTimeout(dismissHint, 15000); }, 4000);
+  }
+  $("ios-hint-close").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); dismissHint(); });
+  $("ios-hint-close").addEventListener("touchend", (e) => { e.preventDefault(); dismissHint(); }, { passive: false });
 
   const SHEET = ["peek", "half", "full"];
   const feedEl = $("feed");

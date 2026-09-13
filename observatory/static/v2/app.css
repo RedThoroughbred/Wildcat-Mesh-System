@@ -20,6 +20,7 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* our display:flex/grid rules must never resurrect a hidden element */
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font); overflow: hidden; }
 #map { position: fixed; inset: 0; background: var(--bg); }
 .leaflet-container { background: var(--bg); font: inherit; }
@@ -62,7 +63,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .install { background: rgba(224,112,75,.18); color: #ffd2c2; border: 1px solid rgba(224,112,75,.5); border-radius: 999px; padding: 6px 12px; font: 700 12px var(--font); cursor: pointer; white-space: nowrap; }
 .install:hover { background: rgba(224,112,75,.3); }
 .ios-hint { top: calc(84px + env(safe-area-inset-top)); left: 12px; right: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; z-index: 1200; }
-.ios-hint button { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; }
+.ios-hint button { margin-left: auto; flex: none; width: 44px; height: 44px; margin-right: -8px; border-radius: 12px; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--text); font-size: 22px; line-height: 1; cursor: pointer; }
+.ios-hint button:active { background: rgba(255,255,255,.14); }
 .share-glyph { display: inline-block; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
 .handle { display: none; }
 
