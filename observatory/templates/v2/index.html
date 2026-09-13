@@ -76,20 +76,20 @@
 </div>
 
 <nav class="glass sidebar" id="sidebar" aria-label="sections">
-  <a href="#/" data-view="home"><i>◉</i><span>Live map</span></a>
-  <a href="#/dashboard" data-view="dashboard"><i>▦</i><span>Dashboard</span></a>
-  <a href="#/nodes" data-view="nodes"><i>⌘</i><span>Nodes</span></a>
-  <a href="#/channels" data-view="channels"><i>≋</i><span>Channels</span></a>
-  <a href="#/messages" data-view="messages"><i>✉</i><span>Messages</span></a>
-  <a href="#/propagation" data-view="propagation"><i>∿</i><span>Propagation</span></a>
-  <a href="#/topology" data-view="topology"><i>⬡</i><span>Topology</span></a>
-  <a href="#/coverage" data-view="coverage"><i>◍</i><span>Coverage</span></a>
-  <a href="#/health" data-view="health"><i>♥</i><span>Health<b class="nav-badge" id="nav-alerts" hidden></b></span></a>
-  <a href="#/replay" data-view="replay"><i>▶</i><span>Replay</span></a>
-  <a href="#/cat" data-view="cat"><i>🐈</i><span>Ask the Cat</span></a>
+  <a href="#/" data-view="home" title="Live map"><i>◉</i><span>Live map</span></a>
+  <a href="#/dashboard" data-view="dashboard" title="Dashboard"><i>▦</i><span>Dashboard</span></a>
+  <a href="#/nodes" data-view="nodes" title="Nodes"><i>⌘</i><span>Nodes</span></a>
+  <a href="#/channels" data-view="channels" title="Channels"><i>≋</i><span>Channels</span></a>
+  <a href="#/messages" data-view="messages" title="Messages"><i>✉</i><span>Messages</span></a>
+  <a href="#/propagation" data-view="propagation" title="Propagation"><i>∿</i><span>Propagation</span></a>
+  <a href="#/topology" data-view="topology" title="Topology"><i>⬡</i><span>Topology</span></a>
+  <a href="#/coverage" data-view="coverage" title="Coverage"><i>◍</i><span>Coverage</span></a>
+  <a href="#/health" data-view="health" title="Health"><i>♥</i><span>Health<b class="nav-badge" id="nav-alerts" hidden></b></span></a>
+  <a href="#/replay" data-view="replay" title="Replay"><i>▶</i><span>Replay</span></a>
+  <a href="#/cat" data-view="cat" title="Ask the Cat"><i>🐈</i><span>Ask the Cat</span></a>
   <div class="sb-gap"></div>
-  <a href="#/admin" data-view="admin" class="admin-only"><i>⚙</i><span>Admin</span></a>
-  <a href="#/api" data-view="api"><i>{}</i><span>API</span></a>
+  <a href="#/admin" data-view="admin" class="admin-only" title="Admin"><i>⚙</i><span>Admin</span></a>
+  <a href="#/api" data-view="api" title="API"><i>{}</i><span>API</span></a>
   <div class="sb-hint">⌘K find · / find · Esc back</div>
   <button class="sb-collapse" id="sb-collapse" title="collapse the sidebar" aria-label="collapse the sidebar">‹ collapse</button>
 </nav>
@@ -162,7 +162,7 @@
     <label class="lay"><input type="checkbox" id="cov-direct" checked> <span>heard direct only</span></label>
     <label class="lay"><input type="checkbox" id="cov-bins" checked> <span>hex bins (≥3 samples)</span></label>
     <div class="cov-scale"><i style="background:#ff6b6b"></i>&lt;−8<i style="background:#ff9a5c"></i>−8…−3<i style="background:#f2c04e"></i>−3…3<i style="background:#b6e05a"></i>3…8<i style="background:#58e39c"></i>&gt;8 dB</div>
-    <div class="cov-summary" id="cov-summary">loading…</div>
+    <div class="cov-summary" id="cov-summary">turn on to see where the base actually hears the mesh</div>
   </div>
   <div class="lay-sub">
     <label class="lay"><input type="checkbox" id="rings-on"> <span>Range rings</span><span class="hint">1 · 2 · 5 · 10 km</span></label>
