@@ -138,7 +138,16 @@
   function refreshTimes() { for (const el of list.querySelectorAll("[data-ts]")) el.textContent = ago(+el.dataset.ts); }
 
   // ---------------------------------------------------------------- stats + status
-  function setStat(id, v, bump) { const el = $(id); if (el.textContent !== String(v)) { el.textContent = v; if (bump) { const s = el.parentElement; s.classList.remove("bump"); void s.offsetWidth; s.classList.add("bump"); } } }
+  function setStat(id, v, bump) { const el = $(id); if (el.textContent !== String(v)) { el.textContent = v; el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick"); if (bump) { const s = el.parentElement; s.classList.remove("bump"); void s.offsetWidth; s.classList.add("bump"); } } }
+  const rateHist = [];   // per-minute counts for the tiny sparkline in the top bar
+  function rateSpark() {
+    const t = now(), cur = S.times.filter(x => x >= t - 60).length;
+    if (!rateHist.length || t - rateHist[rateHist.length - 1].t >= 30) rateHist.push({ t, n: cur }); else rateHist[rateHist.length - 1].n = cur;
+    while (rateHist.length > 24) rateHist.shift();
+    const svg = $("s-rate-spark"); if (!svg || rateHist.length < 2) return;
+    const max = Math.max(1, ...rateHist.map(r => r.n));
+    svg.innerHTML = `<polyline points="${rateHist.map((r, i) => `${(i / (rateHist.length - 1) * 58 + 1).toFixed(1)},${(13 - r.n / max * 11).toFixed(1)}`).join(" ")}"/>`;
+  }
   function refreshStats(stats) {
     const t = now(), hour = t - 3600, R = Object.values(S.roster);
     setStat("s-nodes", R.length);
@@ -148,6 +157,7 @@
     setStat("s-rate", stats && stats.per_min != null && !S.times.length ? Math.round(stats.per_min) : S.times.length, true);
     const me = S.roster[S.myId];
     setStat("s-util", me && me.channel_util != null ? me.channel_util.toFixed(1) + "%" : "–");
+    rateSpark();
   }
   function setStatus(bus, meshd) {
     const dot = $("dot-bus"), txt = $("status-text"), st = meshd && meshd.state;
@@ -521,7 +531,9 @@
   palList.addEventListener("click", (e) => { const el = e.target.closest(".pal"); if (el) palGo(+el.dataset.i); });
   pal.addEventListener("click", (e) => { if (e.target === pal) palClose(); });
   $("palette-btn").addEventListener("click", palOpen);
-  document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape" && !pal.hidden) palClose(); });
+  document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape") { if (!pal.hidden) palClose(); else if (document.body.classList.contains("viewing")) location.hash = "#/"; else if (!$("card").hidden) $("card-close").click(); } });
+  document.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr.row")) { e.preventDefault(); e.target.click(); } });
+  new MutationObserver(() => { document.querySelectorAll("tr.row:not([tabindex])").forEach(tr => tr.setAttribute("tabindex", "0")); }).observe(viewBody, { childList: true, subtree: true });
 
   // ---------------------------------------------------------------- range rings around the base
   const ringLayer = L.layerGroup();
@@ -990,7 +1002,9 @@
   async function showView(name, arg) {
     const v = VIEWS[name]; if (!v) return;
     document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name); $("health-bar").hidden = true;
-    viewTitle.textContent = v.title; viewTools.replaceChildren(); viewBody.innerHTML = '<div class="empty">loading…</div>';
+    viewTitle.textContent = v.title; viewTools.replaceChildren();
+    viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
+    viewBody.scrollTop = 0;
     if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
     try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load: ${escape(e.message || e)}</div>`; }
   }

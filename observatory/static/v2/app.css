@@ -403,3 +403,59 @@ table.vt td.dim { color: var(--muted); }
   .leaflet-control-attribution { font-size: 9px; }
 }
 @media (display-mode: standalone) { body { -webkit-user-select: none; user-select: none; } .install { display: none !important; } }
+
+
+/* =====================================================================================
+   Polish pass 1 — consistency, accessibility, loading + empty states, signature motion
+   ===================================================================================== */
+:focus-visible { outline: 2px solid rgba(224,112,75,.85); outline-offset: 2px; border-radius: 6px; }
+button, .chip, .tool, .link-btn, .install, .tl-btn, .ftab, .mini { transition: background .18s, border-color .18s, color .18s, transform .12s; }
+button:active, .link-btn:active, .chip:active, .tool:active { transform: scale(.96); }
+.skip { position: fixed; top: -40px; left: 12px; z-index: 5000; background: var(--terracotta); color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: 700; }
+.skip:focus { top: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; }
+  .pulse, .ripple { display: none; }
+}
+/* cards: quiet lift on hover (pointer devices only) */
+@media (hover: hover) { .vcard { transition: border-color .2s, transform .2s, box-shadow .2s; } .vcard:hover { border-color: rgba(255,255,255,.14); box-shadow: 0 8px 30px rgba(0,0,0,.25); } }
+/* stats: number changes count up */
+.stat .v.tick { animation: tick .45s cubic-bezier(.2,.8,.2,1); }
+@keyframes tick { 0% { transform: translateY(6px); opacity: .3; } 100% { transform: none; opacity: 1; } }
+/* skeleton loading */
+.skel { display: grid; gap: 12px; }
+.skel .k { height: 64px; border-radius: 12px; background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+.skel .k.tall { height: 200px; }
+.skel .row { display: flex; gap: 8px; } .skel .row .k { flex: 1; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+/* empty states: a glyph + a sentence + (optionally) a nudge */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 22px 8px; color: var(--muted); font-size: 13px; }
+.empty::before { content: "◌"; font-size: 26px; line-height: 1; opacity: .5; }
+.empty.radar::before { content: ""; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.15); background: conic-gradient(from 0deg, rgba(88,227,156,0) 0deg, rgba(88,227,156,.55) 60deg, rgba(88,227,156,0) 61deg); animation: sweep 2.2s linear infinite; opacity: 1; }
+@keyframes sweep { to { transform: rotate(360deg); } }
+.feed-empty { display: grid; place-items: center; }
+.feed-empty::after { content: "Listening on the bus"; display: none; }
+/* the base node: a slow radar sweep — the Den's signature */
+.node.base::before { content: ""; position: absolute; inset: -22px; border-radius: 50%; background: conic-gradient(from 0deg, rgba(224,112,75,0) 0deg, rgba(224,112,75,.35) 50deg, rgba(224,112,75,0) 52deg); animation: sweep 4s linear infinite; pointer-events: none; }
+/* online nodes: soft halo */
+.node.on::before { content: ""; position: absolute; inset: -5px; border-radius: 50%; background: radial-gradient(circle, rgba(88,227,156,.35), rgba(88,227,156,0) 70%); pointer-events: none; }
+/* vignette that frames the glass over the map */
+#map::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 400; background: radial-gradient(ellipse at center, rgba(11,15,20,0) 55%, rgba(11,15,20,.55) 100%); }
+/* feed: kind glyphs */
+.pkt .kind::before { content: "·"; margin-right: 4px; }
+.pkt[data-kind="text"] .kind::before { content: "✉"; } .pkt[data-kind="position"] .kind::before { content: "◎"; } .pkt[data-kind="telemetry"] .kind::before { content: "▮"; }
+.pkt[data-kind="neighbors"] .kind::before { content: "⬡"; } .pkt[data-kind="nodeinfo"] .kind::before { content: "ⓘ"; } .pkt[data-kind="encrypted"] .kind::before { content: "🔒"; }
+.pkt:hover { border-color: rgba(255,255,255,.12); }
+/* tables: rows respond, keyboard focusable */
+table.vt tr.row:focus-visible td { background: rgba(224,112,75,.12); }
+table.vt tr.row td:first-child { border-left: 2px solid transparent; } table.vt tr.row:hover td:first-child { border-left-color: var(--terracotta); }
+/* sidebar: active pill slides, shortcut hint */
+.sidebar a { position: relative; transition: background .18s, color .18s; }
+.sidebar a.on::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--terracotta); box-shadow: 0 0 10px var(--terracotta); }
+.sb-hint { color: var(--cold); font: 11px var(--mono); padding: 8px 10px 4px; white-space: nowrap; }
+@media (max-width: 1180px) { .sb-hint { display: none; } }
+/* view header sticky feel on scroll */
+.view-body { scroll-behavior: smooth; }
+/* stat tile: inline sparkline for pkts/min */
+.stat .spark-mini { width: 60px; height: 14px; display: block; margin-top: 2px; }
+.stat .spark-mini polyline { fill: none; stroke: var(--on); stroke-width: 1.5; }

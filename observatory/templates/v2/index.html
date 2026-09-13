@@ -17,7 +17,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}?v={{ v }}">
 </head>
 <body{% if public %} class="public"{% endif %} data-public="{{ 'yes' if public else 'no' }}">
-<div id="map" aria-label="Live mesh map"></div>
+<a class="skip" href="#feed-list">Skip to live feed</a>
+<div id="map" aria-label="Live mesh map" role="application"></div>
 
 <header class="glass topbar">
   <div class="brand">
@@ -32,7 +33,7 @@
     <div class="stat"><span class="v" id="s-heard">–</span><span class="l">heard 1h</span></div>
     <div class="stat"><span class="v" id="s-map">–</span><span class="l">on map</span></div>
     <div class="stat"><span class="v" id="s-nodes">–</span><span class="l">nodes</span></div>
-    <div class="stat"><span class="v" id="s-rate">–</span><span class="l">pkts/min</span></div>
+    <div class="stat"><span class="v" id="s-rate">–</span><span class="l">pkts/min</span><svg class="spark-mini" id="s-rate-spark" viewBox="0 0 60 14" preserveAspectRatio="none" aria-hidden="true"></svg></div>
     <div class="stat"><span class="v" id="s-util">–</span><span class="l">ch util</span></div>
   </div>
   <div class="status" id="status" title="bus / radio status">
@@ -40,9 +41,9 @@
   </div>
   <div class="tools">
     <button class="tool alert-btn" id="alerts" title="mesh health" hidden><span id="alerts-n">0</span></button>
-    <button class="tool" id="palette-btn" title="Find a node (⌘K or /)">⌕</button>
+    <button class="tool" id="palette-btn" title="Find a node (⌘K or /)" aria-label="find a node">⌕</button>
     <button class="tool" id="sound" title="Chime on new messages (off)" aria-pressed="false">🔕</button>
-    <button class="tool" id="share" title="Copy a read-only public link">⇗</button>
+    <button class="tool" id="share" title="Copy a read-only public link" aria-label="copy public link">⇗</button>
     <span class="public-badge" title="Read-only public view">public view</span>
   </div>
   <button class="install" id="install" hidden title="Install as an app">⤓ Install</button>
@@ -88,6 +89,7 @@
   <div class="sb-gap"></div>
   <a href="#/admin" data-view="admin" class="admin-only"><i>⚙</i><span>Admin</span></a>
   <a href="#/api" data-view="api"><i>{}</i><span>API</span></a>
+  <div class="sb-hint">⌘K find · / find · Esc back</div>
 </nav>
 <div class="drawer-scrim" id="drawer-scrim"></div>
 
@@ -110,8 +112,8 @@
       <button class="chip" data-kind="nodeinfo">info</button>
     </div>
   </div>
-  <div class="feed-list" id="feed-list"></div>
-  <div class="feed-empty" id="feed-empty">Listening on the bus…</div>
+  <div class="feed-list" id="feed-list" role="log" aria-live="polite" aria-relevant="additions" tabindex="-1"></div>
+  <div class="feed-empty" id="feed-empty"><div class="empty radar">Listening on the bus…<br><span style="font-size:11px">packets appear here the moment the radio hears them</span></div></div>
   <div class="cat" id="cat" hidden>
     <div class="cat-intro">
       <div class="cat-face">🐈</div>
