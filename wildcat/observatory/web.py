@@ -1,7 +1,9 @@
 """The /v2 blueprint + Socket.IO namespace. Mounted by observatory/app.py."""
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template
+import os
+
+from flask import Blueprint, jsonify, render_template, send_from_directory
 
 from .bridge import NAMESPACE, Bridge
 
@@ -12,6 +14,23 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     @bp.route("/")
     def index():
         return render_template("v2/index.html")
+
+    # PWA plumbing: the manifest and the service worker must live under the /v2/ scope.
+    _static = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                           "observatory", "static", "v2")
+
+    @bp.route("/manifest.webmanifest")
+    def manifest():
+        r = send_from_directory(_static, "manifest.webmanifest", mimetype="application/manifest+json")
+        r.headers["Cache-Control"] = "no-cache"
+        return r
+
+    @bp.route("/sw.js")
+    def service_worker():
+        r = send_from_directory(_static, "sw.js", mimetype="application/javascript")
+        r.headers["Cache-Control"] = "no-cache"
+        r.headers["Service-Worker-Allowed"] = "/v2/"
+        return r
 
     @bp.route("/api/state")
     def api_state():

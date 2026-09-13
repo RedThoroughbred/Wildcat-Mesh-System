@@ -107,7 +107,7 @@
 
   // ---------------------------------------------------------------- feed
   const list = $("feed-list");
-  function addPacket(p, fresh) {
+  let addPacket = function (p, fresh) {
     const el = document.createElement("div");
     el.className = "pkt" + (fresh ? " fresh" : ""); el.dataset.kind = p.kind;
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
@@ -121,7 +121,7 @@
     list.prepend(el);
     if (fresh) setTimeout(() => el.classList.remove("fresh"), 1500);
     while (list.children.length > 150) list.lastChild.remove();
-  }
+  };
   $("filters").addEventListener("click", (e) => {
     const b = e.target.closest(".chip"); if (!b) return;
     S.filter = b.dataset.kind;
@@ -348,6 +348,44 @@
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
   sock.on("disconnect", () => setStatus(false, null));
   setInterval(() => { refreshAges(); refreshLinks(); refreshTimes(); refreshStats(); if (S.selected) showCard(S.selected); }, 15000);
+
+  // ---------------------------------------------------------------- PWA: service worker, install, mobile sheet
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {}));
+  }
+  let deferredInstall = null;
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; $("install").hidden = false; });
+  $("install").addEventListener("click", async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $("install").hidden = true; });
+  window.addEventListener("appinstalled", () => { $("install").hidden = true; });
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  try {
+    if (isIOS && !standalone && !localStorage.getItem("v2.iosHint")) {
+      setTimeout(() => { $("ios-hint").hidden = false; }, 4000);
+    }
+  } catch (e) {}
+  $("ios-hint-close").onclick = () => { $("ios-hint").hidden = true; try { localStorage.setItem("v2.iosHint", "1"); } catch (e) {} };
+
+  const SHEET = ["peek", "half", "full"];
+  const feedEl = $("feed");
+  function setSheet(state) { feedEl.dataset.sheet = state; try { localStorage.setItem("v2.sheet", state); } catch (e) {} setTimeout(() => map.invalidateSize(), 340); }
+  $("sheet-handle").addEventListener("click", () => { const i = SHEET.indexOf(feedEl.dataset.sheet); setSheet(SHEET[(i + 1) % SHEET.length]); });
+  let touchY = null;
+  feedEl.addEventListener("touchstart", (e) => { if (e.target.closest(".feed-head, .handle")) touchY = e.touches[0].clientY; }, { passive: true });
+  feedEl.addEventListener("touchend", (e) => {
+    if (touchY == null) return; const dy = e.changedTouches[0].clientY - touchY; touchY = null;
+    const i = SHEET.indexOf(feedEl.dataset.sheet);
+    if (dy < -40 && i < 2) setSheet(SHEET[i + 1]); else if (dy > 40 && i > 0) setSheet(SHEET[i - 1]);
+  }, { passive: true });
+  try { const saved = localStorage.getItem("v2.sheet"); if (saved && SHEET.includes(saved)) feedEl.dataset.sheet = saved; } catch (e) {}
+  $("layers").addEventListener("click", (e) => {
+    if (window.innerWidth > 760) return;
+    if (!$("layers").classList.contains("open")) { e.preventDefault(); $("layers").classList.add("open"); }
+  });
+  document.addEventListener("click", (e) => { if (window.innerWidth <= 760 && !e.target.closest("#layers")) $("layers").classList.remove("open"); });
+  const feedTitle = document.querySelector(".feed-title");
+  const _addPacket = addPacket;
+  addPacket = function (p, fresh) { _addPacket(p, fresh); feedTitle.dataset.count = list.children.length + " pkts"; };
 
   function escape(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 })();

@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wildcat">
+<meta name="description" content="Live mesh command center — map, links, coverage, packets, from your own Den.">
+<link rel="manifest" href="{{ url_for('v2.manifest') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='v2/icons/apple-touch-icon.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='v2/icons/icon-192.png') }}">
 <title>Wildcat Mesh · The Den</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}">
@@ -29,9 +37,16 @@
   <div class="status" id="status" title="bus / radio status">
     <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
   </div>
+  <button class="install" id="install" hidden title="Install as an app">⤓ Install</button>
 </header>
 
-<aside class="glass feed" id="feed">
+<div class="glass ios-hint" id="ios-hint" hidden>
+  <span>Add Wildcat to your home screen: tap <b>Share</b> <span class="share-glyph">⎋</span> then <b>Add to Home Screen</b>.</span>
+  <button id="ios-hint-close" aria-label="dismiss">×</button>
+</div>
+
+<aside class="glass feed" id="feed" data-sheet="half">
+  <button class="handle" id="sheet-handle" aria-label="expand or collapse the feed"><i></i></button>
   <div class="feed-head">
     <div class="feed-title">Live<span class="live-dot"></span></div>
     <div class="filters" id="filters">

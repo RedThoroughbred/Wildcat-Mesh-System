@@ -164,12 +164,103 @@ observatory/static/v2/app.js + app.css   — vanilla JS, vendored Leaflet + Sock
 | 2 | **Coverage heatmap**: `rx_points` table + `/v2/api/coverage` + hex-bin layer with a toggle; Range Test packets tagged; import the 0.6-mile walk from `message_logs`/`position_logs` history so it renders on day one. | `/v2` layer toggle |
 | 3 | **Node cards done properly**: signal ring, battery + SNR/RSSI sparklines from `telemetry_logs`, last-heard pulse, hops-away; a nodes drawer with search. | `/v2` |
 | 4 | **Mesh health strip + alerts**: channel util / air-time TX gauges from the base's telemetry, packets/min history, low-battery + gone-quiet alerts. | `/v2` |
-| 5 | **Offline tiles** (cache a box around the base), **replay adapter**, **mobile polish pass**. | everywhere |
+| 5 | **PWA** (manifest + service worker + offline shell + tile cache) and the **mobile pass** — shipped; **cache-a-box** for tiles and a **replay adapter** follow. | everywhere |
 | 6 | **AI conversation view** when `brain` lands (Phase 2). | `/v2/brain` |
 
 v1 pages stay exactly as they are until v2 covers them; then `/` redirects.
 
-## 6. Non-goals / guard rails
+## 6. Roadmap (a) — Mobile: PWA now, native later
+
+**Now (shipped in this branch): an installable PWA.** `/v2` carries a web-app
+manifest (`/v2/manifest.webmanifest`, standalone display, Wildcat icons incl. a
+maskable one), a service worker (`/v2/sw.js`, scope `/v2/`) and iOS/Android
+home-screen metadata. What that buys, with no app store and no build step:
+
+- **Home-screen app** on iOS (Share → Add to Home Screen; the page shows a
+  one-time hint) and Android/desktop Chrome (an "Install" chip appears when the
+  browser offers it). Runs full-screen, dark status bar, safe-area aware.
+- **Offline shell**: the page, styles, scripts, vendored Leaflet/Socket.IO and
+  icons are served network-first with a cache fallback, so the app opens with
+  no connection. `/v2/api/state` and `/v2/api/coverage` are cached the same way,
+  so it opens showing the **last-known mesh** — the field-station case.
+- **Offline tiles, seeded by use**: every map tile you've looked at is cached
+  (capped LRU, 1500 tiles ≈ 25 MB). Phase 3 adds a one-time "cache this box"
+  action for the home area.
+- **Mobile layout**: the feed is a bottom sheet with peek / half / full states
+  (tap the handle or swipe), the layers panel collapses to a button, the stat
+  strip scrolls, the node card sits above the sheet. Verified at 375 × 812.
+
+**Limits of the PWA path** (honest): iOS gives PWAs no background execution
+and no push without the user adding it to the home screen (and even then push
+is iOS 16.4+ only); no Bluetooth/serial to a *phone-attached* radio; the
+"install" affordance is a browser convention people don't always know. For a
+community dashboard fed by a Den on the network, none of that matters — the
+phone is a viewer.
+
+**Later — native iOS/Android, what it would take.** The cheapest credible path
+is the one Repot uses: **Capacitor** wrapping this exact page (same HTML/JS,
+no rewrite), plus native plugins only where the web can't reach:
+
+1. *Push notifications* — "GO just came into range", "Lantern battery low",
+   "someone asked the Cat" — needs APNs/FCM and a tiny push relay in the Den
+   (the bridge already knows every event; ~200 lines + a device-token table).
+2. *Local radio* — talk to a phone-attached node over BLE (Meshtastic's BLE
+   API) so the app can be a **Den-less viewer** in the field: the same neutral
+   envelope, produced on-device. This is the piece that makes the app useful
+   with no infrastructure at all, and it's also the biggest lift (BLE plugin,
+   protobuf decode on device).
+3. *Background location* for automatic coverage walks (the phone as the GO node).
+4. App Store/Play plumbing: bundle ids, signing, review — a week of yak, well
+   understood from Repot.
+
+Order: (1) is a weekend and pays immediately; (2) is the real product; (3)–(4)
+follow (2). Nothing in the UI changes shape for any of it — that's the point of
+building the PWA first.
+
+## 7. Roadmap (b) — One Den, one map, one app for Meshtastic *and* MeshCore
+
+Northern Kentucky has both networks (Cincy Mesh on Meshtastic, OKI Mesh on
+MeshCore). They can't talk to each other on the air — different firmware,
+different routing, no sanctioned relay (WILDCAT_MESH_V2 §2.5) — but a *viewer*
+can watch both, and a *responder* can answer on whichever one asked.
+
+How it works in this architecture, with zero UI changes:
+
+```
+Meshtastic node ──serial/tcp──► meshd            ──┐
+                                                   ├──► wildcat/rx/*  (neutral envelope, proto tag)
+MeshCore companion ──serial──► meshcored (Phase 6) ──┘        │
+                                                   wildcat/nodes  (roster merged by id; ids never collide)
+                                                              │
+                                              observatory v2 ─┴─ one map, one feed, one coverage layer
+                                              bbs / brain ───── reply on wildcat/tx with {"proto": …}
+```
+
+1. **Second radio, second owner.** A MeshCore-flashed node (the spare Heltec, or
+   a dedicated board) on its own port; `wildcat meshcored` owns it exactly like
+   meshd owns 6b18 — one process per radio, both publishing the same envelope
+   with `proto: "meshcore"`. Config is one more table: `[meshcore] port = …`.
+2. **Roster merge.** MeshCore node ids are public-key prefixes; Meshtastic's are
+   `!xxxxxxxx`. The bridge already merges `wildcat/nodes` by string id, so both
+   populations coexist in one roster. The UI colors/glyphs markers by `proto`
+   (one CSS rule) and the feed shows a proto chip (already rendered when present).
+3. **Links and coverage** need nothing: MeshCore path info → `neighbors`;
+   received SNR/RSSI + a fresh fix → the same `rx_points` table. One coverage
+   map shows where *each* network reaches, filterable by proto.
+4. **Replies go back the right way.** `wildcat/tx` gains an optional `proto`
+   (default: the proto of the packet being answered); each radio owner drains
+   only its own. The BBS and the brain don't change — the adapter stamps it.
+5. **Etiquette stays enforced by construction.** Nothing crosses from one
+   network's `rx` to the other's `tx` unless a human builds an explicit gateway
+   (the one-way bulletin experiment in §2.5), and the UI stays read-only.
+
+What the community gets: one URL (or one home-screen app) that shows *both*
+meshes live — who's on, where coverage is, what's being said — and one BBS/AI
+that answers on both. Nobody has that today. The MeshCore adapter itself is
+~300 lines against the companion-radio protocol (the `meshcore` Python package
+speaks it); the schedule is Phase 6 in WILDCAT_MESH_V2.
+
+## 8. Non-goals / guard rails
 - No writes to the radio from the UI in v2.1 (read-only command center; sending
   is the BBS's/brain's job through `wildcat/tx`). A "send" affordance is a later,
   admin-gated feature.
