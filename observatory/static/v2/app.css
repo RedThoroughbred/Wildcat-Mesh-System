@@ -303,6 +303,11 @@ table.vt td.dim { color: var(--muted); }
 .bands .excellent { background: var(--on); } .bands .good { background: #b6e05a; } .bands .fair { background: var(--warm); } .bands .poor { background: #ff6b6b; } .bands .unknown { background: var(--cold); }
 .link-btn { background: rgba(255,255,255,.05); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font: 600 12px var(--font); cursor: pointer; text-decoration: none; }
 .link-btn:hover { border-color: var(--terracotta); }
+.topo { width: 100%; height: auto; display: block; }
+.topo .te { stroke: var(--link); stroke-width: 2; stroke-opacity: .7; } .topo .te.neighbor { stroke: #c78bff; }
+.topo .tn { cursor: pointer; } .topo .tn circle { stroke: rgba(0,0,0,.5); stroke-width: 2; } .topo .tn:hover circle { stroke: #fff; }
+.topo .tn text { font: 700 11px var(--font); fill: var(--text); paint-order: stroke; stroke: #0b0f14; stroke-width: 3px; }
+.vcard.urgent { border-color: rgba(255,107,107,.5); }
 
 @media (max-width: 1180px) and (min-width: 761px) {
   :root { --rail: 52px; }

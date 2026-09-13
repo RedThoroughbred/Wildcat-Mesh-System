@@ -746,7 +746,42 @@
         viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
       }
     },
-    topology: { title: "Topology", soon: "the neighbour graph from NeighborInfo + direct-hop inference" },
+    topology: {
+      title: "Topology",
+      async render() {
+        const d = await (await fetch("api/topology")).json();
+        const onMap = document.createElement("a"); onMap.className = "link-btn"; onMap.href = "#/"; onMap.textContent = "⌖ see links on the map"; viewTools.replaceChildren(onMap);
+        // edges: NeighborInfo reports (DB, 7 d) ∪ live links (bridge: neighbor + direct-hop inference)
+        const E = new Map();
+        for (const e of d.edges || []) { const k = [e.a, e.b].sort().join("|"); E.set(k, { a: e.a, b: e.b, snr: e.snr, kind: "neighbor", ts: e.ts }); }
+        for (const l of d.live || []) { const k = l.key; const cur = E.get(k); if (!cur) E.set(k, { a: l.a, b: l.b, snr: l.snr, kind: l.kind, ts: l.last }); else if (l.snr != null) cur.snr = l.snr; }
+        const edges = [...E.values()], ids = new Set(); edges.forEach(e => { ids.add(e.a); ids.add(e.b); }); if (S.myId) ids.add(S.myId);
+        const nodes = [...ids].map(id => ({ id, n: S.roster[id] || { id, short_name: id.slice(-4) } }));
+        const reporters = new Set((d.edges || []).map(e => e.a)).size, neighborEdges = edges.filter(e => e.kind === "neighbor").length, directEdges = edges.length - neighborEdges;
+        const density = nodes.length > 1 ? edges.length / (nodes.length * (nodes.length - 1) / 2) : 0;
+        const online = nodes.filter(x => ageClass(x.n) === "on" || ageClass(x.n) === "base").length;
+        // force layout (plain JS, ~120 iterations)
+        const W = 900, H = 520, idx = new Map(nodes.map((x, i) => [x.id, i]));
+        const P = nodes.map((x, i) => ({ x: W / 2 + Math.cos(i * 2.4) * (120 + i * 6), y: H / 2 + Math.sin(i * 2.4) * (90 + i * 4), vx: 0, vy: 0 }));
+        if (S.myId && idx.has(S.myId)) { P[idx.get(S.myId)].x = W / 2; P[idx.get(S.myId)].y = H / 2; }
+        for (let it = 0; it < 140; it++) {
+          const k = 0.85 - it / 200;
+          for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) { const dx = P[j].x - P[i].x, dy = P[j].y - P[i].y, d2 = Math.max(60, dx * dx + dy * dy), f = 5200 / d2; const fx = dx / Math.sqrt(d2) * f, fy = dy / Math.sqrt(d2) * f; P[i].vx -= fx; P[i].vy -= fy; P[j].vx += fx; P[j].vy += fy; }
+          for (const e of edges) { const a = P[idx.get(e.a)], b = P[idx.get(e.b)]; if (!a || !b) continue; const dx = b.x - a.x, dy = b.y - a.y, dist = Math.sqrt(dx * dx + dy * dy) || 1, f = (dist - 130) * 0.02; a.vx += dx / dist * f; a.vy += dy / dist * f; b.vx -= dx / dist * f; b.vy -= dy / dist * f; }
+          for (const q of P) { q.vx += (W / 2 - q.x) * 0.004; q.vy += (H / 2 - q.y) * 0.004; q.x += q.vx * k; q.y += q.vy * k; q.vx *= 0.6; q.vy *= 0.6; q.x = Math.max(30, Math.min(W - 30, q.x)); q.y = Math.max(24, Math.min(H - 24, q.y)); }
+          if (S.myId && idx.has(S.myId)) { P[idx.get(S.myId)].x = W / 2; P[idx.get(S.myId)].y = H / 2; }
+        }
+        const col = (n) => ({ on: "#58e39c", warm: "#f2c04e", cold: "#5b6b80", base: "#e0704b" })[ageClass(n)];
+        const svg = `<svg class="topo" viewBox="0 0 ${W} ${H}">${edges.map(e => { const a = P[idx.get(e.a)], b = P[idx.get(e.b)]; if (!a || !b) return ""; return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" class="te ${e.kind}"><title>${escape(name(S.roster[e.a] || { id: e.a }))} ↔ ${escape(name(S.roster[e.b] || { id: e.b }))}${e.snr != null ? " · SNR " + e.snr.toFixed(1) : ""} · ${e.kind === "neighbor" ? "NeighborInfo" : "heard direct"}</title></line>`; }).join("")}${
+          nodes.map((x, i) => `<g class="tn" data-id="${escape(x.id)}" transform="translate(${P[i].x.toFixed(1)},${P[i].y.toFixed(1)})"><circle r="${x.id === S.myId ? 11 : 7}" fill="${col(x.n)}"/><text y="${x.id === S.myId ? 24 : 19}" text-anchor="middle">${escape(name(x.n))}</text></g>`).join("")}</svg>`;
+        viewBody.innerHTML = `
+          <div class="kpis"><div class="kpi"><b>${nodes.length}</b><span>nodes in graph</span></div><div class="kpi"><b>${online}</b><span>online</span></div><div class="kpi"><b>${edges.length}</b><span>links</span></div><div class="kpi"><b>${(density * 100).toFixed(0)}%</b><span>density</span></div><div class="kpi"><b>${reporters}</b><span>NeighborInfo reporters · 7d</span></div></div>
+          ${reporters === 0 ? `<div class="vcard" style="margin-bottom:12px;border-color:rgba(242,192,78,.4)"><h2>⚠ No NeighborInfo reports yet</h2><div style="font-size:13px;line-height:1.5">No node has sent a NeighborInfo packet in 7 days, so the ${directEdges} link${directEdges === 1 ? "" : "s"} below are <b>inferred</b>: packets the base heard with zero hops used (from ↔ base, real SNR). That's honest but base-centric. <b>Enable the NeighborInfo module on STAY</b> (and GO) — <code style="font:12px var(--mono)">meshtastic --set neighbor_info.enabled true --set neighbor_info.update_interval 900</code> — and the mesh's real who-hears-whom appears here and on the map, no Den changes needed.</div></div>` : ""}
+          <div class="vcard wide" style="padding:6px">${nodes.length ? svg : '<div class="empty">no links yet — the base hasn\'t heard anyone directly</div>'}</div>
+          <div style="display:flex;gap:14px;margin-top:8px;color:var(--muted);font-size:11px;flex-wrap:wrap"><span><i class="sw" style="background:#e0704b"></i> this node</span><span><i class="sw on"></i> online</span><span><i class="sw warm"></i> &lt; 1 h</span><span><i class="sw cold"></i> older</span><span><i class="sw link"></i> heard direct (inferred)</span><span><i class="sw link" style="background:#c78bff"></i> NeighborInfo</span></div>`;
+        viewBody.querySelectorAll(".tn").forEach(g => g.addEventListener("click", () => { location.hash = "#/node/" + encodeURIComponent(g.dataset.id); }));
+      }
+    },
     admin: { title: "Admin", soon: "live logs, exports, BBS config & content, service status" },
     api: { title: "API", soon: "the /v2 API reference with try-it buttons" },
   };
