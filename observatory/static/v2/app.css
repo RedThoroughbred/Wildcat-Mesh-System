@@ -362,6 +362,8 @@ table.vt td.dim { color: var(--muted); }
   .stat { min-width: 64px; flex: 1; padding: 4px 6px; } .stat .v { font-size: 15px; } .stat .l { font-size: 9px; letter-spacing: .4px; }
   .status span:last-child { display: none; }
   .install { padding: 5px 9px; font-size: 11px; }
+  .tools { margin-left: auto; order: 2; }                  /* share the brand's row on phones */
+  .status { order: 1; }
   .timeline, .replay-badge { display: none !important; }
   .health-bar { top: auto; bottom: calc(42vh + 12px); left: 8px; right: 8px; transform: none; max-width: none; }
   :root { --rail: 0px; }
