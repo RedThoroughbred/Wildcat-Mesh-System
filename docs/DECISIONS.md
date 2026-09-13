@@ -203,3 +203,44 @@ on the Pi, and the copy is `quick_check`ed before old ones are pruned. Nightly
 02:30 via a `Persistent=true` timer so a Pi that was off at 02:30 still runs it
 after boot. Off-box copies (USB / Mac over Tailscale) are a `rsync` of
 `backups/` — left to a one-liner in DEPLOY_PI when Tailscale is set up.
+
+## D-018 · 2026-09-13 · Observatory v2 is a route (`/v2`) on the existing service, fed only by the bus
+
+**Context.** The v1 dashboard is live and useful; a rewrite-in-place would break
+it for weeks. The v2 page must never touch the radio.
+
+**Decision.** `wildcat/observatory/bridge.py` subscribes to `wildcat/rx/+`,
+`wildcat/nodes`, `wildcat/meshd/status`, folds them into an in-memory `State`
+(roster, links, packet ring, counters), and pushes deltas over a Socket.IO
+namespace `/v2` on the SAME Flask-SocketIO app; `/v2/api/state` gives the first
+paint. v1 routes are untouched. When `[mqtt].enabled = false` the page renders
+from the database with a "bus offline" badge.
+
+## D-019 · 2026-09-13 · The neutral envelope is ADDITIVE and versioned (`v: 1`)
+
+**Decision.** `wildcat/meshd/packets.py` now emits the protocol-neutral fields
+(`proto`, string `from`/`to`, `rx{snr,rssi,hops,time}`, one payload block per
+kind) alongside the meshtastic extras (`portnum`, `packet`, `from_num`…). The
+UI reads only the neutral fields; `BusInterface` reads only `packet`. A
+MeshCore adapter implements the neutral part and is done. `NEIGHBORINFO_APP`'s
+kind was renamed `neighbors` (neutral name) before anything depended on it.
+`wildcat/nodes` gained a neutral `roster` next to the native `nodes` map.
+
+## D-020 · 2026-09-13 · Links: NeighborInfo when available, direct-hop inference always
+
+**Decision.** A packet with `rx.hops == 0` (hopStart == hopLimit) was heard
+straight from its sender, so `from ↔ base` is drawn as a real RF link with the
+measured SNR — a live topology with zero node configuration. `neighbors`
+payloads (the honest topology, needs the module enabled) outrank inference for
+the same pair. Links fade over 3 h and expire after 6 h.
+
+## D-021 · 2026-09-13 · Map tiles: keyless OSM darkened in CSS
+
+**Context.** CARTO's dark basemap now requires an API key ("API KEY REQUIRED"
+tiles rendered on first load).
+
+**Decision.** Plain `tile.openstreetmap.org` tiles with a CSS invert/hue/
+saturate filter (`.dark-tiles`). No key, no account, and the same `{z}/{x}/{y}`
+shape a Phase-3 offline cache serves. Framing is distance-based (base + nodes
+within 40 km, widening to 120 km) so MQTT-fed nodes 300 km away don't zoom the
+map out to the whole world.
