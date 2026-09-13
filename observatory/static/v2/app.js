@@ -534,7 +534,6 @@
   $("palette-btn").addEventListener("click", palOpen);
   document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape") { if (!pal.hidden) palClose(); else if (document.body.classList.contains("viewing")) location.hash = "#/"; else if (!$("card").hidden) $("card-close").click(); } });
   document.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr.row")) { e.preventDefault(); e.target.click(); } });
-  new MutationObserver(() => { document.querySelectorAll("tr.row:not([tabindex])").forEach(tr => tr.setAttribute("tabindex", "0")); }).observe(viewBody, { childList: true, subtree: true });
 
   // ---------------------------------------------------------------- range rings around the base
   const ringLayer = L.layerGroup();
@@ -609,6 +608,8 @@
   let swX = null;
   sidebar.addEventListener("touchstart", (e) => { swX = e.touches[0].clientX; }, { passive: true });
   sidebar.addEventListener("touchend", (e) => { if (swX != null && swX - e.changedTouches[0].clientX > 50) openDrawer(false); swX = null; }, { passive: true });
+  // table rows are keyboard-focusable
+  new MutationObserver(() => { document.querySelectorAll("tr.row:not([tabindex])").forEach(tr => tr.setAttribute("tabindex", "0")); }).observe(viewBody, { childList: true, subtree: true });
   // tables wider than their card get a scroll hint
   new ResizeObserver(() => { for (const w of document.querySelectorAll(".twrap")) w.classList.toggle("scrollable", w.scrollWidth > w.clientWidth + 4); }).observe(viewBody);
   function fmtTs(ts) { return ts ? new Date(ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; }
