@@ -441,6 +441,7 @@
     TL.playing = true; document.body.classList.add("replaying"); $("tl-live").hidden = false; $("tl-play").textContent = "❚❚ Pause";
     const span = TL.hours * 3600; TL.clock = TL.since + span * fromPos;
     TL.cursor = TL.events.findIndex(e => e.ts >= TL.clock); if (TL.cursor < 0) TL.cursor = TL.events.length;
+    if (fromPos === 0 && TL.events.length) TL.clock = TL.events[0].ts - 5;   // start where the recording starts
     list.innerHTML = ""; TL.lastFrame = performance.now();
     TL.timer = requestAnimationFrame(tlTick);
   }
@@ -448,6 +449,8 @@
     if (!TL.playing) return;
     const dt = (t - TL.lastFrame) / 1000; TL.lastFrame = t;
     TL.clock += dt * TL.speed;
+    // fast-forward through silence: if the next event is > 2 min of mesh time away, jump to just before it
+    if (TL.cursor < TL.events.length && TL.events[TL.cursor].ts - TL.clock > 120) TL.clock = TL.events[TL.cursor].ts - 5;
     const span = TL.hours * 3600; TL.pos = Math.min(1, (TL.clock - TL.since) / span);
     $("tl-scrub").value = Math.round(TL.pos * 1000);
     let shown = 0;
