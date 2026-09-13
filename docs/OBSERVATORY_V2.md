@@ -193,6 +193,7 @@ ported and tested; v1 itself untouched at `/`).
 | CSV exports | `/v2/api/export/{nodes,messages,coverage}.csv` | ✅ (v2-native) |
 | Dashboard cards | `#/dashboard` | ✅ |
 | Mesh health + alerts (new) | `#/health` + top-bar badge | ✅ |
+| **Compose & send** (new): DM any node or broadcast to a channel over the bus TX path, with queued/sent/delivered/failed | ✎ console (operator only) | ✅ |
 
 v2 links nowhere else: no "open in v1" anywhere. v1 stays served at `/` only
 until Seth retires it.
@@ -244,9 +245,35 @@ is iOS 16.4+ only); no Bluetooth/serial to a *phone-attached* radio; the
 community dashboard fed by a Den on the network, none of that matters — the
 phone is a viewer.
 
-**Later — native iOS/Android, what it would take.** The cheapest credible path
-is the one Repot uses: **Capacitor** wrapping this exact page (same HTML/JS,
-no rewrite), plus native plugins only where the web can't reach:
+**Next major phase — native iOS (then Android) as a Capacitor wrapper.** Seth
+already ships Repot through Capacitor with Xcode, a team, and signing set up, so
+the pragmatic route is a thin native shell around *this* page, not a rewrite.
+Concretely:
+
+1. **Project.** `ios-app/` (or `native/`) with `npm init`, `@capacitor/core`,
+   `@capacitor/cli`, `@capacitor/ios` (+ `/android` later); `webDir = www`.
+   A `build-www.sh` mirrors `observatory/templates/v2/index.html` →
+   `www/index.html` (Jinja stripped: static asset paths, no `{{ v }}`) plus
+   `observatory/static/{v2,vendor}` → `www/static/…`. Same shape as Repot's
+   `build-www.sh`. `npx cap add ios`, `npx cap sync ios`, open in Xcode, sign
+   with the existing team, run on the iPhone. Bundle id something like
+   `com.wildcatmesh.den`.
+2. **Pointing at the Den.** The bundle ships `www/config.js` that sets
+   `window.WILDCAT_API_BASE` — the page already routes every fetch and the
+   Socket.IO connection through it (see the native-ready list above). First
+   launch: a small "Which Den?" sheet (URL + test button that hits
+   `/v2/api/health`), stored in Preferences; Tailscale hostname preferred
+   (`https://den.<tailnet>.ts.net`) so it works from anywhere, LAN IP as a
+   fallback at home. Nothing is hardcoded.
+3. **HTTPS is a prerequisite**, and Tailscale makes it free: `tailscale serve
+   --bg https / http://127.0.0.1:5050` on the Pi gives the Den a real
+   certificate and a stable name. The PWA's service worker and install prompt
+   need it too, so this unblocks both the home-screen path and the native
+   shell in one move. (A plain-HTTP LAN address stays fine for the browser.)
+4. **Ship it.** TestFlight via the existing ASC key; App Store later if the
+   community wants it. Android is `npx cap add android` on the same `www/`.
+
+What native then unlocks, in order of value:
 
 1. *Push notifications* — "GO just came into range", "Lantern battery low",
    "someone asked the Cat" — needs APNs/FCM and a tiny push relay in the Den
@@ -260,9 +287,12 @@ no rewrite), plus native plugins only where the web can't reach:
 4. App Store/Play plumbing: bundle ids, signing, review — a week of yak, well
    understood from Repot.
 
-Order: (1) is a weekend and pays immediately; (2) is the real product; (3)–(4)
-follow (2). Nothing in the UI changes shape for any of it — that's the point of
-building the PWA first.
+Order: the wrapper itself is a day; push (1) is a weekend and pays immediately;
+BLE (2) is the real product and the biggest lift; background walks (3) ride on
+(2). Nothing in the UI changes shape for any of it — that's the point of
+building the PWA first. Not built this pass: the console came first (a two-way
+Den before a native shell), and the wrapper is only worth doing once HTTPS via
+Tailscale is in place on the Pi.
 
 ## 7. Exploration (not a plan) — could one Den watch Meshtastic *and* MeshCore?
 
