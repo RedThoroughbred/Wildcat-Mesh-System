@@ -29,7 +29,7 @@
   const fxLayer = L.layerGroup().addTo(map);
 
   // ---------------------------------------------------------------- state
-  const S = { myId: null, roster: {}, links: {}, markers: {}, lines: {}, filter: "all", times: [], fitted: false, selected: null };
+  const S = { myId: null, roster: {}, links: {}, markers: {}, lines: {}, filter: "all", times: [], fitted: false, selected: null, traffic: {}, sizeOn: true, follow: false, lastFollow: 0 };
 
   function ageClass(n) {
     if (n.id === S.myId) return "base";
@@ -49,8 +49,14 @@
   function snrClass(v) { return v == null ? "" : v >= 5 ? "good" : v >= -5 ? "ok" : "bad"; }
 
   // ---------------------------------------------------------------- nodes
+  function trafficClass(id) {
+    if (!S.sizeOn || id === S.myId) return "";
+    const t = now() - 3600, arr = S.traffic[id]; if (!arr) return "";
+    while (arr.length && arr[0] < t) arr.shift();
+    return arr.length >= 30 ? " t3" : arr.length >= 12 ? " t2" : arr.length >= 4 ? " t1" : "";
+  }
   function icon(n) {
-    const cls = ageClass(n);
+    const cls = ageClass(n) + trafficClass(n.id);
     const html = `<div class="node ${cls}"><div class="core"></div><div class="lbl">${escape(name(n))}</div></div>`;
     const size = cls === "base" ? 22 : 14;
     return L.divIcon({ className: "", html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
@@ -264,6 +270,7 @@
     list.innerHTML = "";
     for (const p of (s.packets || [])) addPacket(p, false);
     for (const t of (s.tx || [])) C.sends.set(t.id, t);
+    for (const p of (s.packets || [])) if (p.from && !p.sent) (S.traffic[p.from] = S.traffic[p.from] || []).push(p.ts);
     if (typeof addExchange === "function") {
       catList.innerHTML = ""; catN = 0; $("cat-count").textContent = "";
       for (const p of (s.packets || [])) maybeExchange(p);
@@ -283,7 +290,9 @@
     if (ev.packet.sent) { maybeExchange(ev.packet); refreshStats(); return; }
     if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
     const p = ev.packet;
+    (S.traffic[p.from] = S.traffic[p.from] || []).push(now());
     flashNode(p.from);
+    if (S.follow && !document.body.classList.contains("viewing")) followTo(p.from);
     if (S.myId && p.from !== S.myId) {
       if (p.hops === 0) pulse(p.from, S.myId, false);
       else if (p.hops != null) pulse(p.from, S.myId, true);
@@ -618,6 +627,19 @@
     h.innerHTML = `<b>Shortcuts</b><br><span class="kbd">⌘K</span>/<span class="kbd">/</span> find a node · <span class="kbd">Esc</span> back to the map · <span class="kbd">?</span> this card<br><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">⏎</span> in the finder · <span class="kbd">Tab</span> through rows, <span class="kbd">⏎</span> opens`;
     document.body.appendChild(h); setTimeout(() => h.remove(), 6000);
   });
+
+  // ---------------------------------------------------------------- follow-activity camera + size-by-traffic toggles
+  const followFlag = document.createElement("div"); followFlag.className = "glass follow-flag"; followFlag.textContent = "◎ following activity"; document.body.appendChild(followFlag);
+  function followTo(id) {
+    const p = pos(S.roster[id]); if (!p) return;
+    const t = performance.now(); if (t - S.lastFollow < 3500) return;
+    const b = map.getBounds().pad(-0.15);
+    if (!b.contains(p)) { S.lastFollow = t; map.panTo(p, { animate: true, duration: .9, easeLinearity: .3 }); }
+  }
+  $("follow-on").addEventListener("change", (e) => { S.follow = e.target.checked; document.body.classList.toggle("following", S.follow); try { localStorage.setItem("v2.follow", S.follow ? "1" : "0"); } catch (x) {} });
+  $("size-on").addEventListener("change", (e) => { S.sizeOn = e.target.checked; refreshAges(); try { localStorage.setItem("v2.size", S.sizeOn ? "1" : "0"); } catch (x) {} });
+  try { if (localStorage.getItem("v2.follow") === "1") { $("follow-on").checked = true; S.follow = true; document.body.classList.add("following"); } if (localStorage.getItem("v2.size") === "0") { $("size-on").checked = false; S.sizeOn = false; } } catch (e) {}
+  map.on("dragstart", () => { if (S.follow) { S.follow = false; $("follow-on").checked = false; document.body.classList.remove("following"); toast("Follow paused — you took the wheel"); } });
 
   // ---------------------------------------------------------------- range rings around the base
   const ringLayer = L.layerGroup();

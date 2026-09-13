@@ -566,3 +566,11 @@ body.public .compose-btn, body.public .compose, body.public .op-only { display: 
   .compose { left: 0; right: 0; bottom: 0; width: auto; border-radius: 18px 18px 0 0; max-height: calc(100vh - var(--topbar-h, 130px) - 12px); overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
   .compose:not([hidden]) ~ .feed { display: none; }
 }
+
+/* marker size by traffic (last hour): 3 steps */
+.node.t1 { transform: scale(1.2); } .node.t2 { transform: scale(1.45); } .node.t3 { transform: scale(1.7); }
+.node.t1 .lbl, .node.t2 .lbl, .node.t3 .lbl { transform-origin: left center; }
+.node.t2 .lbl { transform: scale(.8); } .node.t3 .lbl { transform: scale(.7); }
+.follow-flag { position: fixed; top: 84px; right: 384px; z-index: 1150; padding: 6px 12px; font: 700 11px var(--font); letter-spacing: .6px; text-transform: uppercase; color: #d6efff; display: none; }
+body.following .follow-flag { display: block; }
+@media (max-width: 760px) { .follow-flag { right: 8px; top: auto; bottom: calc(42vh + 60px); } }
