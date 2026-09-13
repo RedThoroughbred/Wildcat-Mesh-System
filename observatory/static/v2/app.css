@@ -372,7 +372,7 @@ table.vt td.dim { color: var(--muted); }
   .sidebar.open { transform: none; }
   .drawer-scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1900; opacity: 0; pointer-events: none; transition: opacity .28s; }
   .drawer-scrim.open { opacity: 1; pointer-events: auto; }
-  .view { top: calc(88px + env(safe-area-inset-top)); left: 0; right: 0; bottom: 0; border-radius: 18px 18px 0 0; }
+  .view { top: calc(var(--topbar-h, 88px) + 8px); left: 0; right: 0; bottom: 0; border-radius: 18px 18px 0 0; }
   .view-body { padding: 10px 12px calc(16px + env(safe-area-inset-bottom)); }
   .twrap { max-height: none; }
   .card { left: 8px; }
@@ -382,7 +382,7 @@ table.vt td.dim { color: var(--muted); }
           padding-bottom: env(safe-area-inset-bottom); transition: height .32s cubic-bezier(.2,.8,.2,1); }
   .feed[data-sheet="peek"] { height: calc(56px + env(safe-area-inset-bottom)); }
   .feed[data-sheet="half"] { height: 42vh; }
-  .feed[data-sheet="full"] { height: calc(100vh - 150px - env(safe-area-inset-top)); }
+  .feed[data-sheet="full"] { height: calc(100vh - var(--topbar-h, 130px) - 16px); }
   .feed .handle { display: block; width: 100%; padding: 10px 0 4px; background: none; border: 0; cursor: pointer; }
   .feed .handle i { display: block; width: 40px; height: 4px; margin: 0 auto; border-radius: 2px; background: rgba(255,255,255,.25); }
   .feed-head { padding-top: 4px; }
@@ -401,6 +401,7 @@ table.vt td.dim { color: var(--muted); }
   .layers:not(.open) .lay-sub { display: none; }
   .card:not([hidden]) ~ .layers { display: none; }
   .ios-hint { top: auto; bottom: calc(42vh + 12px); }
+  .alert-btn { white-space: nowrap; }
   .legend { display: none; }
   .leaflet-control-zoom { display: none; }
   .leaflet-control-attribution { font-size: 9px; }

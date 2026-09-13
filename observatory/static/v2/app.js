@@ -561,6 +561,10 @@
   $("rings-on").addEventListener("change", e => setRings(e.target.checked));
   try { if (localStorage.getItem("v2.rings") === "1") { $("rings-on").checked = true; setTimeout(() => setRings(true), 1500); } } catch (e) {}
 
+  // ---------------------------------------------------------------- the header's real height drives panel offsets
+  function measureTopbar() { const h = document.querySelector(".topbar").getBoundingClientRect().bottom; document.documentElement.style.setProperty("--topbar-h", Math.round(h) + "px"); }
+  measureTopbar(); window.addEventListener("resize", measureTopbar); new ResizeObserver(measureTopbar).observe(document.querySelector(".topbar"));
+
   // ---------------------------------------------------------------- label declutter by zoom
   function declutter() { const z = map.getZoom(); document.body.classList.toggle("z-far", z < 10); document.body.classList.toggle("z-mid", z >= 10 && z < 12); }
   map.on("zoomend", declutter); declutter();
