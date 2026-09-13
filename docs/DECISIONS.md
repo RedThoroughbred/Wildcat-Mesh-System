@@ -122,3 +122,84 @@ TOML editor is Observatory-v2 work (Phase 3), not Phase 1.
 functional benefit in Phase 1; `[database].path` is configurable, so whoever
 wants `wildcat.db` sets it. Revisit when the schema module (`wildcat/db.py`)
 lands with real migrations.
+
+## D-010 · 2026-09-13 · `wildcat doctor` probes are injectable; the LAN scan is bounded
+
+**Decision.** Every check takes its probe (`probe_tcp`, `find_serial_ports`,
+`systemctl_show`, `import_version`) as a parameter with the real one as the
+default, so the report logic is unit-tested with no hardware and the Mac's
+suite never sweeps anyone's LAN. The stale-IP finder sweeps only the node's
+own private /24 (254 × 0.25 s in 64 threads ≈ 2 s), never loopback/public
+space. The doctor cannot detect "another process already holds the node's
+socket" (a TCP connect still succeeds) — the systemd check covers that case.
+
+## D-011 · 2026-09-13 · systemd: `on-failure` + never-give-up + exit-on-connection-lost, not `RuntimeMaxSec`
+
+**Context.** The v1 unit killed the BBS every 5 minutes (`RuntimeMaxSec=300`)
+because a dropped node connection left the process idling on a dead socket,
+and the default `StartLimitBurst` would have given up after five fast failures
+— e.g. during a power cut where the node boots slower than the Pi.
+
+**Decision.** `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0`;
+`RestartPreventExitStatus=2` so a config error (exit 2) stays down and visible
+instead of restart-looping; `ExecStartPre=wildcat config validate` so the
+reason lands in `journalctl`; `server.py`/`telemetry_logger.py` subscribe to
+`meshtastic.connection.lost` and exit 3 so the restart actually happens.
+`KillSignal=SIGINT` because the v1 code closes the radio on KeyboardInterrupt.
+A `wildcat.target` with `PartOf=` gives one handle for the lot. `WatchdogSec`
+was skipped (needs sd_notify plumbing; not the failure mode we've seen).
+
+## D-012 · 2026-09-13 · Bus = Mosquitto + JSON envelopes + retained snapshots
+
+**Decision.** Topics `wildcat/rx/<kind>`, `wildcat/tx`, `wildcat/tx/result`,
+retained `wildcat/nodes` and `wildcat/meshd/status` (+ a `dead` last-will).
+Payloads are JSON with the ORIGINAL meshtastic packet embedded losslessly
+(`bytes` → `{"__bytes_b64__"}`), so legacy consumers get the exact dict they
+were written for, and new consumers get flat convenience fields. Retained
+snapshots mean a consumer that starts late (or restarts) is immediately
+correct without asking meshd anything. QoS 1 everywhere; no downlink from
+anywhere but `wildcat/tx` (bridging is Phase 6, off by default).
+
+## D-013 · 2026-09-13 · The BBS moves onto the bus via an interface-shaped adapter, not a rewrite
+
+**Context.** The BBS is ~1300 lines of handlers written against the meshtastic
+interface object (`nodes`, `myInfo`, `sendText`, `getMyNodeInfo`, plus
+attributes it hangs on the object).
+
+**Decision.** `wildcat/busiface.py` implements exactly that surface over the
+bus. `bbs/server.py` picks it when `[bbs].source = "bus"`. Result: zero handler
+changes, one config flag to switch (and to roll back), and an end-to-end test
+that drives a real DM through the real handlers with a fake radio. The v1
+2 s/chunk pacing in `utils.send_message` stays (meshd paces again; harmless).
+
+## D-014 · 2026-09-13 · Telemetry is the proof consumer; `source = "radio"` stays the default
+
+**Decision.** The logger is the simplest consumer and the one that actually
+fought the BBS for the socket in v1, so it is the first thing that must work
+over the bus on the Pi. Both consumers default to `"radio"` (v1 behavior, zero
+risk on `git pull`); the bus is opt-in until it has run on real hardware.
+
+## D-015 · 2026-09-13 · `[mqtt].enabled` and `source` must agree — enforced by the validator
+
+**Context.** `enabled = true` starts meshd, which takes the node's single API
+slot; a consumer still on `"radio"` would then fight it — the exact v1 disease.
+
+**Decision.** `wildcat config validate` errors on any half-state: mqtt on with
+a `"radio"` consumer, or a `"bus"` consumer with mqtt off. meshd itself exits 0
+when mqtt is off so the unit is inert in v1 mode.
+
+## D-016 · 2026-09-13 · TX chunking default is v1's raw 200-char slice
+
+**Decision.** `wildcat/tx` requests with `text` are sliced raw at
+`[meshd].max_chunk_chars` (200), byte-for-byte what `utils.send_message` did,
+so menus render identically over the bus. Word-boundary, numbered chunking
+(`chunk_words`) exists for the brain, which sends pre-split `chunks`. Both are
+tested; neither is a behavior change for the BBS.
+
+## D-017 · 2026-09-13 · Backups via `wildcat db backup` (sqlite backup API), not `sqlite3 .backup`
+
+**Decision.** Same effect, no dependency on the `sqlite3` CLI being installed
+on the Pi, and the copy is `quick_check`ed before old ones are pruned. Nightly
+02:30 via a `Persistent=true` timer so a Pi that was off at 02:30 still runs it
+after boot. Off-box copies (USB / Mac over Tailscale) are a `rsync` of
+`backups/` — left to a one-liner in DEPLOY_PI when Tailscale is set up.

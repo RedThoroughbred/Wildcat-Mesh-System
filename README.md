@@ -226,6 +226,24 @@ This will give you a public URL like `https://abc123.ngrok-free.app` to share.
 - See [docs/NGROK_SETUP.md](docs/NGROK_SETUP.md) for detailed remote access guides
 - Supports ngrok, Cloudflare Tunnel, and Tailscale VPN
 
+## v2 — "The Den" (Phase 1)
+
+The three scripts are becoming one system. What's in this branch:
+
+- **`wildcat/`** — one package: validated config (`wildcat.toml`), `wildcat doctor`,
+  `wildcat db backup`, the MQTT bus (`bus.py`), **meshd** (the single radio owner,
+  `wildcat meshd`) and the `BusInterface` adapter that lets the BBS/telemetry run
+  over the bus with a config flag.
+- **`deploy/`** — hardened systemd units + `wildcat.target`, `install.sh`, nightly backup timer.
+- **`docs/`** — `PHASE1_PLAN.md` (what/why/status), `DECISIONS.md` (the why-log),
+  `MESHD_MIGRATION.md` (bus topics + switch-over), **`DEPLOY_PI.md` (run this on the Pi)**.
+- `tests/` — 110+ tests, no radio needed: `.venv/bin/python -m pytest`.
+
+```bash
+./deploy/install.sh          # on the Pi: venv, config, units, doctor
+wildcat doctor               # is everything OK?
+```
+
 ## Configuration
 
 **One file: `config/wildcat.toml`** (v2 / "The Den" — see `docs/DECISIONS.md`).
