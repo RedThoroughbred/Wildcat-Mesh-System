@@ -253,7 +253,11 @@
   }
 
   // ---------------------------------------------------------------- apply
+  function connected() { const c = $("connecting"); if (!c || c.classList.contains("gone")) return; c.classList.add("gone"); setTimeout(() => c.remove(), 600); }
+  setTimeout(() => { const c = $("connecting"); if (c && !c.classList.contains("gone")) { c.querySelector(".box div:last-child").innerHTML = "Still connecting…<br><span style=\"font-weight:500;color:var(--muted);font-size:12px\">is the Observatory running? check <code>wildcat doctor</code></span>"; } }, 6000);
+  setTimeout(connected, 15000);
   function applySnapshot(s) {
+    connected();
     S.myId = s.my_id;
     for (const id in s.roster) upsertNode(s.roster[id]);
     for (const l of s.links || []) upsertLink(l);
@@ -534,6 +538,13 @@
   $("palette-btn").addEventListener("click", palOpen);
   document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape") { if (!pal.hidden) palClose(); else if (document.body.classList.contains("viewing")) location.hash = "#/"; else if (!$("card").hidden) $("card-close").click(); } });
   document.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr.row")) { e.preventDefault(); e.target.click(); } });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "?" || /input|textarea|select/i.test(e.target.tagName || "")) return;
+    const old = document.querySelector(".help-box"); if (old) { old.remove(); return; }
+    const h = document.createElement("div"); h.className = "glass help-box";
+    h.innerHTML = `<b>Shortcuts</b><br><span class="kbd">⌘K</span>/<span class="kbd">/</span> find a node · <span class="kbd">Esc</span> back to the map · <span class="kbd">?</span> this card<br><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">⏎</span> in the finder · <span class="kbd">Tab</span> through rows, <span class="kbd">⏎</span> opens`;
+    document.body.appendChild(h); setTimeout(() => h.remove(), 6000);
+  });
 
   // ---------------------------------------------------------------- range rings around the base
   const ringLayer = L.layerGroup();
@@ -1010,15 +1021,25 @@
       }
     },
   };
+  function countUp() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const b of viewBody.querySelectorAll(".kpi b")) {
+      const txt = b.textContent.trim(), m = txt.match(/^(-?\d+(?:\.\d+)?)(.*)$/); if (!m) continue;
+      const target = parseFloat(m[1]), suffix = m[2], dec = (m[1].split(".")[1] || "").length, t0 = performance.now();
+      b.classList.add("count");
+      (function step(t) { const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3); b.textContent = (target * e).toFixed(dec) + suffix; if (k < 1) requestAnimationFrame(step); else b.textContent = txt; })(t0);
+    }
+  }
   function setNav(view) { sidebar.querySelectorAll("a[data-view]").forEach(a => a.classList.toggle("on", a.dataset.view === view)); }
   async function showView(name, arg) {
     const v = VIEWS[name]; if (!v) return;
+    if (!viewEl.hidden) { viewEl.classList.remove("swap"); void viewEl.offsetWidth; viewEl.classList.add("swap"); }
     document.body.classList.add("viewing"); viewEl.hidden = false; setNav(name); $("health-bar").hidden = true;
     viewTitle.textContent = v.title; viewTools.replaceChildren();
     viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
     viewBody.scrollTop = 0;
     if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
-    try { await v.render(arg); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
+    try { await v.render(arg); countUp(); } catch (e) { viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
   }
   function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   function route() {

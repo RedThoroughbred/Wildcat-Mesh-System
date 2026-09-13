@@ -18,6 +18,7 @@
 </head>
 <body{% if public %} class="public"{% endif %} data-public="{{ 'yes' if public else 'no' }}">
 <a class="skip" href="#feed-list">Skip to live feed</a>
+<div class="connecting" id="connecting"><div class="glass box"><div class="empty radar"></div><div>Connecting to the Den…<br><span style="font-weight:500;color:var(--muted);font-size:12px">loading the roster and the last packets</span></div></div></div>
 <div id="map" aria-label="Live mesh map" role="application"></div>
 
 <header class="glass topbar">
