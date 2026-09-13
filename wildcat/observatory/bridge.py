@@ -18,6 +18,7 @@ from collections import deque
 from typing import Any, Deque, Dict, List, Optional
 
 from ..config import WildcatConfig
+from .coverage import CoverageStore, coverage_point
 
 log = logging.getLogger("wildcat.observatory")
 
@@ -146,6 +147,7 @@ class State:
             if kind == "position" and (env.get("position") or {}).get("lat") is not None:
                 p = env["position"]
                 node["position"] = {"lat": p["lat"], "lon": p["lon"], "alt": p.get("alt")}
+                node["position_ts"] = now
             elif kind == "telemetry":
                 t = env.get("telemetry") or {}
                 for k in ("battery", "voltage", "channel_util", "air_util_tx"):
@@ -248,10 +250,17 @@ class Bridge:
         self.state = State()
         self.bus: Any = None
         self.started_at = time.time()
+        self.coverage = CoverageStore(str(self.cfg.database.path))
 
     def start(self) -> None:
         seeded = seed_from_db(self.state, str(self.cfg.database.path))
         log.info("observatory v2: %d node positions seeded from the database", seeded)
+        try:
+            self.coverage.ensure()
+            n = self.coverage.backfill_history(self.state.my_id)
+            log.info("observatory v2: coverage table ready, %d rx points backfilled from message/position history", n)
+        except Exception:
+            log.exception("coverage store init failed")
         if not self.cfg.mqtt.enabled:
             log.warning("observatory v2: [mqtt].enabled = false — live view is off, rendering from the database only")
             return
@@ -293,6 +302,13 @@ class Bridge:
         if ev:
             ev["per_min"] = self.state.rate_per_min(now)
             self._emit("packet", ev)
+            pt = coverage_point(env, ev.get("node"), now, self.state.my_id)
+            if pt:
+                try:
+                    if self.coverage.add(pt):
+                        self._emit("rxpoint", pt)
+                except Exception:
+                    log.exception("could not store rx point")
 
     def snapshot(self) -> Dict[str, Any]:
         snap = self.state.snapshot(time.time())

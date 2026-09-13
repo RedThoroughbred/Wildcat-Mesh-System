@@ -184,6 +184,7 @@ def roster_entry(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "last_heard": _num(node.get("lastHeard")), "hops_away": _num(node.get("hopsAway")),
         "snr": _num(node.get("snr")),
         "position": {"lat": _num(lat), "lon": _num(lon), "alt": _num(pos.get("altitude"))} if _num(lat) is not None and _num(lon) is not None else None,
+        "position_ts": _num(pos.get("time")) if _num(lat) is not None else None,
         "battery": _num(dm.get("batteryLevel")), "voltage": _num(dm.get("voltage")),
         "channel_util": _num(dm.get("channelUtilization")), "air_util_tx": _num(dm.get("airUtilTx")),
     }

@@ -122,6 +122,23 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .card-grid .v { font-weight: 600; font-variant-numeric: tabular-nums; }
 .card-foot { margin-top: 10px; color: var(--muted); font: 11px var(--mono); }
 
+/* ---- layers panel ---- */
+.layers { top: 84px; left: 12px; width: 250px; padding: 10px 12px; font-size: 12.5px; }
+.lay { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 0; }
+.lay input { accent-color: var(--terracotta); width: 15px; height: 15px; margin: 0; }
+.lay .hint { margin-left: auto; color: var(--muted); font-size: 11px; }
+.lay-sub { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.lay-sub .lay { padding-left: 2px; }
+.cov-scale { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 4px; margin: 8px 0 4px; color: var(--muted); font: 10.5px var(--mono); }
+.cov-scale i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-left: 6px; }
+.cov-scale i:first-child { margin-left: 0; }
+.cov-summary { color: var(--muted); font-size: 11px; line-height: 1.35; margin-top: 4px; }
+.cov-summary b { color: var(--text); }
+.cov-pt { stroke: rgba(0,0,0,.55); }
+.cov-pt.relay { stroke-dasharray: 2 2; }
+.cov-hex { stroke: rgba(255,255,255,.25); }
+@media (max-width: 760px) { .layers { top: auto; bottom: calc(38vh + 24px); width: auto; right: 12px; } .card:not([hidden]) ~ .layers { display: none; } }
+
 /* ---- legend ---- */
 .legend { left: 12px; bottom: 12px; display: flex; gap: 12px; padding: 8px 12px; color: var(--muted); font-size: 11px; }
 .card:not([hidden]) ~ .legend { bottom: auto; top: 84px; }

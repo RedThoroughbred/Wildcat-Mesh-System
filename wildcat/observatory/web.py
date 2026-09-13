@@ -17,6 +17,18 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     def api_state():
         return jsonify(bridge.snapshot())
 
+    @bp.route("/api/coverage")
+    def api_coverage():
+        import time
+        from flask import request
+        try:
+            hours = float(request.args.get("hours", 24 * 30))
+        except ValueError:
+            hours = 24 * 30
+        since = int(time.time() - hours * 3600)
+        return jsonify({"since": since, "points": bridge.coverage.recent(since, limit=5000),
+                        "summary": bridge.coverage.summary(since)})
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state

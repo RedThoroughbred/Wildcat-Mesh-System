@@ -244,3 +244,34 @@ saturate filter (`.dark-tiles`). No key, no account, and the same `{z}/{x}/{y}`
 shape a Phase-3 offline cache serves. Framing is distance-based (base + nodes
 within 40 km, widening to 120 km) so MQTT-fed nodes 300 km away don't zoom the
 map out to the whole world.
+
+## D-022 · 2026-09-13 · SQLite writers: commit-or-rollback-and-close, always (live incident)
+
+**Context.** ~35 minutes into the first live run, every writer (BBS
+`log_message`, telemetry `log_*`, the Observatory) started failing with
+"database is locked". `lsof` showed the telemetry logger holding 38 leaked
+handles: its v1 functions closed the connection only on the happy path, so
+one exception after an INSERT left a connection mid-transaction — and in WAL
+mode that one connection holds THE write lock for every process until it dies.
+Stopping the logger released the lock instantly.
+
+**Decision.** Every writer goes through a context manager that commits on
+success and **rolls back + closes on any error** (`_write` in
+`telemetry_logger.py`); the BBS's long-lived thread-local connection rolls
+back in its error path; `wildcat/observatory/coverage.py` uses
+`contextlib.closing` (a bare `with sqlite3.connect()` commits but never closes).
+`wildcat doctor` already reports the age of the last logged packet, which is
+how this would have been caught on the Pi. Phase-1's `wildcat/db.py` (one
+connection factory) should own this discipline for every service.
+
+## D-023 · 2026-09-13 · Coverage is measured points, never an interpolated blob
+
+**Decision.** An `rx_points` row exists only when the base received a packet
+with SNR/RSSI **and** the sender's position is known and fresh (the packet's
+own fix, or a roster fix under 30 min old; a fix of unknown age yields nothing).
+`hops == 0` points are the base's own measurement; relayed points carry the
+last hop's signal and render dimmer/dashed. Hex bins (150 m) appear only where
+≥ 3 samples agree, colored by the median. The panel states how many points are
+measured, how many direct, and from which nodes — and says outright that
+nothing between dots is inferred. History backfill joins the BBS's
+`message_logs` SNR to `position_logs` fixes within 10 min (hops unknown).

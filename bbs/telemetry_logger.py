@@ -33,6 +33,29 @@ def get_db_connection():
     return conn
 
 
+class _write:
+    """``with _write() as c:`` — commit on success, ROLLBACK + CLOSE on any error.
+
+    The v1 functions opened a connection and only closed it on the happy path;
+    one exception mid-transaction leaked a connection holding the WAL write lock,
+    which then blocked every other writer (BBS, Observatory) until the process
+    was restarted. Seen live on 2026-09-13.
+    """
+    def __enter__(self):
+        self.conn = get_db_connection()
+        return self.conn.cursor()
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if exc_type is None:
+                self.conn.commit()
+            else:
+                self.conn.rollback()
+        finally:
+            self.conn.close()
+        return False
+
+
 def log_telemetry(packet):
     """Log telemetry data (battery, voltage, temperature, etc.)"""
     try:
@@ -50,32 +73,29 @@ def log_telemetry(packet):
         timestamp = packet.get('rxTime', int(time.time()))
         node_id = packet.get('fromId', 'unknown')
 
-        conn = get_db_connection()
-        c = conn.cursor()
+        with _write() as c:
 
-        c.execute("""
-            INSERT INTO telemetry_logs (
-                timestamp, node_id, node_name, battery_level, voltage,
-                channel_util, air_util_tx, temperature, humidity,
-                pressure, gas_resistance, uptime_seconds
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            timestamp,
-            node_id,
-            packet.get('from'),  # node_name will be updated separately
-            device_metrics.get('batteryLevel'),
-            device_metrics.get('voltage'),
-            device_metrics.get('channelUtilization'),
-            device_metrics.get('airUtilTx'),
-            environment_metrics.get('temperature'),
-            environment_metrics.get('relativeHumidity'),
-            environment_metrics.get('barometricPressure'),
-            environment_metrics.get('gasResistance'),
-            device_metrics.get('uptimeSeconds')
-        ))
+            c.execute("""
+                INSERT INTO telemetry_logs (
+                    timestamp, node_id, node_name, battery_level, voltage,
+                    channel_util, air_util_tx, temperature, humidity,
+                    pressure, gas_resistance, uptime_seconds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                timestamp,
+                node_id,
+                packet.get('from'),  # node_name will be updated separately
+                device_metrics.get('batteryLevel'),
+                device_metrics.get('voltage'),
+                device_metrics.get('channelUtilization'),
+                device_metrics.get('airUtilTx'),
+                environment_metrics.get('temperature'),
+                environment_metrics.get('relativeHumidity'),
+                environment_metrics.get('barometricPressure'),
+                environment_metrics.get('gasResistance'),
+                device_metrics.get('uptimeSeconds')
+            ))
 
-        conn.commit()
-        conn.close()
 
         logger.info(f"📊 Telemetry logged: {node_id} - Battery: {device_metrics.get('batteryLevel')}%")
 
@@ -111,30 +131,27 @@ def log_position(packet):
         if isinstance(longitude, int):
             longitude = longitude / 1e7
 
-        conn = get_db_connection()
-        c = conn.cursor()
+        with _write() as c:
 
-        c.execute("""
-            INSERT INTO position_logs (
-                timestamp, node_id, node_name, latitude, longitude,
-                altitude, precision_bits, ground_speed, ground_track,
-                satellites_in_view
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            timestamp,
-            node_id,
-            packet.get('from'),
-            latitude,
-            longitude,
-            position.get('altitude'),
-            position.get('precisionBits'),
-            position.get('groundSpeed'),
-            position.get('groundTrack'),
-            position.get('satsInView')
-        ))
+            c.execute("""
+                INSERT INTO position_logs (
+                    timestamp, node_id, node_name, latitude, longitude,
+                    altitude, precision_bits, ground_speed, ground_track,
+                    satellites_in_view
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                timestamp,
+                node_id,
+                packet.get('from'),
+                latitude,
+                longitude,
+                position.get('altitude'),
+                position.get('precisionBits'),
+                position.get('groundSpeed'),
+                position.get('groundTrack'),
+                position.get('satsInView')
+            ))
 
-        conn.commit()
-        conn.close()
 
         logger.info(f"📍 Position logged: {node_id} - {latitude:.4f}, {longitude:.4f}")
 
@@ -157,24 +174,21 @@ def log_neighbor_info(packet):
         timestamp = packet.get('rxTime', int(time.time()))
         node_id = packet.get('fromId', 'unknown')
 
-        conn = get_db_connection()
-        c = conn.cursor()
+        with _write() as c:
 
-        for neighbor in neighbors:
-            c.execute("""
-                INSERT INTO neighbor_info (
-                    timestamp, node_id, neighbor_id, snr, last_heard
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (
-                timestamp,
-                node_id,
-                neighbor.get('nodeId', 'unknown'),
-                neighbor.get('snr'),
-                neighbor.get('lastHeard')
-            ))
+            for neighbor in neighbors:
+                c.execute("""
+                    INSERT INTO neighbor_info (
+                        timestamp, node_id, neighbor_id, snr, last_heard
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    timestamp,
+                    node_id,
+                    neighbor.get('nodeId', 'unknown'),
+                    neighbor.get('snr'),
+                    neighbor.get('lastHeard')
+                ))
 
-        conn.commit()
-        conn.close()
 
         logger.info(f"🔗 Neighbor info logged: {node_id} - {len(neighbors)} neighbors")
 
@@ -199,34 +213,31 @@ def update_node_info(packet, interface):
         # Get hardware info from the interface if available
         node_info = interface.nodes.get(packet.get('from'), {})
 
-        conn = get_db_connection()
-        c = conn.cursor()
+        with _write() as c:
 
-        c.execute("""
-            INSERT INTO node_info (
-                node_id, short_name, long_name, hw_model, role,
-                firmware_version, first_seen, last_seen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(node_id) DO UPDATE SET
-                short_name = excluded.short_name,
-                long_name = excluded.long_name,
-                hw_model = excluded.hw_model,
-                role = excluded.role,
-                firmware_version = excluded.firmware_version,
-                last_seen = excluded.last_seen
-        """, (
-            node_id,
-            user.get('shortName'),
-            user.get('longName'),
-            user.get('hwModel'),
-            user.get('role'),
-            node_info.get('deviceMetrics', {}).get('firmwareVersion'),
-            timestamp,
-            timestamp
-        ))
+            c.execute("""
+                INSERT INTO node_info (
+                    node_id, short_name, long_name, hw_model, role,
+                    firmware_version, first_seen, last_seen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id) DO UPDATE SET
+                    short_name = excluded.short_name,
+                    long_name = excluded.long_name,
+                    hw_model = excluded.hw_model,
+                    role = excluded.role,
+                    firmware_version = excluded.firmware_version,
+                    last_seen = excluded.last_seen
+            """, (
+                node_id,
+                user.get('shortName'),
+                user.get('longName'),
+                user.get('hwModel'),
+                user.get('role'),
+                node_info.get('deviceMetrics', {}).get('firmwareVersion'),
+                timestamp,
+                timestamp
+            ))
 
-        conn.commit()
-        conn.close()
 
         logger.info(f"ℹ️ Node info updated: {user.get('shortName')} ({node_id})")
 

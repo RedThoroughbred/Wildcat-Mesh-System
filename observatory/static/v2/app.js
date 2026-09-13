@@ -213,11 +213,89 @@
     refreshStats();
   }
 
+  // ---------------------------------------------------------------- coverage (measured, never interpolated)
+  const cov = { on: false, direct: true, bins: true, points: [], layer: L.layerGroup(), hexLayer: L.layerGroup(), loaded: false, summary: null };
+  const HEX_M = 150;   // hex "radius" in metres; ~260 m across — roughly a LoRa-meaningful cell in town
+  function snrColor(v) { return v == null ? "#8a97a8" : v > 8 ? "#58e39c" : v > 3 ? "#b6e05a" : v > -3 ? "#f2c04e" : v > -8 ? "#ff9a5c" : "#ff6b6b"; }
+  function covVisible(p) { return !(cov.direct && p.hops !== 0); }
+  function drawPoint(p) {
+    const relay = p.hops == null || p.hops > 0;
+    const m = L.circleMarker([p.lat, p.lon], { radius: relay ? 4 : 5.5, color: snrColor(p.snr), weight: 1.5, fillColor: snrColor(p.snr),
+      fillOpacity: relay ? 0.35 : (p.pos_age > 300 ? 0.55 : 0.9), className: "cov-pt" + (relay ? " relay" : ""), interactive: true });
+    const who = S.roster[p.node_id] ? name(S.roster[p.node_id]) : p.node_id.slice(-4);
+    m.bindTooltip(`<b>${escape(who)}</b> · ${p.snr != null ? p.snr.toFixed(1) + " dB" : "SNR ?"}${p.rssi != null ? " · " + p.rssi + " dBm" : ""}<br>`
+      + `${p.hops === 0 ? "heard direct" : p.hops == null ? "hops unknown" : p.hops + " hop" + (p.hops === 1 ? "" : "s") + " (last-hop signal)"} · ${ago(p.ts)}`
+      + `${p.pos_age ? `<br>fix ${Math.round(p.pos_age / 60)} min old` : ""}${p.source !== "live" ? " · " + escape(p.source) : ""}`, { className: "node-tip", direction: "top" });
+    return m;
+  }
+  // pointy-top hex binning on a local metric plane around the base
+  function hexKey(lat, lon, origin) {
+    const R = 111320, x = (lon - origin[1]) * R * Math.cos(origin[0] * Math.PI / 180), y = (lat - origin[0]) * R;
+    const q = (Math.sqrt(3) / 3 * x - y / 3) / HEX_M, r = (2 / 3 * y) / HEX_M;
+    let rq = Math.round(q), rr = Math.round(r), rs = Math.round(-q - r);
+    const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - (-q - r));
+    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+    return [rq, rr];
+  }
+  function hexPolygon(q, r, origin) {
+    const R = 111320, cx = HEX_M * Math.sqrt(3) * (q + r / 2), cy = HEX_M * 1.5 * r, pts = [];
+    for (let i = 0; i < 6; i++) { const a = Math.PI / 180 * (60 * i - 30), x = cx + HEX_M * Math.cos(a), y = cy + HEX_M * Math.sin(a);
+      pts.push([origin[0] + y / R, origin[1] + x / (R * Math.cos(origin[0] * Math.PI / 180))]); }
+    return pts;
+  }
+  function drawBins() {
+    cov.hexLayer.clearLayers();
+    if (!cov.bins) return;
+    const origin = pos(S.roster[S.myId]) || (cov.points[0] && [cov.points[0].lat, cov.points[0].lon]); if (!origin) return;
+    const bins = new Map();
+    for (const p of cov.points) { if (!covVisible(p) || p.snr == null) continue; const [q, r] = hexKey(p.lat, p.lon, origin); const k = q + "," + r;
+      (bins.get(k) || bins.set(k, { q, r, snrs: [], nodes: new Set() }).get(k)).snrs.push(p.snr); bins.get(k).nodes.add(p.node_id); }
+    for (const b of bins.values()) {
+      if (b.snrs.length < 3) continue;                       // not enough samples to claim anything
+      const sorted = b.snrs.slice().sort((a, c) => a - c), med = sorted[Math.floor(sorted.length / 2)], best = sorted[sorted.length - 1];
+      L.polygon(hexPolygon(b.q, b.r, origin), { color: snrColor(med), weight: 1, fillColor: snrColor(med), fillOpacity: 0.28, className: "cov-hex", interactive: true })
+        .bindTooltip(`<b>${b.snrs.length} samples</b> from ${b.nodes.size} node${b.nodes.size === 1 ? "" : "s"}<br>median ${med.toFixed(1)} dB · best ${best.toFixed(1)} dB`, { className: "node-tip", sticky: true })
+        .addTo(cov.hexLayer);
+    }
+  }
+  function drawCoverage() {
+    cov.layer.clearLayers();
+    for (const p of cov.points) if (covVisible(p)) drawPoint(p).addTo(cov.layer);
+    drawBins(); covSummary();
+  }
+  function covSummary() {
+    const el = $("cov-summary"), s = cov.summary; if (!s) return;
+    const vis = cov.points.filter(covVisible).length;
+    if (!s.count) { el.innerHTML = "<b>No measured points yet.</b> Points appear when a node with a fresh GPS fix is heard. Walk with GO (or run Range Test) and watch this fill in."; return; }
+    const span = s.first_ts && s.last_ts ? `${new Date(s.first_ts * 1000).toLocaleDateString()} → ${ago(s.last_ts)}` : "";
+    el.innerHTML = `<b>${vis}</b> shown of <b>${s.count}</b> measured · <b>${s.direct}</b> heard direct · ${s.nodes} node${s.nodes === 1 ? "" : "s"}<br>${span}<br><span style="opacity:.8">Dots are real receptions at the base; nothing between them is inferred.</span>`;
+  }
+  function loadCoverage() {
+    fetch("api/coverage?hours=" + (24 * 90)).then(r => r.json()).then(d => { cov.points = d.points || []; cov.summary = d.summary; cov.loaded = true; drawCoverage(); })
+      .catch(() => { $("cov-summary").textContent = "coverage API unavailable"; });
+  }
+  function setCoverage(on) {
+    cov.on = on; $("cov-opts").hidden = !on;
+    if (on) { cov.layer.addTo(map); cov.hexLayer.addTo(map); if (!cov.loaded) loadCoverage(); else drawCoverage(); }
+    else { map.removeLayer(cov.layer); map.removeLayer(cov.hexLayer); }
+    try { localStorage.setItem("v2.cov", on ? "1" : "0"); } catch (e) {}
+  }
+  $("cov-on").addEventListener("change", e => setCoverage(e.target.checked));
+  $("cov-direct").addEventListener("change", e => { cov.direct = e.target.checked; drawCoverage(); });
+  $("cov-bins").addEventListener("change", e => { cov.bins = e.target.checked; drawBins(); });
+  function addRxPoint(p) {
+    cov.points.unshift(p); if (cov.points.length > 5000) cov.points.pop();
+    if (cov.summary) { cov.summary.count++; if (p.hops === 0) cov.summary.direct++; cov.summary.last_ts = p.ts; cov.summary.first_ts = cov.summary.first_ts || p.ts; }
+    if (cov.on && covVisible(p)) { const m = drawPoint(p).addTo(cov.layer); const el = m.getElement && m.getElement(); if (el) el.style.transition = "r .3s"; drawBins(); covSummary(); }
+  }
+  try { if (localStorage.getItem("v2.cov") === "1") { $("cov-on").checked = true; setCoverage(true); } } catch (e) {}
+
   // ---------------------------------------------------------------- boot
   fetch("api/state").then(r => r.json()).then(applySnapshot).catch(() => setStatus(false, null));
   const sock = io("/v2", { transports: ["websocket", "polling"] });
   sock.on("snapshot", applySnapshot);
   sock.on("packet", applyPacket);
+  sock.on("rxpoint", addRxPoint);
   sock.on("roster", (r) => { S.myId = r.my_id || S.myId; for (const id in r.roster) upsertNode(r.roster[id]); refreshLinks(); refreshStats(); fitOnce(); });
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
   sock.on("disconnect", () => setStatus(false, null));

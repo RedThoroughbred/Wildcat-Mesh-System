@@ -202,6 +202,10 @@ def log_message(sender_id, sender_short_name, to_id, message, timestamp, channel
         conn.commit()
     except Exception as e:
         logging.error(f"Error logging message: {e}")
+        try:
+            conn.rollback()          # never leave the shared long-lived connection holding the write lock
+        except Exception:
+            pass
 
 
 def get_channel_activity_stats(hours=24):
