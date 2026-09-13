@@ -218,6 +218,25 @@ home-screen metadata. What that buys, with no app store and no build step:
   (tap the handle or swipe), the layers panel collapses to a button, the stat
   strip scrolls, the node card sits above the sheet. Verified at 375 × 812.
 
+**Built native-ready from now on (Seth, 2026-09-13: "build it in a way to become a
+Capacitor iOS app, and eventually Android").** Constraints the codebase now honors so
+that wrapping is a packaging task, not a rewrite:
+
+- The page is a **static shell**: one HTML file + `static/v2/app.{js,css}` + vendored
+  Leaflet/Socket.IO. Nothing it needs is server-rendered except the asset version stamp.
+- **Configurable API base.** Every request goes through one helper; same-origin when
+  Flask serves the page, else `window.WILDCAT_API_BASE` (set by a 3-line `config.js`
+  in the native bundle) or a stored `v2.apiBase`. Socket.IO connects to the same base.
+- **CORS on `/v2/api/*`** so a `capacitor://localhost` origin can call the Den.
+- **No cookies, no sessions, no server-side state in the page.** Public vs operator is
+  a body class; a native shell can flip it the same way.
+- Touch-first mobile layout already exists (sheet, drawer, safe areas).
+- A `build-www.sh` for this repo (mirror `observatory/templates/v2/index.html` →
+  `www/index.html` with a static `config.js`, plus `static/`) is the whole bridge to
+  `npx cap add ios`; Repot's pipeline is the template. Flutter/Dart is the other road
+  Seth mentioned — that would consume the same API and Socket.IO events, so nothing
+  here forecloses it.
+
 **Limits of the PWA path** (honest): iOS gives PWAs no background execution
 and no push without the user adding it to the home screen (and even then push
 is iOS 16.4+ only); no Bluetooth/serial to a *phone-attached* radio; the
