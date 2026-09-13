@@ -450,7 +450,7 @@ button:active, .link-btn:active, .chip:active, .tool:active { transform: scale(.
 .pkt .kind::before { content: "·"; margin-right: 4px; }
 .pkt[data-kind="text"] .kind::before { content: "✉"; } .pkt[data-kind="position"] .kind::before { content: "◎"; } .pkt[data-kind="telemetry"] .kind::before { content: "▮"; }
 .pkt[data-kind="neighbors"] .kind::before { content: "⬡"; } .pkt[data-kind="nodeinfo"] .kind::before { content: "ⓘ"; } .pkt[data-kind="encrypted"] .kind::before { content: "🔒"; }
-.pkt:hover { border-color: rgba(255,255,255,.12); }
+.pkt { cursor: pointer; } .pkt:hover { border-color: rgba(255,255,255,.12); }
 /* tables: rows respond, keyboard focusable */
 table.vt tr.row:focus-visible td { background: rgba(224,112,75,.12); }
 table.vt tr.row td:first-child { border-left: 2px solid transparent; } table.vt tr.row:hover td:first-child { border-left-color: var(--terracotta); }

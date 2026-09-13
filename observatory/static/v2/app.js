@@ -122,7 +122,7 @@
   const list = $("feed-list");
   let addPacket = function (p, fresh) {
     const el = document.createElement("div");
-    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id;
+    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
     const snr = p.snr != null ? `<span class="snr ${snrClass(p.snr)}">${p.snr.toFixed(1)} dB</span>` : "";
     const rssi = p.rssi != null ? `<span>${p.rssi} dBm</span>` : "";
@@ -135,6 +135,14 @@
     if (fresh) setTimeout(() => el.classList.remove("fresh"), 1500);
     while (list.children.length > 150) list.lastChild.remove();
   };
+  // tapping a feed card opens that node (map card if it has a fix, else its page)
+  list.addEventListener("click", (e) => {
+    const el = e.target.closest(".pkt"); if (!el || e.target.closest(".state")) return;
+    const p = el._pkt; if (!p || !p.from) return;
+    const id = p.sent ? (p.to || null) : p.from; if (!id || id === S.myId && !S.roster[id]) return;
+    if (pos(S.roster[id]) && !document.body.classList.contains("viewing")) { map.flyTo(pos(S.roster[id]), Math.max(map.getZoom(), 12), { duration: .6 }); showCard(id); }
+    else location.hash = "#/node/" + encodeURIComponent(id);
+  });
   $("filters").addEventListener("click", (e) => {
     const b = e.target.closest(".chip"); if (!b) return;
     S.filter = b.dataset.kind;
