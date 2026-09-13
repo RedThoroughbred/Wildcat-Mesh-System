@@ -42,6 +42,7 @@
   </div>
   <div class="tools">
     <button class="tool alert-btn" id="alerts" title="mesh health" hidden><span id="alerts-n">0</span></button>
+    <button class="tool compose-btn" id="compose-btn" title="Compose a message (c)" aria-label="compose a message">✎</button>
     <button class="tool" id="palette-btn" title="Find a node (⌘K or /)" aria-label="find a node">⌕</button>
     <button class="tool" id="sound" title="Chime on new messages (off)" aria-pressed="false">🔕</button>
     <button class="tool" id="share" title="Copy a read-only public link" aria-label="copy public link">⇗</button>
@@ -51,6 +52,23 @@
 </header>
 
 <div class="glass health-bar" id="health-bar" hidden><span class="hb-dot"></span><span id="health-bar-text"></span><a href="#/health" class="link-btn">details</a></div>
+
+<section class="glass compose" id="compose" hidden aria-label="compose a message">
+  <header class="compose-head"><h2>✎ Send to the mesh</h2><span class="dim" id="compose-path">via meshd · paced · 1 packet</span><button class="close" id="compose-close" aria-label="close">×</button></header>
+  <div class="compose-body">
+    <div class="compose-to">
+      <div class="seg" id="compose-mode"><button class="chip on" data-mode="dm">Direct message</button><button class="chip" data-mode="bc">Broadcast</button></div>
+      <div class="to-row" id="to-dm">
+        <div class="to-pick"><input class="vsearch" id="to-input" placeholder="node name or !id…" autocomplete="off"><div class="to-list" id="to-list" hidden></div></div>
+        <div class="to-chip" id="to-chip" hidden><i class="nd"></i><b id="to-name"></b><span id="to-id" class="dim"></span><button id="to-clear" aria-label="clear">×</button></div>
+      </div>
+      <div class="to-row" id="to-bc" hidden><label class="dim">channel</label><select class="vsearch" id="bc-channel"><option value="0">0 · primary</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option></select><span class="dim" id="bc-warn">everyone on the channel hears this — keep it rare</span></div>
+    </div>
+    <textarea id="compose-text" rows="3" maxlength="200" placeholder="Message… (≤ 200 bytes, one LoRa packet)"></textarea>
+    <div class="compose-foot"><span class="dim" id="compose-count">0 / 200</span><button class="send" id="compose-send" disabled>Send ↗</button></div>
+    <div class="sends" id="sends"></div>
+  </div>
+</section>
 
 <div class="palette" id="palette" hidden>
   <div class="glass palette-box">
@@ -153,7 +171,7 @@
     <span><b id="c-pkts">–</b><em>pkts 24h</em></span>
     <span><b id="c-util">–</b><em>ch util</em></span>
   </div>
-  <div class="card-foot"><span id="c-pos"></span><button class="mini" id="c-center" title="center map">⌖ center</button></div>
+  <div class="card-foot"><span id="c-pos"></span><span><button class="mini op-only" id="c-msg" title="send a direct message">✎ message</button> <button class="mini" id="c-center" title="center map">⌖ center</button></span></div>
 </section>
 
 <div class="glass layers" id="layers">

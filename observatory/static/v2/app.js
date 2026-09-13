@@ -116,13 +116,13 @@
   const list = $("feed-list");
   let addPacket = function (p, fresh) {
     const el = document.createElement("div");
-    el.className = "pkt" + (fresh ? " fresh" : ""); el.dataset.kind = p.kind;
+    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id;
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
     const snr = p.snr != null ? `<span class="snr ${snrClass(p.snr)}">${p.snr.toFixed(1)} dB</span>` : "";
     const rssi = p.rssi != null ? `<span>${p.rssi} dBm</span>` : "";
     const hops = p.hops != null ? `<span>${p.hops === 0 ? "direct" : p.hops + " hop" + (p.hops === 1 ? "" : "s")}</span>` : "";
     el.innerHTML = `<div class="bar"></div>
-      <div><div class="who">${escape(p.from_name || p.from)} ${to} <span class="kind">${escape(p.kind)}</span></div><div class="sum">${escape(p.summary || "")}</div></div>
+      <div><div class="who">${escape(p.sent ? "you" : (p.from_name || p.from))} ${to} <span class="kind">${escape(p.kind)}</span>${p.sent ? stateChip(p.state || "queued") : ""}</div><div class="sum">${escape(p.summary || "")}</div></div>
       <div class="meta"><span data-ts="${p.ts}">${ago(p.ts)}</span>${snr}${rssi}${hops}</div>`;
     el.hidden = !(S.filter === "all" || S.filter === p.kind);
     list.prepend(el);
@@ -263,6 +263,7 @@
     for (const l of s.links || []) upsertLink(l);
     list.innerHTML = "";
     for (const p of (s.packets || [])) addPacket(p, false);
+    for (const t of (s.tx || [])) C.sends.set(t.id, t);
     if (typeof addExchange === "function") {
       catList.innerHTML = ""; catN = 0; $("cat-count").textContent = "";
       for (const p of (s.packets || [])) maybeExchange(p);
@@ -279,6 +280,7 @@
     for (const l of ev.links || []) upsertLink(l);
     if (typeof TL !== "undefined" && document.body.classList.contains("replaying")) { TL.queuedLive.push(ev.packet); if (TL.events.length) TL.events.push(ev.packet); refreshStats(); return; }
     addPacket(ev.packet, true);
+    if (ev.packet.sent) { maybeExchange(ev.packet); refreshStats(); return; }
     if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
     const p = ev.packet;
     flashNode(p.from);
@@ -374,6 +376,7 @@
   sock.on("packet", applyPacket);
   sock.on("rxpoint", addRxPoint);
   sock.on("brain", (x) => { addExchange(x, true); chime(); });
+  sock.on("tx", applyTx);
   sock.on("roster", (r) => { S.myId = r.my_id || S.myId; for (const id in r.roster) upsertNode(r.roster[id]); refreshLinks(); refreshStats(); fitOnce(); });
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
   sock.on("disconnect", () => setStatus(false, null));
@@ -387,6 +390,75 @@
     try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
     catch (e) { prompt("Read-only public link:", url); }
   });
+
+  // ---------------------------------------------------------------- operator console: compose & send
+  const C = { mode: "dm", to: null, sends: new Map(), open: false };
+  const compose = $("compose"), toIn = $("to-input"), toList = $("to-list"), cText = $("compose-text"), cSend = $("compose-send");
+  function composeOpen(prefillTo) {
+    if (PUBLIC) return;
+    compose.hidden = false; C.open = true;
+    if (prefillTo) setTo(prefillTo);
+    if (feedEl.dataset.sheet !== "peek" && window.innerWidth <= 760) setSheet("peek");
+    setTimeout(() => (C.to || C.mode === "bc" ? cText : toIn).focus(), 40);
+    renderSends();
+  }
+  function composeClose() { compose.hidden = true; C.open = false; }
+  $("compose-btn").addEventListener("click", () => C.open ? composeClose() : composeOpen());
+  $("compose-close").addEventListener("click", composeClose);
+  function setMode(m) { C.mode = m; for (const b of $("compose-mode").children) b.classList.toggle("on", b.dataset.mode === m); $("to-dm").hidden = m !== "dm"; $("to-bc").hidden = m !== "bc"; validate(); }
+  $("compose-mode").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) setMode(b.dataset.mode); });
+  function setTo(id) {
+    const n = S.roster[id] || { id, short_name: id.slice(-4) }; C.to = id;
+    $("to-name").textContent = name(n); $("to-id").textContent = id; $("to-chip").querySelector(".nd").className = "nd " + ageClass(n);
+    $("to-chip").hidden = false; toIn.parentElement.hidden = true; toList.hidden = true; setMode("dm"); validate();
+  }
+  function clearTo() { C.to = null; $("to-chip").hidden = true; toIn.parentElement.hidden = false; toIn.value = ""; validate(); toIn.focus(); }
+  $("to-clear").addEventListener("click", clearTo);
+  function toRender(q) {
+    q = q.trim().toLowerCase();
+    const R = Object.values(S.roster).filter(n => n.id !== S.myId);
+    const hits = (q ? R.filter(n => [n.short_name, n.long_name, n.id].some(v => v && String(v).toLowerCase().includes(q))) : R.sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0))).slice(0, 8);
+    const typed = /^![0-9a-f]{8}$/i.test(q) && !hits.some(n => n.id.toLowerCase() === q) ? [{ id: q.toLowerCase(), short_name: q.slice(-4), typed: true }] : [];
+    const all = [...typed, ...hits];
+    toList.innerHTML = all.length ? all.map(n => `<div class="pal" data-id="${escape(n.id)}">${n.typed ? "" : dot(n)}<span class="n">${escape(n.typed ? "Send to " + n.id : name(n))}</span><span class="l">${escape(n.long_name || (n.typed ? "not in the roster (yet)" : ""))}</span><span class="d">${n.typed ? "" : (n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops") + " · " + ago(n.last_heard)}</span></div>`).join("") : '<div class="empty">no node matches</div>';
+    toList.hidden = false;
+  }
+  toIn.addEventListener("input", () => toRender(toIn.value)); toIn.addEventListener("focus", () => toRender(toIn.value));
+  toIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { const f = toList.querySelector(".pal"); if (f) setTo(f.dataset.id); } if (e.key === "Escape") toList.hidden = true; });
+  toList.addEventListener("mousedown", (e) => { const el = e.target.closest(".pal"); if (el) { e.preventDefault(); setTo(el.dataset.id); } });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".to-pick")) toList.hidden = true; });
+  function bytes(t) { return new TextEncoder().encode(t).length; }
+  function validate() {
+    const b = bytes(cText.value), ok = b > 0 && b <= 200 && (C.mode === "bc" || !!C.to);
+    $("compose-count").textContent = `${b} / 200`; $("compose-count").classList.toggle("over", b > 200);
+    $("compose-path").textContent = C.mode === "bc" ? "via meshd · broadcast · no ACK" : "via meshd · paced · ACK requested";
+    cSend.disabled = !ok;
+  }
+  cText.addEventListener("input", validate);
+  cText.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !cSend.disabled) doSend(); });
+  async function doSend() {
+    cSend.disabled = true;
+    const body = C.mode === "bc" ? { to: "^all", text: cText.value.trim(), channel: +$("bc-channel").value } : { to: C.to, text: cText.value.trim(), channel: 0 };
+    try {
+      const r = await fetch("api/tx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok) { toast(j.error || "send refused", "err"); validate(); return; }
+      C.sends.set(j.id, j); renderSends(); cText.value = ""; validate(); toast(C.mode === "bc" ? "Broadcast queued" : `Queued for ${j.to_name || j.to}`, "ok");
+    } catch (e) { toast("Send failed: " + e, "err"); validate(); }
+  }
+  cSend.addEventListener("click", doSend);
+  function stateChip(st) { return `<span class="state ${st}">${st}</span>`; }
+  function renderSends() {
+    const arr = [...C.sends.values()].sort((a, b) => b.ts - a.ts).slice(0, 20);
+    $("sends").innerHTML = arr.map(x => `<div class="snd ${x.state}"><div class="t"><b>${x.broadcast ? "→ all" + (x.channel ? " · ch " + x.channel : "") : "→ " + escape(x.to_name || x.to)}</b>${escape(x.text)}</div><div class="st">${stateChip(x.state)}<span>${ago(x.ts)}${x.state === "delivered" && x.acked_by ? " · acked" : ""}${x.error ? " · " + escape(x.error) : ""}</span></div></div>`).join("");
+  }
+  function applyTx(rec) {
+    C.sends.set(rec.id, rec); if (C.open) renderSends();
+    const el = list.querySelector(`.pkt[data-tx="${rec.id}"]`); if (el) { const st = el.querySelector(".state"); if (st) { st.className = "state " + rec.state; st.textContent = rec.state; } }
+    if (rec.state === "delivered") toast(`Delivered to ${rec.to_name || rec.to}`, "ok"); else if (rec.state === "failed") toast(`Send failed: ${rec.error || "unknown"}`, "err");
+  }
+  $("c-msg").addEventListener("click", () => { if (S.selected) composeOpen(S.selected); });
+  document.addEventListener("keydown", (e) => { if (e.key === "c" && !PUBLIC && !/input|textarea|select/i.test(e.target.tagName || "") && !e.metaKey && !e.ctrlKey) { e.preventDefault(); composeOpen(); } });
 
   // ---------------------------------------------------------------- chime on new messages (WebAudio, gesture-unlocked)
   let audioCtx = null, soundOn = false;
@@ -724,7 +796,8 @@
         const d = await r.json(), n = d.node, st = d.stats || {}, rel = d.reliability || {};
         viewTitle.innerHTML = `${dot(n)}${escape(n.short_name || id.slice(-4))} <span style="color:var(--muted);font-weight:500">${escape(n.long_name || "")}</span>`;
         const center = document.createElement("button"); center.className = "link-btn"; center.textContent = "⌖ on map"; center.onclick = () => { location.hash = "#/"; setTimeout(() => { const p = pos(S.roster[id]); if (p) { map.flyTo(p, 14); showCard(id); } }, 50); };
-        viewTools.replaceChildren(center);
+        const msg = document.createElement("button"); msg.className = "link-btn op-only"; msg.textContent = "✎ message"; msg.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(id), 60); };
+        viewTools.replaceChildren(msg, center);
         const sig = d.signal || [], tel = d.telemetry || [];
         const lastSig = sig.length ? sig[sig.length - 1] : {};
         const bands = rel.bands || {}, tot = Math.max(1, rel.messages || 0);
@@ -803,9 +876,10 @@
           const rows = [...threads.entries()].sort((a, b) => b[1][0].ts - a[1][0].ts);
           viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>direct messages · ${h}h</span></div><div class="kpi"><b>${threads.size}</b><span>nodes in conversation</span></div><div class="kpi"><b>${d.messages.filter(m => m.from_bbs).length}</b><span>replies from the Den</span></div></div>`
             + (rows.length ? rows.map(([nid, ms]) => { const nm = (S.roster[nid] && S.roster[nid].short_name) || (ms.find(m => !m.from_bbs) || {}).short_name || nid.slice(-4);
-              return `<div class="vcard" style="margin-bottom:12px"><h2><span class="nd ${S.roster[nid] ? ageClass(S.roster[nid]) : ""}"></span>${escape(nm)} <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500">${escape(nid)} · ${ms.length} messages · last ${ago(ms[0].ts)}</span><span class="sel"><a class="link-btn" href="#/node/${encodeURIComponent(nid)}">node →</a></span></h2>${
+              return `<div class="vcard" style="margin-bottom:12px"><h2><span class="nd ${S.roster[nid] ? ageClass(S.roster[nid]) : ""}"></span>${escape(nm)} <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500">${escape(nid)} · ${ms.length} messages · last ${ago(ms[0].ts)}</span><span class="sel">${PUBLIC ? "" : `<button class="link-btn reply" data-id="${escape(nid)}">✎ reply</button>`}<a class="link-btn" href="#/node/${encodeURIComponent(nid)}">node →</a></span></h2>${
                 ms.slice().reverse().map(m => `<div class="msgrow${m.from_bbs ? " den" : ""}"><div class="m"><b>${m.from_bbs ? "Den" : escape(m.short_name || nm)}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}${m.snr != null ? "<br>" + snrSpan(m.snr) : ""}</div></div>`).join("")}</div>`; }).join("")
               : '<div class="empty">no direct messages in this window — DM the Den from any node to start one</div>');
+          viewBody.querySelectorAll(".reply").forEach(b => b.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(b.dataset.id), 60); });
         } else if (self.tab === "bulletins") {
           const d = await (await fetch("api/bulletins" + (self.board ? "?board=" + encodeURIComponent(self.board) : ""))).json();
           const boards = document.createElement("div"); boards.className = "sel";
@@ -896,7 +970,7 @@
         viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b><span class="nd ${sv.bus ? "on" : "bad"}"></span>${sv.bus ? "up" : "down"}</b><span>MQTT bus</span></div><div class="kpi"><b><span class="nd ${m.state === "connected" ? "on" : "warm"}"></span>${escape(m.state || "?")}</b><span>meshd · ${escape(m.radio || "")}</span></div><div class="kpi"><b>${sv.packets_seen}</b><span>packets since start</span></div><div class="kpi"><b>${Math.floor(sv.uptime / 3600)}h ${Math.floor(sv.uptime % 3600 / 60)}m</b><span>observatory uptime</span></div></div>
           <div class="vgrid">
-            ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh</h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
+            ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh <span class="sel"><button class="link-btn" id="open-console">open the console ✎</button></span></h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
               <div style="display:flex;gap:6px;flex-wrap:wrap"><select class="vsearch" id="tx-to" style="min-width:120px"><option value="^all">Broadcast (all)</option>${Object.values(S.roster).filter(n => n.id !== S.myId && (now() - (n.last_heard || 0)) < 86400).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0)).slice(0, 40).map(n => `<option value="${escape(n.id)}">DM ${escape(name(n))}</option>`).join("")}</select>
               <input class="vsearch" id="tx-text" maxlength="200" placeholder="message (≤200 chars)" style="flex:1"><button class="link-btn" id="tx-send">Send</button></div><div id="tx-result" style="margin-top:6px;font-size:12px;color:var(--muted)"></div></div>`}
             <div class="vcard"><h2>📥 Exports</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="link-btn" href="${A("api/export/nodes.csv")}">nodes.csv</a><a class="link-btn" href="${A("api/export/messages.csv")}">messages.csv (last 1000)</a><a class="link-btn" href="${A("api/export/coverage.csv")}">coverage.csv</a><a class="link-btn" href="${A("api/state")}" target="_blank">state.json</a></div></div>
@@ -915,6 +989,7 @@
               <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">effective config (TOML, secrets redacted)</summary><pre id="cfg-toml" style="margin:6px 0 0;font:12px var(--mono);color:#c9d3df;white-space:pre-wrap;max-height:300px;overflow:auto"></pre></details></div>
             <div class="vcard"><h2>✏️ BBS content <span class="sel" id="content-tabs"></span></h2><textarea id="content-text" class="vsearch" style="width:100%;min-height:240px;font:12px var(--mono);resize:vertical" ${PUBLIC ? "readonly" : ""}></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:6px">${PUBLIC ? "" : '<button class="link-btn" id="content-save">Save (keeps a .bak)</button>'}<span id="content-status" style="color:var(--muted);font-size:12px"></span></div></div>
           </div>`;
+        const oc = $("open-console"); if (oc) oc.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(), 60); };
         // send
         const send = $("tx-send"); if (send) send.onclick = async () => { const text = $("tx-text").value.trim(); if (!text) return; send.disabled = true;
           try { const r = await fetch("api/tx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: $("tx-to").value, text }) }); const j = await r.json();
