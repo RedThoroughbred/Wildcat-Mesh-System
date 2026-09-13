@@ -718,7 +718,34 @@
         }
       }
     },
-    propagation: { title: "Propagation", soon: "hourly SNR trends, best & worst links, SNR distribution" },
+    propagation: {
+      title: "Propagation", days: 7,
+      async render() {
+        const self = VIEWS.propagation, d = await (await fetch("api/propagation?days=" + self.days)).json();
+        viewTools.replaceChildren(hoursSel(self.days, [[1, "24h"], [7, "7d"], [30, "30d"]], v => { self.days = v; route(); }));
+        const hourly = d.hourly || [], dist = d.distribution || [];
+        const total = hourly.reduce((a, r) => a + r.message_count, 0);
+        const best = hourly.length ? hourly.reduce((a, r) => r.avg_snr > a.avg_snr ? r : a) : null, worst = hourly.length ? hourly.reduce((a, r) => r.avg_snr < a.avg_snr ? r : a) : null;
+        const byHour = new Array(24).fill(null); for (const r of hourly) byHour[r.hour] = r;
+        const insights = [];
+        if (best && worst && best !== worst) insights.push(`Best hour <b>${best.hour}:00</b> (avg ${fmt1(best.avg_snr, " dB")}), worst <b>${worst.hour}:00</b> (${fmt1(worst.avg_snr, " dB")}) — a ${fmt1(best.avg_snr - worst.avg_snr, " dB")} swing.`);
+        if (dist.length) { const n = dist.reduce((a, r) => a + r.count, 0), good = dist.filter(r => r.snr >= 3).reduce((a, r) => a + r.count, 0); insights.push(`<b>${Math.round(100 * good / n)}%</b> of ${n} receptions were ≥3 dB SNR (comfortable margin).`); }
+        if (hourly.length && hourly.length < 12) insights.push(`Only ${hourly.length} of 24 hours have data in this window — trends firm up as the Den runs longer.`);
+        if (!hourly.length) insights.push("No SNR samples in this window yet.");
+        const link = (r) => `<tr class="row" data-id="${escape(r.id)}"><td><b>${escape(r.short_name || r.id.slice(-4))}</b></td><td class="num">${snrSpan(r.snr)}</td><td class="num">${r.rssi != null ? r.rssi + " dBm" : "–"}</td><td class="dim">${ago(r.ts)}</td></tr>`;
+        viewBody.innerHTML = `
+          <div class="kpis"><div class="kpi"><b>${total}</b><span>receptions with SNR · ${self.days}d</span></div><div class="kpi"><b>${hourly.length ? fmt1(hourly.reduce((a, r) => a + r.avg_snr * r.message_count, 0) / Math.max(1, total), " dB") : "–"}</b><span>weighted avg SNR</span></div><div class="kpi"><b>${best ? best.hour + ":00" : "–"}</b><span>best hour</span></div><div class="kpi"><b>${worst ? worst.hour + ":00" : "–"}</b><span>worst hour</span></div></div>
+          <div class="vgrid">
+            <div class="vcard wide"><h2>Average SNR by hour of day <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500">local time · ${self.days} day${self.days === 1 ? "" : "s"}</span></h2>${hourly.length >= 2 ? lineChart(byHour.map((r, hh) => r ? { x: hh + ":00", y: r.avg_snr } : null).filter(Boolean), { lo: -10, hi: 10 }) : '<div class="empty">not enough hourly data yet</div>'}</div>
+            <div class="vcard"><h2>SNR distribution</h2>${dist.length ? barChart(dist.map(r => ({ label: r.snr, value: r.count, cls: r.snr >= 3 ? "t" : "" }))) : '<div class="empty">no data</div>'}<div style="color:var(--muted);font-size:11px;margin-top:4px">dB buckets · terracotta = ≥3 dB</div></div>
+            <div class="vcard"><h2>Messages per hour</h2>${hourly.length ? barChart(byHour.map((r, hh) => ({ label: hh, value: r ? r.message_count : 0 }))) : '<div class="empty">no data</div>'}</div>
+            <div class="vcard"><h2>🏆 Best links</h2>${(d.best || []).length ? `<table class="vt"><thead><tr><th>Node</th><th>SNR</th><th>RSSI</th><th>When</th></tr></thead><tbody>${d.best.map(link).join("")}</tbody></table>` : '<div class="empty">none yet</div>'}</div>
+            <div class="vcard"><h2>📉 Weakest links</h2>${(d.worst || []).length ? `<table class="vt"><thead><tr><th>Node</th><th>SNR</th><th>RSSI</th><th>When</th></tr></thead><tbody>${d.worst.map(link).join("")}</tbody></table>` : '<div class="empty">none yet</div>'}</div>
+            <div class="vcard wide"><h2>💡 Insights</h2><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6">${insights.map(i => `<li>${i}</li>`).join("")}<li style="color:var(--muted)">SNR above ~5 dB is a solid LongFast link; below −7 dB packets start dropping. RSSI alone is misleading on LoRa — SNR is the number that matters.</li></ul></div>
+          </div>`;
+        viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
+      }
+    },
     topology: { title: "Topology", soon: "the neighbour graph from NeighborInfo + direct-hop inference" },
     admin: { title: "Admin", soon: "live logs, exports, BBS config & content, service status" },
     api: { title: "API", soon: "the /v2 API reference with try-it buttons" },
