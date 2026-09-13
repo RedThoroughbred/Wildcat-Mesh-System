@@ -88,6 +88,11 @@ body.replaying .feed-tabs .ftab.on::after { content: " · replay"; color: var(--
 .replay-badge { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); z-index: 1500; background: rgba(111,195,255,.16); border: 1px solid rgba(111,195,255,.5); color: #d6efff; border-radius: 999px; padding: 6px 14px; font: 700 12px var(--font); letter-spacing: .6px; display: none; }
 body.replaying .replay-badge { display: block; }
 
+@media (max-width: 1180px) and (min-width: 761px) {   /* narrow desktops / tablets: park it bottom-left above the legend */
+  .timeline { left: 12px; transform: none; width: 360px; bottom: 50px; }
+  .card:not([hidden]) ~ .timeline { display: none; }
+}
+
 /* ---- feed tabs + Cat ---- */
 .feed-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
 .ftab { background: none; border: 0; color: var(--muted); font: 700 13px var(--font); letter-spacing: .8px; text-transform: uppercase; padding: 4px 8px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
