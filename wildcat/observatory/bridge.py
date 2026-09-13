@@ -78,6 +78,7 @@ class State:
         self.total = 0
         self.by_kind: Dict[str, int] = {}
         self.signal: Dict[str, Deque[Dict[str, Any]]] = {}      # per node: recent rx samples (live only)
+        self.brain: Deque[Dict[str, Any]] = deque(maxlen=100)     # Ask-the-Cat exchanges (wildcat/brain/exchange)
         self._times: Deque[float] = deque(maxlen=5000)
         self.lock = threading.RLock()
 
@@ -186,6 +187,20 @@ class State:
             self.packets.append(rec)
             return {"packet": rec, "node": dict(node), "links": [dict(l) for l in links], "my_id": self.my_id}
 
+    def apply_brain(self, payload: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
+        """An Ask-the-Cat exchange (Phase 2 publishes these on wildcat/brain/exchange):
+        {node, prompt, reply, provider, latency_ms, chunks, ts, rate_limited?}. Stored + echoed."""
+        if not isinstance(payload, dict) or not payload.get("node"):
+            return None
+        with self.lock:
+            rec = {"ts": payload.get("ts") or now, "node": payload["node"],
+                   "node_name": self.roster.get(payload["node"], {}).get("short_name") or str(payload["node"])[-4:],
+                   "prompt": str(payload.get("prompt") or "")[:500], "reply": str(payload.get("reply") or "")[:1000],
+                   "provider": payload.get("provider"), "latency_ms": payload.get("latency_ms"),
+                   "chunks": payload.get("chunks"), "rate_limited": bool(payload.get("rate_limited"))}
+            self.brain.append(rec)
+        return rec
+
     # ---- views --------------------------------------------------------------------------
     def rate_per_min(self, now: float) -> float:
         cutoff = now - 60
@@ -206,6 +221,7 @@ class State:
             return {
                 "now": now, "my_id": self.my_id, "meshd": self.meshd, "bus": self.bus_connected,
                 "roster": self.roster, "links": list(self.links.values()), "packets": list(self.packets),
+                "brain": list(self.brain),
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
@@ -249,6 +265,72 @@ def node_detail(state: State, db_path: str, nid: str, hours: float = 24.0, now: 
     signal = sorted(samples.values(), key=lambda s: s["ts"])
     return {"node": node, "since": since, "signal": signal, "telemetry": telemetry, "packets": packets,
             "counts": {"signal": len(signal), "telemetry": len(telemetry), "packets_24h": len(packets)}}
+
+
+HISTORY_KINDS = ("text", "telemetry", "position", "neighbors")
+
+
+def history(db_path: str, since_ts: int, my_id: Optional[str] = None, limit: int = 6000) -> List[Dict[str, Any]]:
+    """Every event the Den has recorded since ``since_ts``, oldest first, in the feed's
+    packet shape (ts/kind/from/to/snr/rssi/summary) — from the tables the BBS and the
+    telemetry logger already write. This is what the timeline scrubs and replay plays."""
+    if not os.path.exists(db_path):
+        return []
+    out: List[Dict[str, Any]] = []
+    try:
+        conn = sqlite3.connect(db_path, timeout=2)
+        conn.row_factory = sqlite3.Row
+        try:
+            have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names: Dict[str, str] = {}
+            if "node_info" in have:
+                names = {r["node_id"]: r["short_name"] for r in conn.execute("SELECT node_id, short_name FROM node_info") if r["short_name"]}
+
+            def nm(nid: Any) -> str:
+                return names.get(nid) or (str(nid)[-4:] if nid else "?")
+
+            if "message_logs" in have:
+                for r in conn.execute("SELECT timestamp ts, sender_id, to_id, message, snr, rssi FROM message_logs"
+                                      " WHERE timestamp >= ? ORDER BY timestamp LIMIT ?", (since_ts, limit)):
+                    to = r["to_id"]
+                    bcast = to in (4294967295, "4294967295", None)
+                    to_id = None if bcast else (f"!{int(to):08x}" if isinstance(to, int) else str(to))
+                    text = r["message"] or ""
+                    out.append({"ts": r["ts"], "kind": "text", "from": r["sender_id"], "from_name": nm(r["sender_id"]),
+                                "to": to_id, "to_name": nm(to_id) if to_id else None, "broadcast": bcast,
+                                "snr": r["snr"], "rssi": r["rssi"], "hops": None, "text": text,
+                                "summary": text if len(text) <= 160 else text[:157] + "…"})
+            if "telemetry_logs" in have:
+                for r in conn.execute("SELECT timestamp ts, node_id, battery_level b, voltage v, channel_util u FROM telemetry_logs"
+                                      " WHERE timestamp >= ? ORDER BY timestamp LIMIT ?", (since_ts, limit)):
+                    bits = []
+                    if r["b"] is not None: bits.append(f"{int(r['b'])}%" if r["b"] <= 100 else "on power")
+                    if r["v"] is not None: bits.append(f"{r['v']:.2f} V")
+                    if r["u"] is not None: bits.append(f"util {r['u']:.1f}%")
+                    out.append({"ts": r["ts"], "kind": "telemetry", "from": r["node_id"], "from_name": nm(r["node_id"]),
+                                "to": None, "to_name": None, "broadcast": True, "snr": None, "rssi": None, "hops": None,
+                                "summary": " · ".join(bits) or "telemetry"})
+            if "position_logs" in have:
+                for r in conn.execute("SELECT timestamp ts, node_id, latitude la, longitude lo, altitude al FROM position_logs"
+                                      " WHERE timestamp >= ? AND latitude IS NOT NULL ORDER BY timestamp LIMIT ?", (since_ts, limit)):
+                    alt = f" · {int(r['al'])} m" if r["al"] is not None else ""
+                    out.append({"ts": r["ts"], "kind": "position", "from": r["node_id"], "from_name": nm(r["node_id"]),
+                                "to": None, "to_name": None, "broadcast": True, "snr": None, "rssi": None, "hops": None,
+                                "position": {"lat": r["la"], "lon": r["lo"]},
+                                "summary": f"{r['la']:.5f}, {r['lo']:.5f}{alt}"})
+            if "neighbor_info" in have:
+                for r in conn.execute("SELECT timestamp ts, node_id, COUNT(*) n FROM neighbor_info WHERE timestamp >= ?"
+                                      " GROUP BY timestamp, node_id ORDER BY timestamp LIMIT ?", (since_ts, limit)):
+                    out.append({"ts": r["ts"], "kind": "neighbors", "from": r["node_id"], "from_name": nm(r["node_id"]),
+                                "to": None, "to_name": None, "broadcast": True, "snr": None, "rssi": None, "hops": None,
+                                "summary": f"hears {r['n']} neighbour{'s' if r['n'] != 1 else ''}"})
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        log.warning("history db: %s", e)
+        return []
+    out.sort(key=lambda e: e["ts"])
+    return out[-limit:]
 
 
 def seed_from_db(state: State, db_path: str) -> int:
@@ -315,6 +397,7 @@ class Bridge:
         self.bus.subscribe("nodes", self._on_nodes)
         self.bus.subscribe("meshd/status", self._on_status)
         self.bus.subscribe("rx/+", self._on_rx)
+        self.bus.subscribe("brain/exchange", self._on_brain)
         self.bus.start()
         threading.Thread(target=self._watch_bus, name="v2-bus-watch", daemon=True).start()
 
@@ -355,6 +438,11 @@ class Bridge:
                         self._emit("rxpoint", pt)
                 except Exception:
                     log.exception("could not store rx point")
+
+    def _on_brain(self, topic: str, payload: Dict[str, Any]) -> None:
+        rec = self.state.apply_brain(payload, time.time())
+        if rec:
+            self._emit("brain", rec)
 
     def snapshot(self) -> Dict[str, Any]:
         snap = self.state.snapshot(time.time())

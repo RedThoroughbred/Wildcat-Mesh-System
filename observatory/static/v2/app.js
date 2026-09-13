@@ -242,6 +242,11 @@
     for (const l of s.links || []) upsertLink(l);
     list.innerHTML = "";
     for (const p of (s.packets || [])) addPacket(p, false);
+    if (typeof addExchange === "function") {
+      catList.innerHTML = ""; catN = 0; $("cat-count").textContent = "";
+      for (const p of (s.packets || [])) maybeExchange(p);
+      for (const x of (s.brain || [])) addExchange(x, true);
+    }
     setStatus(s.bus, s.meshd); refreshStats(s.stats); fitOnce();
   }
   function applyPacket(ev) {
@@ -250,7 +255,9 @@
     if (ev.node && ev.packet && ev.packet.rssi != null) ev.node.rssi = ev.packet.rssi;
     upsertNode(ev.node);
     for (const l of ev.links || []) upsertLink(l);
+    if (typeof TL !== "undefined" && document.body.classList.contains("replaying")) { TL.queuedLive.push(ev.packet); if (TL.events.length) TL.events.push(ev.packet); refreshStats(); return; }
     addPacket(ev.packet, true);
+    if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
     const p = ev.packet;
     flashNode(p.from);
     if (S.myId && p.from !== S.myId) {
@@ -344,10 +351,131 @@
   sock.on("snapshot", applySnapshot);
   sock.on("packet", applyPacket);
   sock.on("rxpoint", addRxPoint);
+  sock.on("brain", (x) => { addExchange(x, true); chime(); });
   sock.on("roster", (r) => { S.myId = r.my_id || S.myId; for (const id in r.roster) upsertNode(r.roster[id]); refreshLinks(); refreshStats(); fitOnce(); });
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
   sock.on("disconnect", () => setStatus(false, null));
   setInterval(() => { refreshAges(); refreshLinks(); refreshTimes(); refreshStats(); if (S.selected) showCard(S.selected); }, 15000);
+
+  // ---------------------------------------------------------------- public view + share
+  const PUBLIC = document.body.dataset.public === "yes";
+  function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+  $("share").addEventListener("click", async () => {
+    const url = new URL("public", location.href).href;
+    try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
+    catch (e) { prompt("Read-only public link:", url); }
+  });
+
+  // ---------------------------------------------------------------- chime on new messages (WebAudio, gesture-unlocked)
+  let audioCtx = null, soundOn = false;
+  try { soundOn = localStorage.getItem("v2.sound") === "1"; } catch (e) {}
+  function renderSound() { const b = $("sound"); b.textContent = soundOn ? "🔔" : "🔕"; b.setAttribute("aria-pressed", soundOn ? "true" : "false"); b.title = soundOn ? "Chime on new messages (on)" : "Chime on new messages (off)"; }
+  function chime() {
+    if (!soundOn) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const t = audioCtx.currentTime, g = audioCtx.createGain(); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      [[880, 0], [1320, 0.09]].forEach(([f, d]) => { const o = audioCtx.createOscillator(); o.type = "sine"; o.frequency.value = f; o.connect(g); o.start(t + d); o.stop(t + 0.4); });
+    } catch (e) {}
+  }
+  $("sound").addEventListener("click", () => { soundOn = !soundOn; try { localStorage.setItem("v2.sound", soundOn ? "1" : "0"); } catch (e) {} renderSound(); if (soundOn) chime(); });
+  renderSound();
+  function pingMessage(p) {
+    if (p.kind !== "text" || p.from === S.myId) return;
+    const b = $("sound"); b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash");
+    chime();
+    if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+      try { new Notification(`${p.from_name || p.from}: ${p.text || ""}`.slice(0, 120), { tag: "wildcat-msg", silent: true }); } catch (e) {}
+    }
+  }
+
+  // ---------------------------------------------------------------- Ask the Cat panel
+  const catList = $("cat-list"); let catN = 0;
+  function addExchange(x, isBrain) {
+    const el = document.createElement("div"); el.className = "xch" + (isBrain ? " brain" : "");
+    const who = `<div class="who"><span><b>${escape(x.node_name || x.from_name || "?")}</b> ${isBrain ? "asked the Cat" : "↔ the Den"}</span><span data-ts="${x.ts}">${ago(x.ts)}</span></div>`;
+    if (isBrain) {
+      const meta = [x.provider ? `<span class="prov">${escape(x.provider)}</span>` : "", x.latency_ms != null ? `${(x.latency_ms / 1000).toFixed(1)} s` : "", x.chunks != null ? `${x.chunks} pkt${x.chunks === 1 ? "" : "s"}` : "", x.rate_limited ? "rate-limited" : ""].filter(Boolean).join("<span>·</span>");
+      el.innerHTML = who + `<div class="q">${escape(x.prompt)}</div><div class="a">${escape(x.reply)}</div><div class="meta">${meta}</div>`;
+    } else {
+      el.innerHTML = who + `<div class="${x.from === S.myId ? "a bbs" : "q"}">${escape(x.text || x.summary || "")}</div>`;
+    }
+    catList.prepend(el);
+    while (catList.children.length > 80) catList.lastChild.remove();
+    if (isBrain) { catN++; $("cat-count").textContent = catN; }
+  }
+  function maybeExchange(p) {   // DMs to/from the Den show as conversation, so the panel is useful before Phase 2
+    if (p.kind !== "text" || p.broadcast || !S.myId) return;
+    if (p.to === S.myId || p.from === S.myId) addExchange(p, false);
+  }
+  document.querySelector(".feed-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest(".ftab"); if (!b) return;
+    for (const t of document.querySelectorAll(".ftab")) t.classList.toggle("on", t === b);
+    const cat = b.dataset.tab === "cat";
+    $("cat").hidden = !cat; $("feed-list").hidden = cat; $("feed-empty").hidden = cat; $("filters").hidden = cat;
+    if (feedEl.dataset.sheet === "peek") setSheet("half");
+  });
+
+  // ---------------------------------------------------------------- timeline + replay
+  const TL = { hours: 6, events: [], buckets: 72, playing: false, speed: 60, pos: 1, timer: null, cursor: 0, lastFrame: 0, queuedLive: [] };
+  const tlBadge = document.createElement("div"); tlBadge.className = "replay-badge"; tlBadge.textContent = "REPLAY"; document.body.appendChild(tlBadge);
+  function tlLoad() {
+    fetch("api/history?hours=" + TL.hours).then(r => r.json()).then(d => { TL.events = d.events || []; TL.since = d.since; tlDraw(); tlLabel(); }).catch(() => { $("tl-label").textContent = "history unavailable"; });
+  }
+  function tlDraw() {
+    const bars = $("tl-bars"); bars.innerHTML = "";
+    const t0 = TL.since, span = TL.hours * 3600, counts = new Array(TL.buckets).fill(0), texts = new Array(TL.buckets).fill(0);
+    for (const e of TL.events) { const i = Math.min(TL.buckets - 1, Math.max(0, Math.floor((e.ts - t0) / span * TL.buckets))); counts[i]++; if (e.kind === "text") texts[i]++; }
+    const max = Math.max(1, ...counts);
+    counts.forEach((c, i) => { const b = document.createElement("i"); b.style.height = Math.max(1, Math.round(c / max * 26)) + "px"; if (texts[i]) b.className = "text"; b.title = `${c} event${c === 1 ? "" : "s"}${texts[i] ? ", " + texts[i] + " msg" : ""}`; bars.appendChild(b); });
+  }
+  function tlLabel(at) {
+    const n = TL.events.length;
+    $("tl-label").textContent = at != null ? new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) + ` · ${TL.speed}×`
+      : `last ${TL.hours} h · ${n} event${n === 1 ? "" : "s"}` + (n ? ` · ${TL.events.filter(e => e.kind === "text").length} msgs` : "");
+  }
+  function tlEnterReplay(fromPos) {
+    if (!TL.events.length) { toast("Nothing recorded yet to replay"); return; }
+    TL.playing = true; document.body.classList.add("replaying"); $("tl-live").hidden = false; $("tl-play").textContent = "❚❚ Pause";
+    const span = TL.hours * 3600; TL.clock = TL.since + span * fromPos;
+    TL.cursor = TL.events.findIndex(e => e.ts >= TL.clock); if (TL.cursor < 0) TL.cursor = TL.events.length;
+    list.innerHTML = ""; TL.lastFrame = performance.now();
+    TL.timer = requestAnimationFrame(tlTick);
+  }
+  function tlTick(t) {
+    if (!TL.playing) return;
+    const dt = (t - TL.lastFrame) / 1000; TL.lastFrame = t;
+    TL.clock += dt * TL.speed;
+    const span = TL.hours * 3600; TL.pos = Math.min(1, (TL.clock - TL.since) / span);
+    $("tl-scrub").value = Math.round(TL.pos * 1000);
+    let shown = 0;
+    while (TL.cursor < TL.events.length && TL.events[TL.cursor].ts <= TL.clock && shown < 12) {
+      const e = TL.events[TL.cursor++]; shown++;
+      addPacket(e, true); flashNode(e.from);
+      if (S.myId && e.from !== S.myId && e.kind === "text") pulse(e.from, S.myId, e.hops !== 0);
+    }
+    const bars = $("tl-bars").children; const cut = Math.floor(TL.pos * TL.buckets);
+    for (let i = 0; i < bars.length; i++) bars[i].classList.toggle("past", i < cut);
+    tlLabel(TL.clock);
+    if (TL.pos >= 1) { tlExitReplay(); return; }
+    TL.timer = requestAnimationFrame(tlTick);
+  }
+  function tlPause() { TL.playing = false; cancelAnimationFrame(TL.timer); $("tl-play").textContent = "▶ Resume"; }
+  function tlExitReplay() {
+    TL.playing = false; cancelAnimationFrame(TL.timer); document.body.classList.remove("replaying");
+    $("tl-live").hidden = true; $("tl-play").textContent = "▶ Replay"; $("tl-scrub").value = 1000; TL.pos = 1;
+    for (const b of $("tl-bars").children) b.classList.remove("past");
+    list.innerHTML = ""; for (const p of TL.queuedLive.splice(-150)) addPacket(p, false); TL.queuedLive = [];
+    fetch("api/state").then(r => r.json()).then(sn => { list.innerHTML = ""; for (const p of (sn.packets || [])) addPacket(p, false); }).catch(() => {});
+    tlLabel();
+  }
+  $("tl-play").addEventListener("click", () => { if (document.body.classList.contains("replaying") && TL.playing) tlPause(); else if (document.body.classList.contains("replaying")) { TL.playing = true; TL.lastFrame = performance.now(); TL.timer = requestAnimationFrame(tlTick); $("tl-play").textContent = "❚❚ Pause"; } else tlEnterReplay(0); });
+  $("tl-live").addEventListener("click", tlExitReplay);
+  $("tl-scrub").addEventListener("input", (e) => { const pos = +e.target.value / 1000; if (pos >= 0.999 && !document.body.classList.contains("replaying")) return; if (document.body.classList.contains("replaying")) { cancelAnimationFrame(TL.timer); TL.playing = false; } tlEnterReplay(pos); });
+  $("tl-speeds").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; TL.speed = +b.dataset.speed; for (const c of $("tl-speeds").children) c.classList.toggle("on", c === b); tlLabel(document.body.classList.contains("replaying") ? TL.clock : null); });
+  if (!PUBLIC && window.innerWidth > 760) { tlLoad(); setInterval(tlLoad, 5 * 60 * 1000); }
 
   // ---------------------------------------------------------------- PWA: service worker, install, mobile sheet
   if ("serviceWorker" in navigator) {

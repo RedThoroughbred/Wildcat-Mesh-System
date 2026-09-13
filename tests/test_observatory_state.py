@@ -124,3 +124,41 @@ def test_signal_ring_and_node_detail(tmp_path):
     assert node_detail(s, str(db), "!nobody", now=T) is None
     # window excludes old rows
     assert [x["snr"] for x in node_detail(s, str(db), "!a0388880", hours=0.01, now=T + 10)["signal"]] == [5.0, 6.0, 7.0]
+
+
+# ---- brain exchanges + history ---------------------------------------------------------
+
+def test_brain_exchange_recorded_and_named():
+    s = fresh()
+    rec = s.apply_brain({"node": "!a0388880", "prompt": "?weather 41011", "reply": "Clear, 72F", "provider": "anthropic",
+                         "latency_ms": 1800, "chunks": 1}, now=5)
+    assert rec["node_name"] == "STAY" and rec["provider"] == "anthropic" and s.snapshot(now=10)["brain"] == [rec]
+    assert s.apply_brain({"prompt": "no node"}, now=6) is None
+
+
+def test_history_unions_the_logged_tables(tmp_path):
+    import sqlite3
+    from wildcat.observatory.bridge import history
+    db = tmp_path / "h.db"; c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, to_id INTEGER, message TEXT, snr REAL, rssi INTEGER);
+      CREATE TABLE telemetry_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, battery_level INTEGER, voltage REAL, channel_util REAL);
+      CREATE TABLE position_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, latitude REAL, longitude REAL, altitude REAL);
+      CREATE TABLE neighbor_info (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, neighbor_id TEXT);
+      CREATE TABLE node_info (node_id TEXT PRIMARY KEY, short_name TEXT);
+    """)
+    T = 1_700_000_000
+    c.execute("INSERT INTO node_info VALUES ('!716c668c', 'GO')")
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,to_id,message,snr,rssi) VALUES (?,?,?,?,?,?)", (T + 30, "!716c668c", 2658560792, "M", 5.5, -86))
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,to_id,message,snr,rssi) VALUES (?,?,?,?,?,?)", (T + 40, "!9e766b18", 1902929548, "menu…", None, None))
+    c.execute("INSERT INTO telemetry_logs (timestamp,node_id,battery_level,voltage,channel_util) VALUES (?,?,?,?,?)", (T + 10, "!716c668c", 80, 3.9, 2.0))
+    c.execute("INSERT INTO position_logs (timestamp,node_id,latitude,longitude,altitude) VALUES (?,?,?,?,?)", (T + 20, "!716c668c", 38.9, -84.6, 200))
+    c.executemany("INSERT INTO neighbor_info (timestamp,node_id,neighbor_id) VALUES (?,?,?)", [(T + 50, "!716c668c", "!a"), (T + 50, "!716c668c", "!b")])
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,to_id,message,snr,rssi) VALUES (?,?,?,?,?,?)", (T - 999, "!716c668c", 4294967295, "old", 1, -100))
+    c.commit(); c.close()
+    ev = history(str(db), T)
+    assert [e["kind"] for e in ev] == ["telemetry", "position", "text", "text", "neighbors"]
+    assert ev[2]["from_name"] == "GO" and ev[2]["to"] == "!9e766b18" and ev[2]["broadcast"] is False and ev[2]["snr"] == 5.5
+    assert ev[0]["summary"] == "80% · 3.90 V · util 2.0%" and ev[4]["summary"] == "hears 2 neighbours"
+    assert ev[1]["position"] == {"lat": 38.9, "lon": -84.6}
+    assert history(str(tmp_path / "missing.db"), 0) == []

@@ -60,3 +60,12 @@ def test_coverage_and_node_and_health(client):
     assert client.get("/v2/api/node/!9e766b18").get_json()["node"]["short_name"] == "6b18"
     assert client.get("/v2/api/node/!nobody").status_code == 404
     assert client.get("/v2/api/health").get_json()["ok"] is True
+
+
+def test_public_view_and_history(client):
+    r = client.get("/v2/public")
+    assert r.status_code == 200 and b'class="public"' in r.data
+    assert b'class="public"' not in client.get("/v2/").data
+    h = client.get("/v2/api/history?hours=1").get_json()
+    assert h["count"] == 0 and h["hours"] == 1
+    assert client.get("/v2/api/history?hours=9999").get_json()["hours"] == 168

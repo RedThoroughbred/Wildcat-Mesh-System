@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}">
 </head>
-<body>
+<body{% if public %} class="public"{% endif %} data-public="{{ 'yes' if public else 'no' }}">
 <div id="map" aria-label="Live mesh map"></div>
 
 <header class="glass topbar">
@@ -37,8 +37,24 @@
   <div class="status" id="status" title="bus / radio status">
     <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
   </div>
+  <div class="tools">
+    <button class="tool" id="sound" title="Chime on new messages (off)" aria-pressed="false">🔕</button>
+    <button class="tool" id="share" title="Copy a read-only public link">⇗</button>
+    <span class="public-badge" title="Read-only public view">public view</span>
+  </div>
   <button class="install" id="install" hidden title="Install as an app">⤓ Install</button>
 </header>
+
+<div class="glass timeline" id="timeline">
+  <div class="tl-head">
+    <button class="tl-btn" id="tl-play" title="Replay the last 6 hours">▶ Replay</button>
+    <span class="tl-label" id="tl-label">last 6 h · loading…</span>
+    <div class="tl-speeds" id="tl-speeds"><button class="chip on" data-speed="60">60×</button><button class="chip" data-speed="300">300×</button></div>
+    <button class="tl-btn live" id="tl-live" hidden>● back to live</button>
+  </div>
+  <div class="tl-bars" id="tl-bars"></div>
+  <input class="tl-scrub" id="tl-scrub" type="range" min="0" max="1000" value="1000" aria-label="timeline position">
+</div>
 
 <div class="glass ios-hint" id="ios-hint" hidden>
   <span>Add Wildcat to your home screen: tap <b>Share</b> <span class="share-glyph">⎋</span> then <b>Add to Home Screen</b>.</span>
@@ -48,7 +64,8 @@
 <aside class="glass feed" id="feed" data-sheet="half">
   <button class="handle" id="sheet-handle" aria-label="expand or collapse the feed"><i></i></button>
   <div class="feed-head">
-    <div class="feed-title">Live<span class="live-dot"></span></div>
+    <div class="feed-tabs"><button class="ftab on" data-tab="live">Live<span class="live-dot"></span></button><button class="ftab" data-tab="cat">Ask the Cat<span class="cat-count" id="cat-count"></span></button></div>
+    <div class="feed-title" hidden>Live</div>
     <div class="filters" id="filters">
       <button class="chip on" data-kind="all">all</button>
       <button class="chip" data-kind="text">text</button>
@@ -60,6 +77,14 @@
   </div>
   <div class="feed-list" id="feed-list"></div>
   <div class="feed-empty" id="feed-empty">Listening on the bus…</div>
+  <div class="cat" id="cat" hidden>
+    <div class="cat-intro">
+      <div class="cat-face">🐈</div>
+      <div><b>Bobcat</b> — the mesh's AI, answered over LoRa.<br><span class="dim">DM the Den with <code>?your question</code>. Exchanges appear here live: who asked, what Bobcat said, which brain answered, how many packets it cost.</span></div>
+    </div>
+    <div class="cat-list" id="cat-list"></div>
+    <div class="cat-empty" id="cat-empty">Bobcat isn't awake yet (Phase 2). Conversations with the Den's BBS show below as they happen.</div>
+  </div>
 </aside>
 
 <section class="glass card" id="card" hidden>

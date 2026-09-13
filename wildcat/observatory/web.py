@@ -13,7 +13,26 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
 
     @bp.route("/")
     def index():
-        return render_template("v2/index.html")
+        return render_template("v2/index.html", public=False)
+
+    @bp.route("/public")
+    def public():
+        """Shareable read-only view: same live map + feed, no controls, no install chrome.
+        (The whole /v2 API is read-only anyway; this hides the operator affordances.)"""
+        return render_template("v2/index.html", public=True)
+
+    @bp.route("/api/history")
+    def api_history():
+        import time
+        from flask import request
+        from .bridge import history
+        try:
+            hours = min(168.0, max(0.25, float(request.args.get("hours", 6))))
+        except ValueError:
+            hours = 6.0
+        since = int(time.time() - hours * 3600)
+        events = history(str(bridge.cfg.database.path), since, bridge.state.my_id)
+        return jsonify({"since": since, "hours": hours, "events": events, "count": len(events)})
 
     # PWA plumbing: the manifest and the service worker must live under the /v2/ scope.
     _static = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
