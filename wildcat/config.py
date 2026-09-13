@@ -185,6 +185,13 @@ class BrainConfig:
     max_channel_util_pct: int = 20
     providers: List[str] = field(default_factory=lambda: ["anthropic", "ollama", "canned"])
     admin_nodes: List[str] = field(default_factory=list)
+    # the local `claude` CLI (Part A analyst + Part B responder's first provider)
+    cli_model: str = "claude-sonnet-5"          # the responder uses this; the analyst may override per call
+    analyst_model: str = "claude-sonnet-5"
+    cli_timeout: int = 120                      # seconds per CLI call
+    analyst_enabled: bool = True                # the operator console (read-only DB, LAN-trust like admin)
+    ollama_url: str = ""                        # e.g. "http://localhost:11434"; blank = skip that tier
+    ollama_model: str = "llama3.2:3b"
 
 
 @dataclass
@@ -499,7 +506,8 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     br = _table(ctx, data, "brain", "[brain]")
     _warn_unknown(ctx, br, "[brain]", ("enabled", "trigger_prefix", "persona", "max_reply_chars", "max_chunks",
                                       "per_node_per_hour", "per_node_per_day", "global_per_hour",
-                                      "max_channel_util_pct", "providers", "admin_nodes"))
+                                      "max_channel_util_pct", "providers", "admin_nodes",
+                                      "cli_model", "analyst_model", "cli_timeout", "analyst_enabled", "ollama_url", "ollama_model"))
     brain = BrainConfig(
         enabled=_take_bool(ctx, br, "enabled", "[brain]", False),
         trigger_prefix=_take_str(ctx, br, "trigger_prefix", "[brain]", "?"),
@@ -512,6 +520,12 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
         max_channel_util_pct=_take_int(ctx, br, "max_channel_util_pct", "[brain]", 20, 1, 100),
         providers=_take_str_list(ctx, br, "providers", "[brain]", ["anthropic", "ollama", "canned"]),
         admin_nodes=_node_ids(ctx, br, "admin_nodes", "[brain]"),
+        cli_model=_take_str(ctx, br, "cli_model", "[brain]", "claude-sonnet-5"),
+        analyst_model=_take_str(ctx, br, "analyst_model", "[brain]", "claude-sonnet-5"),
+        cli_timeout=_take_int(ctx, br, "cli_timeout", "[brain]", 120, 10, 600),
+        analyst_enabled=_take_bool(ctx, br, "analyst_enabled", "[brain]", True),
+        ollama_url=_take_str(ctx, br, "ollama_url", "[brain]", ""),
+        ollama_model=_take_str(ctx, br, "ollama_model", "[brain]", "llama3.2:3b"),
     )
     for p in brain.providers:
         if p not in ("anthropic", "ollama", "canned"):

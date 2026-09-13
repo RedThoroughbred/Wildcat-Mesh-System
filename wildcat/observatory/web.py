@@ -397,6 +397,41 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
                         "menu": {"main": new.bbs.menu.main, "bbs": new.bbs.menu.bbs, "utilities": new.bbs.menu.utilities}},
                         "warnings": new.warnings, "note": "restart the BBS to apply"})
 
+    # ---- Bobcat, Part A: the operator's analyst (local claude CLI, read-only DB) ---------
+    @bp.route("/api/brain/status")
+    def api_brain_status():
+        from ..brain import cli as bcli
+        st = bcli.status()
+        st.update({"analyst_enabled": bridge.cfg.brain.analyst_enabled, "model": bridge.cfg.brain.analyst_model,
+                   "responder_enabled": bridge.cfg.brain.enabled, "cost_note": "each question is one to three CLI calls (cents)"})
+        return jsonify(st)
+
+    @bp.route("/api/brain/ask", methods=["POST"])
+    def api_brain_ask():
+        """Server-sent events: status · delta · retract · sql · done · error."""
+        import json as _json
+        from flask import Response, request, stream_with_context
+        from ..brain import analyst as A
+        from . import health as Hm
+        if not bridge.cfg.brain.analyst_enabled:
+            return jsonify({"error": "the analyst is disabled ([brain].analyst_enabled = false)"}), 403
+        body = request.get_json(silent=True) or {}
+        q = (body.get("question") or "").strip()
+        if not q or len(q) > 2000:
+            return jsonify({"error": "question must be 1–2000 characters"}), 400
+        hist = [h for h in (body.get("history") or []) if isinstance(h, dict)][-A.MAX_HISTORY:]
+        model = body.get("model") or bridge.cfg.brain.analyst_model
+        try:
+            rep = api_health_report().get_json()
+        except Exception:
+            rep = None
+
+        def gen():
+            for ev in A.ask(q, hist, bridge.state, _db(), model, bridge.cfg.brain.cli_timeout, health=rep):
+                yield "data: " + _json.dumps(ev, default=str) + "\n\n"
+        return Response(stream_with_context(gen()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state

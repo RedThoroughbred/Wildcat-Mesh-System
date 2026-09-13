@@ -233,3 +233,12 @@ def test_meshd_validation_messages():
     assert "[meshd].reconnect_max_seconds must be >= reconnect_min_seconds" in msg
     cfg = build({**SERIAL, "meshd": {"tx_pacing_seconds": 1}})
     assert cfg.meshd.tx_pacing_seconds == 1.0
+
+
+def test_brain_cli_keys():
+    cfg = build(SERIAL)
+    assert cfg.brain.analyst_enabled is True and cfg.brain.cli_timeout == 120 and cfg.brain.ollama_url == ""
+    cfg = build({**SERIAL, "brain": {"cli_model": "claude-haiku-4-5-20251001", "cli_timeout": 30, "analyst_enabled": False}})
+    assert cfg.brain.cli_model == "claude-haiku-4-5-20251001" and cfg.brain.analyst_enabled is False
+    with pytest.raises(ConfigError):
+        build({**SERIAL, "brain": {"cli_timeout": 5}})

@@ -494,6 +494,62 @@
     }
   }
 
+  // ---------------------------------------------------------------- Bobcat analyst (operator console)
+  const AN = { history: [], busy: false, ok: false, model: null };
+  const anLog = $("an-log"), anQ = $("an-q"), anSend = $("an-send"), anStatus = $("an-status");
+  function md(t) {   // tiny markdown: paragraphs, bullets, bold, inline code
+    const esc = escape(t || ""), lines = esc.split(/\n/), out = []; let ul = false;
+    for (const ln of lines) { const m = ln.match(/^\s*[-*•]\s+(.*)$/); if (m) { if (!ul) { out.push("<ul>"); ul = true; } out.push("<li>" + m[1] + "</li>"); } else { if (ul) { out.push("</ul>"); ul = false; } if (ln.trim()) out.push("<p>" + ln + "</p>"); } }
+    if (ul) out.push("</ul>");
+    return out.join("").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+  async function anInit() {
+    if (PUBLIC) return;
+    try { const st = await (await fetch("api/brain/status")).json(); AN.ok = st.available && st.analyst_enabled; AN.model = st.model;
+      anStatus.textContent = st.available ? (st.analyst_enabled ? `local claude CLI ${st.version || ""} · ${st.model} · ${st.cost_note}` : "analyst disabled in wildcat.toml ([brain].analyst_enabled)") : "claude CLI not found — " + (st.hint || "set CLAUDE_BIN");
+      anStatus.classList.toggle("bad", !AN.ok); anSend.disabled = !AN.ok; }
+    catch (e) { anStatus.textContent = "brain status unavailable"; anStatus.classList.add("bad"); }
+  }
+  function anTurn(cls, html) { const d = document.createElement("div"); d.className = "turn " + cls; d.innerHTML = html; anLog.appendChild(d); anLog.scrollTop = anLog.scrollHeight; return d; }
+  async function anAsk(q) {
+    if (!AN.ok || AN.busy || !q.trim()) return;
+    AN.busy = true; anSend.disabled = true; anQ.value = "";
+    anTurn("q", escape(q));
+    const a = anTurn("a", '<div class="body cursor"></div><div class="meta"><span>thinking…</span></div>');
+    const body = a.querySelector(".body"), meta = a.querySelector(".meta");
+    let text = "", roundText = "";
+    try {
+      const r = await fetch("api/brain/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, history: AN.history.slice(-6) }) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); body.innerHTML = `<p>${escape(j.error || ("HTTP " + r.status))}</p>`; body.classList.remove("cursor"); meta.textContent = "failed"; return; }
+      const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx; while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          const line = chunk.split("\n").find(l => l.startsWith("data: ")); if (!line) continue;
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === "status") meta.textContent = ev.text;
+          else if (ev.type === "delta") { roundText += ev.text; body.innerHTML = md(roundText); anLog.scrollTop = anLog.scrollHeight; }
+          else if (ev.type === "retract") { roundText = ""; body.innerHTML = ""; }
+          else if (ev.type === "sql") {
+            const card = document.createElement("details"); card.className = "qcard" + (ev.error ? " rejected" : "");
+            card.innerHTML = `<summary>${ev.error ? "✖ query rejected" : `⌕ ran a read-only query · ${ev.count} row${ev.count === 1 ? "" : "s"}${ev.truncated ? "+" : ""} · ${ev.ms} ms`}</summary><pre>${escape(ev.sql)}</pre>${ev.error ? `<pre>${escape(ev.error)}</pre>` : ev.rows && ev.rows.length ? `<table><tr>${ev.columns.map(c => `<th>${escape(c)}</th>`).join("")}</tr>${ev.rows.slice(0, 12).map(rw => `<tr>${rw.map(v => `<td>${escape(v == null ? "∅" : String(v))}</td>`).join("")}</tr>`).join("")}</table>` : ""}`;
+            body.before(card); meta.textContent = "reading the results…";
+          }
+          else if (ev.type === "done") { text = ev.text; body.innerHTML = md(text); body.classList.remove("cursor"); meta.innerHTML = `<span>local claude CLI</span><span>${escape(ev.model)}</span><span>${(ev.ms / 1000).toFixed(1)} s</span><span>${ev.rounds} quer${ev.rounds === 1 ? "y" : "ies"}</span><span>${ev.cost_usd != null ? "$" + ev.cost_usd.toFixed(3) : ""}</span>`; }
+          else if (ev.type === "error") { body.innerHTML = `<p>${escape(ev.text)}</p>`; body.classList.remove("cursor"); meta.textContent = "error"; toast("Bobcat: " + ev.text, "err"); }
+        }
+      }
+      if (text) { AN.history.push({ role: "user", text: q }, { role: "assistant", text }); AN.history = AN.history.slice(-8); }
+    } catch (e) { body.innerHTML = `<p>${escape(String(e))}</p>`; body.classList.remove("cursor"); }
+    finally { AN.busy = false; anSend.disabled = !AN.ok; anQ.focus(); }
+  }
+  $("an-form").addEventListener("submit", (e) => { e.preventDefault(); anAsk(anQ.value); });
+  anQ.addEventListener("input", () => { anSend.disabled = !AN.ok || AN.busy || !anQ.value.trim(); });
+  document.querySelector(".an-hints").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) { anQ.value = b.dataset.q; anAsk(b.dataset.q); } });
+  anInit();
+
   // ---------------------------------------------------------------- Ask the Cat panel
   const catList = $("cat-list"); let catN = 0;
   function addExchange(x, isBrain) {

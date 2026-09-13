@@ -88,3 +88,11 @@ global_per_hour = 40
 max_channel_util_pct = 20  # stop answering strangers when the node reports airtime above this
 providers = ["anthropic", "ollama", "canned"]   # tried in order
 admin_nodes = []           # e.g. ["!8880xxxx", "!668cxxxx"] — STAY, GO
+# Bobcat runs on the LOCAL `claude` CLI (Claude Code). Each question = one CLI call (a few cents).
+# The binary is found via $CLAUDE_BIN → PATH → the usual Homebrew/npm spots (launchd has a bare PATH).
+cli_model = "claude-sonnet-5"       # mesh-facing replies
+analyst_model = "claude-sonnet-5"   # the operator console in the dashboard
+cli_timeout = 120
+analyst_enabled = true              # operator console (reads the DB read-only; hidden from /v2/public)
+# ollama_url = "http://localhost:11434"   # optional offline tier for the mesh responder
+# ollama_model = "llama3.2:3b"

@@ -136,6 +136,12 @@
   <div class="feed-list" id="feed-list" role="log" aria-live="polite" aria-relevant="additions" tabindex="-1"></div>
   <div class="feed-empty" id="feed-empty"><div class="empty radar">Listening on the bus…<br><span style="font-size:11px">packets appear here the moment the radio hears them</span></div></div>
   <div class="cat" id="cat" hidden>
+    <section class="analyst op-only" id="analyst">
+      <div class="an-head"><b>Analyst</b><span class="dim" id="an-status">checking the local claude CLI…</span></div>
+      <div class="an-log" id="an-log"></div>
+      <form class="an-form" id="an-form"><input id="an-q" class="vsearch" placeholder="Ask about the mesh — 'which nodes went quiet today?'" autocomplete="off" maxlength="2000"><button class="send" id="an-send" type="submit" disabled>Ask</button></form>
+      <div class="an-hints"><button type="button" class="chip" data-q="Which nodes went quiet in the last 6 hours, and when were they last heard?">gone quiet</button><button type="button" class="chip" data-q="What was the busiest channel today and who sent the most?">busiest channel</button><button type="button" class="chip" data-q="Where is coverage weakest based on measured rx points and SNR?">weakest coverage</button><button type="button" class="chip" data-q="Summarize the health of the mesh right now in three sentences.">health summary</button></div>
+    </section>
     <div class="cat-intro">
       <div class="cat-face">🐈</div>
       <div><b>Bobcat</b> — the mesh's AI, answered over LoRa.<br><span class="dim">DM the Den with <code>?your question</code>. Exchanges appear here live: who asked, what Bobcat said, which brain answered, how many packets it cost.</span></div>

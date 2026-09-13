@@ -576,3 +576,28 @@ body.public .compose-btn, body.public .compose, body.public .op-only { display: 
 .follow-flag { position: fixed; top: 84px; right: 384px; z-index: 1150; padding: 6px 12px; font: 700 11px var(--font); letter-spacing: .6px; text-transform: uppercase; color: #d6efff; display: none; }
 body.following .follow-flag { display: block; }
 @media (max-width: 760px) { .follow-flag { right: 8px; top: auto; bottom: calc(42vh + 60px); } }
+
+
+/* =====================================================================================
+   Bobcat analyst (operator)
+   ===================================================================================== */
+.analyst { display: flex; flex-direction: column; gap: 8px; padding: 6px 6px 12px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.an-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.an-head .dim { color: var(--muted); font-size: 11px; margin-left: auto; text-align: right; }
+.an-head .dim.bad { color: #ff8a8a; }
+.an-log { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; scrollbar-width: thin; }
+.an-log:empty { display: none; }
+.turn { border-radius: 12px; padding: 9px 11px; font-size: 13px; line-height: 1.5; animation: slidein .3s ease; }
+.turn.q { background: rgba(224,112,75,.12); border: 1px solid rgba(224,112,75,.3); align-self: flex-end; max-width: 92%; }
+.turn.a { background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+.turn.a p { margin: 0 0 6px; } .turn.a p:last-child { margin: 0; } .turn.a ul { margin: 0 0 6px; padding-left: 18px; } .turn.a code { font: 12px var(--mono); background: rgba(255,255,255,.06); padding: 0 4px; border-radius: 4px; }
+.turn.a .cursor::after { content: "▍"; animation: breathe-t .9s ease-in-out infinite; color: var(--terracotta); }
+.turn .meta { color: var(--muted); font: 10.5px var(--mono); margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.qcard { border-radius: 10px; border: 1px dashed rgba(111,195,255,.4); padding: 6px 9px; margin: 6px 0; font: 11px var(--mono); }
+.qcard summary { cursor: pointer; color: #d6efff; } .qcard pre { margin: 6px 0 0; white-space: pre-wrap; color: #c9d3df; max-height: 160px; overflow: auto; }
+.qcard.rejected { border-color: rgba(255,107,107,.5); } .qcard.rejected summary { color: #ffb3b3; }
+.qcard table { border-collapse: collapse; margin-top: 6px; } .qcard td, .qcard th { padding: 2px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.an-form { display: flex; gap: 6px; } .an-form input { flex: 1; }
+.an-form .send { padding: 7px 14px; }
+.an-hints { display: flex; gap: 4px; flex-wrap: wrap; }
+.an-hints .chip { font-size: 11px; }
