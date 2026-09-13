@@ -640,17 +640,21 @@
   const H24 = [[24, "24h"], [168, "7d"], [720, "30d"]];
 
   // ---- tiny SVG charts (no CDN) ----
+  // charts size themselves to the panel so text isn't stretched; labels are capped
+  function chartW(opts) { const vb = viewBody.clientWidth || 600; const wide = opts && opts.wide; return Math.max(300, Math.min(1100, Math.round(wide || vb < 640 ? vb - 60 : vb * 0.44))); }
   function barChart(items, opts) {   // items: [{label, value, cls?}]
-    const W = 600, H = 180, padL = 34, padB = 22, padT = 8, n = Math.max(1, items.length), max = Math.max(1, ...items.map(i => i.value));
+    const W = chartW(opts), H = 180, padL = 34, padB = 22, padT = 8, n = Math.max(1, items.length), max = Math.max(1, ...items.map(i => i.value));
+    const every = Math.max(1, Math.ceil(n / Math.max(4, Math.floor(W / 70))));
     const bw = (W - padL - 6) / n, s = [`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`];
     for (let g = 0; g <= 4; g++) { const y = padT + (H - padT - padB) * g / 4; s.push(`<line class="grid" x1="${padL}" x2="${W}" y1="${y}" y2="${y}"/><text x="${padL - 4}" y="${y + 3}" text-anchor="end">${Math.round(max * (1 - g / 4))}</text>`); }
     items.forEach((it, i) => { const h = (H - padT - padB) * it.value / max, x = padL + i * bw + 1, y = H - padB - h;
       s.push(`<rect class="bar ${it.cls || ""}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${escape(it.label)}: ${it.value}</title></rect>`);
-      if (n <= 32 || i % Math.ceil(n / 16) === 0) s.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(it.label))}</text>`); });
+      if (i % every === 0) s.push(`<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(it.label))}</text>`); });
     return s.join("") + "</svg>";
   }
   function lineChart(pts, opts) {   // pts: [{x(label), y}], opts.lo/hi
-    const W = 600, H = 180, padL = 36, padB = 22, padT = 8, n = pts.length;
+    const W = chartW(opts), H = 180, padL = 36, padB = 22, padT = 8, n = pts.length;
+    const every = Math.max(1, Math.ceil(n / Math.max(4, Math.floor(W / 80))));
     if (n < 2) return '<div class="empty">not enough data yet</div>';
     let lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y));
     if (opts && opts.lo != null) lo = Math.min(lo, opts.lo); if (opts && opts.hi != null) hi = Math.max(hi, opts.hi); if (hi - lo < 1e-6) hi = lo + 1;
@@ -659,7 +663,7 @@
     for (let g = 0; g <= 4; g++) { const v = hi - (hi - lo) * g / 4, y = Y(v); s.push(`<line class="grid" x1="${padL}" x2="${W}" y1="${y}" y2="${y}"/><text x="${padL - 4}" y="${y + 3}" text-anchor="end">${fmt1(v)}</text>`); }
     const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ");
     s.push(`<polygon class="area" points="${X(0).toFixed(1)},${H - padB} ${line} ${X(n - 1).toFixed(1)},${H - padB}"/><polyline points="${line}"/>`);
-    pts.forEach((p, i) => { if (n <= 26 || i % Math.ceil(n / 12) === 0) s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(p.x))}</text>`); s.push(`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="2.5" fill="#6fc3ff"><title>${escape(String(p.x))}: ${fmt1(p.y)}</title></circle>`); });
+    pts.forEach((p, i) => { if (i % every === 0 && p.x !== "") s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escape(String(p.x))}</text>`); if (n <= 60) s.push(`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="2.5" fill="#6fc3ff"><title>${escape(String(p.x))}: ${fmt1(p.y)}</title></circle>`); });
     return s.join("") + "</svg>";
   }
   function heatmap(rows, cells) {   // rows: [{key,label}], cells: {rowKey: {hour: count}}
@@ -734,7 +738,7 @@
             <div class="kpi"><b>${n.battery == null ? "–" : n.battery > 100 ? "⚡ mains" : n.battery + "%"}</b><span>battery${n.voltage != null ? " · " + n.voltage.toFixed(2) + " V" : ""}</span></div>
           </div>
           <div class="vgrid">
-            <div class="vcard wide"><h2>Signal quality · 7 days <span class="sel" style="color:var(--muted);text-transform:none;letter-spacing:0">${sig.length} samples</span></h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.snr })).filter(x => x.y != null), { lo: -10, hi: 10 })}</div>
+            <div class="vcard wide"><h2>Signal quality · 7 days <span class="sel" style="color:var(--muted);text-transform:none;letter-spacing:0">${sig.length} samples</span></h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.snr })).filter(x => x.y != null), { lo: -10, hi: 10, wide: true })}</div>
             <div class="vcard"><h2>RSSI</h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.rssi })).filter(x => x.y != null), { lo: -125, hi: -70 })}</div>
             <div class="vcard"><h2>${tel.some(x => x.battery != null && x.battery <= 100) ? "Battery" : "Voltage"}</h2>${tel.some(x => x.battery != null && x.battery <= 100) ? lineChart(tel.filter(x => x.battery != null && x.battery <= 100).map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.battery })), { lo: 0, hi: 100 }) : lineChart(tel.filter(x => x.voltage != null).map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.voltage })), {})}</div>
             <div class="vcard"><h2>Connection quality · 7 days</h2>
@@ -837,7 +841,7 @@
         viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${total}</b><span>receptions with SNR · ${self.days}d</span></div><div class="kpi"><b>${hourly.length ? fmt1(hourly.reduce((a, r) => a + r.avg_snr * r.message_count, 0) / Math.max(1, total), " dB") : "–"}</b><span>weighted avg SNR</span></div><div class="kpi"><b>${best ? best.hour + ":00" : "–"}</b><span>best hour</span></div><div class="kpi"><b>${worst ? worst.hour + ":00" : "–"}</b><span>worst hour</span></div></div>
           <div class="vgrid">
-            <div class="vcard wide"><h2>Average SNR by hour of day <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500">local time · ${self.days} day${self.days === 1 ? "" : "s"}</span></h2>${hourly.length >= 2 ? lineChart(byHour.map((r, hh) => r ? { x: hh + ":00", y: r.avg_snr } : null).filter(Boolean), { lo: -10, hi: 10 }) : '<div class="empty">not enough hourly data yet</div>'}</div>
+            <div class="vcard wide"><h2>Average SNR by hour of day <span class="sel" style="text-transform:none;letter-spacing:0;font-weight:500">local time · ${self.days} day${self.days === 1 ? "" : "s"}</span></h2>${hourly.length >= 2 ? lineChart(byHour.map((r, hh) => r ? { x: hh + ":00", y: r.avg_snr } : null).filter(Boolean), { lo: -10, hi: 10, wide: true }) : '<div class="empty">not enough hourly data yet</div>'}</div>
             <div class="vcard"><h2>SNR distribution</h2>${dist.length ? barChart(dist.map(r => ({ label: r.snr, value: r.count, cls: r.snr >= 3 ? "t" : "" }))) : '<div class="empty">no data</div>'}<div style="color:var(--muted);font-size:11px;margin-top:4px">dB buckets · terracotta = ≥3 dB</div></div>
             <div class="vcard"><h2>Messages per hour</h2>${hourly.length ? barChart(byHour.map((r, hh) => ({ label: hh, value: r ? r.message_count : 0 }))) : '<div class="empty">no data</div>'}</div>
             <div class="vcard"><h2>🏆 Best links</h2>${(d.best || []).length ? `<table class="vt"><thead><tr><th>Node</th><th>SNR</th><th>RSSI</th><th>When</th></tr></thead><tbody>${d.best.map(link).join("")}</tbody></table>` : '<div class="empty">none yet</div>'}</div>
@@ -999,7 +1003,7 @@
             <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Mesh score</h2><div class="score ${h.level}">${h.score}</div><div style="color:var(--muted);font-size:12px;margin-top:4px">${h.counts.alerts ? `${h.counts.alerts} alert${h.counts.alerts === 1 ? "" : "s"}${h.counts.crit ? ` · ${h.counts.crit} critical` : ""}` : "all clear"}</div></div>
             <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Channel utilization</h2>${arc(g.channel_util, 50, utilColor)}<div style="color:var(--muted);font-size:11px;margin-top:6px">the whole channel as this node hears it · keep under 25%</div></div>
             <div class="vcard" style="text-align:center"><h2 style="justify-content:center">Air-time TX</h2>${arc(g.air_util_tx, 20, g.air_util_tx != null && g.air_util_tx >= 10 ? "#f2c04e" : "#6fc3ff")}<div style="color:var(--muted);font-size:11px;margin-top:6px">how much this node itself transmits</div></div>
-            <div class="vcard wide"><h2>Packets per minute · last 6 h</h2>${rate.length ? lineChart(rate.map((b, i) => ({ x: i % 12 === 0 ? new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "", y: b.n / 5 })), { lo: 0 }) : '<div class="empty">no history</div>'}<div style="color:var(--muted);font-size:11px">now ≈ ${rateNow.toFixed(1)} / min (5-min buckets)</div></div>
+            <div class="vcard wide"><h2>Packets per minute · last 6 h</h2>${rate.length ? lineChart(rate.map((b, i) => ({ x: i % 12 === 0 ? new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "", y: b.n / 5 })), { lo: 0, wide: true }) : '<div class="empty">no history</div>'}<div style="color:var(--muted);font-size:11px">now ≈ ${rateNow.toFixed(1)} / min (5-min buckets)</div></div>
             <div class="vcard wide"><h2>Alerts</h2>${h.alerts.length ? h.alerts.map(a => `<div class="alert ${a.level}"><span class="k">${escape(a.kind)}</span><span>${escape(a.text)}${a.node ? ` <a class="link-btn" style="margin-left:8px;padding:2px 7px" href="#/node/${encodeURIComponent(a.node)}">node</a>` : ""}</span></div>`).join("") : '<div class="empty">nothing to worry about right now</div>'}</div>
             <div class="vcard"><h2>Gone quiet</h2><div style="color:var(--muted);font-size:11px;margin-bottom:6px">regular nodes (≥3 pkts in the prior day) silent for 2 h+</div>${h.quiet.length ? `<table class="vt"><tbody>${h.quiet.map(q => `<tr class="row" data-id="${escape(q.id)}"><td><b>${escape(q.name)}</b></td><td class="num">${Math.floor(q.silent_for / 3600)}h ${Math.floor(q.silent_for % 3600 / 60)}m</td><td class="dim">was ${q.was}/day</td></tr>`).join("")}</tbody></table>` : '<div class="empty">everyone regular is still talking</div>'}</div>
             <div class="vcard"><h2>Low battery</h2>${h.low_battery.length ? `<table class="vt"><tbody>${h.low_battery.map(b => `<tr class="row" data-id="${escape(b.id)}"><td><b>${escape((S.roster[b.id] || {}).short_name || b.id.slice(-4))}</b></td><td class="num" style="color:${b.battery < 10 ? "#ff8a8a" : "var(--warm)"}">${b.battery}%</td><td class="num">${b.voltage != null ? b.voltage.toFixed(2) + " V" : ""}</td><td class="dim">${ago(b.ts)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no node under 20%</div>'}</div>
