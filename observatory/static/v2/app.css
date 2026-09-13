@@ -517,3 +517,6 @@ body.rail-collapsed .sidebar a { justify-content: center; padding: 9px 0; } body
 body.public .sb-collapse { display: none; }
 .kbd { display: inline-block; font: 600 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; margin: 0 2px; background: rgba(255,255,255,.05); }
 .help-box { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 3000; padding: 12px 16px; font-size: 13px; line-height: 2; animation: slidein .25s ease; }
+
+.msgrow.pkt { grid-template-columns: 1fr auto; animation: none; padding: 8px 10px; }
+.msgrow.pkt .bar { display: none; }

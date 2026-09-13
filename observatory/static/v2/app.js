@@ -443,6 +443,7 @@
   // ---------------------------------------------------------------- timeline + replay
   const TL = { hours: 6, events: [], buckets: 72, playing: false, speed: 60, pos: 1, timer: null, cursor: 0, lastFrame: 0, queuedLive: [] };
   const tlBadge = document.createElement("div"); tlBadge.className = "replay-badge"; tlBadge.textContent = "REPLAY"; document.body.appendChild(tlBadge);
+  function tlBadgeText() { tlBadge.textContent = `REPLAY · ${Math.min(TL.cursor, TL.events.length)} / ${TL.events.length} · ${TL.speed}×`; }
   function tlLoad() {
     fetch("api/history?hours=" + TL.hours).then(r => r.json()).then(d => { TL.events = d.events || []; TL.since = d.since; tlDraw(); tlLabel(); }).catch(() => { $("tl-label").textContent = "history unavailable"; });
   }
@@ -483,7 +484,7 @@
     }
     const bars = $("tl-bars").children; const cut = Math.floor(TL.pos * TL.buckets);
     for (let i = 0; i < bars.length; i++) bars[i].classList.toggle("past", i < cut);
-    tlLabel(TL.clock);
+    tlLabel(TL.clock); tlBadgeText();
     if (TL.pos >= 1) { tlExitReplay(); return; }
     TL.timer = requestAnimationFrame(tlTick);
   }
@@ -1011,7 +1012,7 @@
         viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${d.mesh.messages_24h}</b><span>messages · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div><div class="kpi"><b>${active.length}</b><span>active nodes · 1h</span></div><div class="kpi"><b>${R.length}</b><span>nodes known</span></div><div class="kpi"><b>${st.stats ? Math.round(st.stats.per_min) : "–"}</b><span>packets / min</span></div></div>
           <div class="vgrid">
-            <div class="vcard"><h2>📻 Recent activity</h2>${recent.length ? recent.map(p => `<div class="msgrow"><div class="m"><b>${escape(p.from_name || p.from)}</b><span style="color:var(--muted);font-size:11px;text-transform:uppercase;margin-right:6px">${escape(p.kind)}</span>${escape(p.summary || "")}</div><div class="r">${ago(p.ts)}${p.snr != null ? "<br>" + snrSpan(p.snr) : ""}</div></div>`).join("") : '<div class="empty">quiet</div>'}</div>
+            <div class="vcard"><h2>📻 Recent activity</h2>${recent.length ? recent.map(p => `<div class="msgrow pkt" data-kind="${escape(p.kind)}" style="display:grid"><div class="m"><b>${escape(p.from_name || p.from)}</b><span class="kind" style="margin-right:6px">${escape(p.kind)}</span>${escape(p.summary || "")}</div><div class="r">${ago(p.ts)}${p.snr != null ? "<br>" + snrSpan(p.snr) : ""}</div></div>`).join("") : '<div class="empty">quiet</div>'}</div>
             <div class="vcard"><h2>🟢 Active nodes · 1h</h2>${active.length ? `<table class="vt"><tbody>${active.slice(0, 25).map(n => `<tr class="row" data-id="${escape(n.id)}"><td>${dot(n)}<b>${escape(name(n))}</b> <span style="color:var(--muted)">${escape(n.long_name || "")}</span></td><td class="num">${n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops"}</td><td class="num">${snrSpan(n.snr)}</td><td class="dim">${ago(n.last_heard)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody heard in the last hour</div>'}</div>
             <div class="vcard"><h2>📊 Channel activity · 24h</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in 24 h</div>'}</div>
             <div class="vcard"><h2>🔋 Low battery</h2>${d.low_battery.length ? `<table class="vt"><tbody>${d.low_battery.map(b => `<tr class="row" data-id="${escape(b.id)}"><td><b>${escape((S.roster[b.id] || {}).short_name || b.id.slice(-4))}</b></td><td class="num" style="color:${b.battery < 10 ? "#ff8a8a" : "var(--warm)"}">${b.battery}%</td><td class="num">${b.voltage != null ? b.voltage.toFixed(2) + " V" : ""}</td><td class="dim">${ago(b.ts)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no node under 20% — nice</div>'}</div>
