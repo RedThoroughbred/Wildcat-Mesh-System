@@ -1,0 +1,14 @@
+# wildcat.target — the whole Den as one unit.
+#   sudo systemctl enable wildcat.target      # enables the lot at boot
+#   sudo systemctl restart wildcat.target     # bounces the lot (PartOf=)
+#   systemctl list-dependencies wildcat.target
+[Unit]
+Description=Wildcat Mesh — The Den (all services)
+Documentation=file://@REPO@/docs/DEPLOY_PI.md
+After=network-online.target
+Wants=network-online.target
+Wants=wildcat-meshd.service wildcat-bbs.service wildcat-telemetry.service wildcat-observatory.service
+Wants=wildcat-backup.timer
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,7 @@ Runs independently alongside the BBS
 import argparse
 import logging
 import sys
+import threading
 import time
 import sqlite3
 from datetime import datetime
@@ -281,9 +282,20 @@ def main():
         # Subscribe to all messages
         pub.subscribe(lambda packet, interface=interface: on_receive(packet, interface), "meshtastic.receive")
 
+        # Exit 3 when the node drops us, so systemd's Restart=on-failure reconnects
+        # (otherwise this loop would idle forever on a dead socket).
+        lost = threading.Event()
+
+        def on_connection_lost(interface=None, **kwargs):
+            logger.error("Radio connection lost — exiting so the service manager restarts us")
+            lost.set()
+
+        pub.subscribe(on_connection_lost, "meshtastic.connection.lost")
+
         # Keep running
-        while True:
+        while not lost.is_set():
             time.sleep(1)
+        sys.exit(3)
 
     except KeyboardInterrupt:
         logger.info("\n👋 Shutting down telemetry logger...")

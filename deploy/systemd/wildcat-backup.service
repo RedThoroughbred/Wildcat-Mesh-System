@@ -1,0 +1,13 @@
+# Nightly SQLite backup (online, via the sqlite backup API — safe with WAL + writers).
+# Keeps 30 dated copies in @REPO@/backups. Triggered by wildcat-backup.timer.
+[Unit]
+Description=Wildcat Mesh — nightly database backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@REPO@
+Environment=WILDCAT_CONFIG=@REPO@/config/wildcat.toml
+ExecStart=@VENV@/bin/wildcat db backup --keep 30
+SyslogIdentifier=wildcat-backup

@@ -14,6 +14,7 @@ other BBS servers listed in the config.ini file.
 
 import logging
 import sys
+import threading
 import time
 
 import _bootstrap  # noqa: F401  (repo root on sys.path so `wildcat` imports from any CWD)
@@ -79,6 +80,18 @@ def main():
 
     pub.subscribe(receive_packet, system_config['mqtt_topic'])
 
+    # If the node reboots / drops the TCP session, the meshtastic reader thread ends
+    # and publishes connection.lost — but this process would otherwise sit here
+    # forever with a dead socket. Exit 3 so systemd (Restart=on-failure) brings us
+    # back; the legacy unit's RuntimeMaxSec self-kill is no longer needed.
+    lost = threading.Event()
+
+    def on_connection_lost(interface=None, **kwargs):
+        logging.error("Radio connection lost — exiting so the service manager restarts us")
+        lost.set()
+
+    pub.subscribe(on_connection_lost, "meshtastic.connection.lost")
+
     # Initialize and start JS8Call Client if configured
     js8call_client = JS8CallClient(interface)
     js8call_client.logger = js8call_logger
@@ -87,7 +100,7 @@ def main():
         js8call_client.connect()
 
     try:
-        while True:
+        while not lost.is_set():
             time.sleep(1)
 
     except KeyboardInterrupt:
@@ -95,6 +108,13 @@ def main():
         interface.close()
         if js8call_client.connected:
             js8call_client.close()
+        return
+
+    try:
+        interface.close()
+    except Exception:
+        pass
+    sys.exit(3)
 
 if __name__ == "__main__":
     main()

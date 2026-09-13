@@ -1,0 +1,39 @@
+# wildcat-telemetry — Wildcat Mesh "The Den". Installed by deploy/install.sh, which replaces
+# @REPO@ / @VENV@ / @USER@ with the real paths. Do not edit the installed copy in
+# /etc/systemd/system by hand; edit this file and re-run install.sh.
+[Unit]
+Description=Wildcat Mesh — telemetry logger (positions, battery, neighbors → DB)
+Documentation=file://@REPO@/docs/DEPLOY_PI.md
+# network-online (not just network) so a cold boot waits for Wi-Fi/Ethernet to
+# actually come up before we try to reach the node / bind the dashboard port.
+After=network-online.target mosquitto.service wildcat-meshd.service
+Wants=network-online.target
+# Part of the group: 'systemctl restart wildcat.target' bounces the lot.
+PartOf=wildcat.target
+# Never give up restarting (the default is 5 tries in 10 s, then stop forever —
+# exactly wrong for a node that takes 90 s to boot after a power cut).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@USER@
+# Not load-bearing anymore (paths resolve from the package), but set anyway.
+WorkingDirectory=@REPO@
+Environment=WILDCAT_CONFIG=@REPO@/config/wildcat.toml
+Environment=PYTHONUNBUFFERED=1
+# Refuse to start on a broken config — the error lands in journalctl, not mid-DM.
+ExecStartPre=@VENV@/bin/wildcat config validate
+ExecStart=@VENV@/bin/python3 @REPO@/bbs/telemetry_logger.py
+Restart=on-failure
+RestartSec=10
+# Exit 2 = config error (see wildcat.cli): restarting won't fix it, stay down and visible.
+RestartPreventExitStatus=2
+# The services handle SIGINT by closing the radio/db cleanly.
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wildcat-telemetry
+
+[Install]
+WantedBy=wildcat.target

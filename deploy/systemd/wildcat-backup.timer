@@ -1,0 +1,11 @@
+[Unit]
+Description=Wildcat Mesh — nightly database backup at 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# If the Pi was off at 02:30, run soon after the next boot instead of skipping.
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
