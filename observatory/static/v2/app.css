@@ -244,7 +244,7 @@ body.z-mid .node.warm .lbl { display: none; }              /* mid zoom: online n
 /* ---- mobile: the map is the room, the feed is a bottom sheet (peek / half / full) ---- */
 /* ---- sidebar / rail / drawer + view panels ---- */
 .menu-btn { display: none; width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); color: var(--text); font-size: 16px; cursor: pointer; }
-.sidebar { top: 84px; left: 12px; bottom: 12px; width: var(--rail); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.sidebar { top: 84px; left: 12px; bottom: 12px; width: var(--rail); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overflow-x: hidden; }
 .sidebar a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 13px; white-space: nowrap; }
 .sidebar a i { font-style: normal; width: 22px; text-align: center; font-size: 15px; opacity: .85; }
 .sidebar a:hover { background: rgba(255,255,255,.05); color: var(--text); }
@@ -313,7 +313,8 @@ table.vt td.dim { color: var(--muted); }
 .alert-btn.crit { color: #fff; background: rgba(255,107,107,.3); border-color: rgba(255,107,107,.7); animation: breathe-t 1.4s ease-in-out infinite; }
 .alert-btn::before { content: "⚠ "; }
 .nav-badge { margin-left: 6px; font: 700 10px var(--mono); color: #ffd2c2; background: rgba(224,112,75,.25); border-radius: 999px; padding: 1px 6px; }
-.health-bar { top: 84px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 13px; z-index: 1150; max-width: calc(100vw - 800px); }
+.health-bar { top: 84px; left: calc(12px + var(--rail) + 12px + 262px + 12px); right: 384px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 13px; z-index: 1150; }
+.health-bar span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-bar .hb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warm); box-shadow: 0 0 10px var(--warm); flex: none; }
 .health-bar.crit .hb-dot { background: #ff6b6b; box-shadow: 0 0 10px #ff6b6b; }
 .gauge2 { position: relative; width: 120px; height: 120px; margin: 0 auto; }
@@ -452,7 +453,7 @@ table.vt tr.row td:first-child { border-left: 2px solid transparent; } table.vt 
 /* sidebar: active pill slides, shortcut hint */
 .sidebar a { position: relative; transition: background .18s, color .18s; }
 .sidebar a.on::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--terracotta); box-shadow: 0 0 10px var(--terracotta); }
-.sb-hint { color: var(--cold); font: 11px var(--mono); padding: 8px 10px 4px; white-space: nowrap; }
+.sb-hint { color: var(--cold); font: 10px var(--mono); padding: 8px 6px 4px; white-space: normal; line-height: 1.5; }
 @media (max-width: 1180px) { .sb-hint { display: none; } }
 /* view header sticky feel on scroll */
 .view-body { scroll-behavior: smooth; }
