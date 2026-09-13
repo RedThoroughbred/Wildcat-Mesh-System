@@ -361,7 +361,7 @@
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
   try {
     if (isIOS && !standalone && !localStorage.getItem("v2.iosHint")) {
-      setTimeout(() => { $("ios-hint").hidden = false; }, 4000);
+      setTimeout(() => { $("ios-hint").hidden = false; setTimeout(() => { $("ios-hint").hidden = true; }, 12000); }, 4000);
     }
   } catch (e) {}
   $("ios-hint-close").onclick = () => { $("ios-hint").hidden = true; try { localStorage.setItem("v2.iosHint", "1"); } catch (e) {} };
