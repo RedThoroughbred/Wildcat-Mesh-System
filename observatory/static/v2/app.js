@@ -459,12 +459,12 @@
   function stateChip(st) { return `<span class="state ${st}">${st}</span>`; }
   function renderSends() {
     const arr = [...C.sends.values()].sort((a, b) => b.ts - a.ts).slice(0, 20);
-    $("sends").innerHTML = arr.map(x => `<div class="snd ${x.state}"><div class="t"><b>${x.broadcast ? "→ all" + (x.channel ? " · ch " + x.channel : "") : "→ " + escape(x.to_name || x.to)}</b>${escape(x.text)}</div><div class="st">${stateChip(x.state)}<span>${ago(x.ts)}${x.state === "delivered" && x.acked_by ? " · acked" : ""}${x.error ? " · " + escape(x.error) : ""}</span></div></div>`).join("");
+    $("sends").innerHTML = arr.map(x => `<div class="snd ${x.state}"><div class="t"><b>${x.broadcast ? "→ all" + (x.channel ? " · ch " + x.channel : "") : "→ " + escape(x.to_name || x.to)}</b>${escape(x.text)}</div><div class="st">${stateChip(x.state)}<span>${ago(x.ts)}${x.state === "delivered" ? " · acked by " + escape(x.to_name || x.to) : x.state === "relayed" ? " · heard on the mesh, not yet confirmed" : ""}${x.error ? " · " + escape(x.error) : ""}</span></div></div>`).join("");
   }
   function applyTx(rec) {
     C.sends.set(rec.id, rec); if (C.open) renderSends();
     const el = list.querySelector(`.pkt[data-tx="${rec.id}"]`); if (el) { const st = el.querySelector(".state"); if (st) { st.className = "state " + rec.state; st.textContent = rec.state; } }
-    if (rec.state === "delivered") toast(`Delivered to ${rec.to_name || rec.to}`, "ok"); else if (rec.state === "failed") toast(`Send failed: ${rec.error || "unknown"}`, "err");
+    if (rec.state === "delivered") toast(`Delivered — ${rec.to_name || rec.to} acknowledged`, "ok"); else if (rec.state === "failed") toast(`Send failed: ${rec.error || "unknown"}`, "err");
   }
   $("c-msg").addEventListener("click", () => { if (S.selected) composeOpen(S.selected); });
   document.addEventListener("keydown", (e) => { if (e.key === "c" && !PUBLIC && !/input|textarea|select/i.test(e.target.tagName || "") && !e.metaKey && !e.ctrlKey) { e.preventDefault(); composeOpen(); } });

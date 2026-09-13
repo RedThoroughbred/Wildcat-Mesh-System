@@ -554,6 +554,8 @@ body.public .compose-btn, body.public .compose, body.public .op-only { display: 
 .snd .st { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
 .state { font: 700 10px var(--font); letter-spacing: .6px; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); }
 .state.queued { color: var(--muted); } .state.sent { color: #d6efff; border-color: rgba(111,195,255,.5); background: rgba(111,195,255,.12); }
+.state.relayed { color: #ffe3a3; border-color: rgba(242,192,78,.5); background: rgba(242,192,78,.12); }
+.snd.relayed { border-left-color: var(--warm); }
 .state.delivered { color: #bff5d6; border-color: rgba(88,227,156,.5); background: rgba(88,227,156,.12); } .state.failed { color: #ffb3b3; border-color: rgba(255,107,107,.5); background: rgba(255,107,107,.12); }
 .snd.sent { border-left-color: var(--link); } .snd.delivered { border-left-color: var(--on); } .snd.failed { border-left-color: #ff6b6b; }
 .state.queued::before { content: "◌ "; animation: breathe-t 1.2s ease-in-out infinite; }

@@ -241,11 +241,20 @@ class State:
             rec = self.tx.get(tx_id) if tx_id else None
             if rec is None or rec["state"] in ("delivered", "failed"):
                 return None
+            if rec.get("broadcast"):
+                return None                      # broadcasts: any 'ack' is just a rebroadcast; 'sent' stays final
             reason = (dec.get("routing") or {}).get("errorReason") if isinstance(dec.get("routing"), dict) else None
-            if reason in (None, "NONE", 0):
-                rec["state"] = "delivered"; rec["delivered_at"] = now; rec["acked_by"] = env.get("from")
-            else:
+            who = env.get("from")
+            if reason not in (None, "NONE", 0):
                 rec["state"] = "failed"; rec["error"] = f"routing: {reason}"
+            elif who and rec.get("to") and who == rec["to"]:
+                # the destination itself answered → really delivered
+                rec["state"] = "delivered"; rec["delivered_at"] = now; rec["acked_by"] = who
+            else:
+                # Meshtastic's implicit ACK: we (or a neighbour) heard the packet rebroadcast.
+                # Honest label: it's on the mesh, but the destination hasn't confirmed.
+                if rec["state"] in ("queued", "sent"):
+                    rec["state"] = "relayed"; rec["acked_by"] = who
             self._sync_packet(rec)
             return dict(rec)
 

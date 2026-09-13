@@ -25,7 +25,10 @@ def test_state_tx_lifecycle():
     assert rec["state"] == "queued" and rec["to_name"] == "GO" and s.packets[-1]["sent"] is True and s.packets[-1]["from_name"] == "you"
     assert s.apply_tx_result({"id": "obs-1", "index": 0, "count": 1, "ok": True, "packetId": 4242}, 101.0)["state"] == "sent"
     assert s.packets[-1]["state"] == "sent"
-    # the destination's routing ACK references our packet id
+    # an implicit ACK (from ourselves / a neighbour rebroadcasting) is only 'relayed'…
+    rel = s.apply_routing({"kind": "routing", "from": BASE, "packet": {"decoded": {"portnum": "ROUTING_APP", "requestId": 4242, "routing": {"errorReason": "NONE"}}}}, 102.0)
+    assert rel["state"] == "relayed" and rel["acked_by"] == BASE
+    # …the destination's own routing ACK is 'delivered'
     ack = s.apply_routing({"kind": "routing", "from": GO, "packet": {"decoded": {"portnum": "ROUTING_APP", "requestId": 4242, "routing": {"errorReason": "NONE"}}}}, 103.0)
     assert ack["state"] == "delivered" and ack["acked_by"] == GO and s.packets[-1]["state"] == "delivered"
     assert s.apply_routing({"kind": "routing", "packet": {"decoded": {"requestId": 9999}}}, 104.0) is None   # not ours
@@ -40,6 +43,7 @@ def test_state_tx_lifecycle():
     # broadcasts are final at 'sent'
     s.new_tx("obs-4", "^all", None, "hi all", 0, 130.0, True)
     assert s.apply_tx_result({"id": "obs-4", "ok": True, "packetId": 8, "count": 1}, 131.0)["state"] == "sent"
+    assert s.apply_routing({"kind": "routing", "from": BASE, "packet": {"decoded": {"requestId": 8, "routing": {"errorReason": "NONE"}}}}, 132.0) is None
     assert [t["id"] for t in s.snapshot(200.0)["tx"]] == ["obs-1", "obs-2", "obs-3", "obs-4"]
 
 
