@@ -185,6 +185,99 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return jsonify({"mesh": Q.mesh_stats(_db()), "activity": Q.channel_activity(_db(), 24),
                         "low_battery": Q.low_battery(_db()), "top": Q.top_senders(_db(), 24, 5)})
 
+    # ---- admin: operator actions (parity with v1's admin page; the public VIEW hides them,
+    # the API itself is LAN-trust like v1 — put the Den behind Tailscale/LAN, not the internet)
+    @bp.route("/api/config")
+    def api_config():
+        from ..config import to_toml
+        return jsonify({"source": str(bridge.cfg.source), "kind": bridge.cfg.source_kind,
+                        "toml": to_toml(bridge.cfg, redact=True), "warnings": bridge.cfg.warnings})
+
+    CONTENT_FILES = {"fortunes": "fortunes.txt", "trivia": "trivia.txt", "messages": "messages.json"}
+
+    @bp.route("/api/content/<name>", methods=["GET", "POST"])
+    def api_content(name):
+        from flask import request
+        import shutil, time as _t
+        fn = CONTENT_FILES.get(name)
+        if not fn:
+            return jsonify({"error": "unknown content file"}), 404
+        path = bridge.cfg.bbs.content_dir / fn
+        if request.method == "GET":
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            return jsonify({"name": name, "path": str(path), "text": text, "exists": path.exists()})
+        body = request.get_json(silent=True) or {}
+        text = body.get("text")
+        if not isinstance(text, str):
+            return jsonify({"error": "text required"}), 400
+        if name == "messages":
+            import json as _json
+            try:
+                _json.loads(text)
+            except ValueError as e:
+                return jsonify({"error": f"messages.json must be valid JSON: {e}"}), 400
+        try:
+            if path.exists():
+                shutil.copy2(path, str(path) + ".bak")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except OSError as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, "path": str(path), "backup": str(path) + ".bak" if path.exists() else None, "lines": text.count("\n") + 1})
+
+    @bp.route("/api/tx", methods=["POST"])
+    def api_tx():
+        """Operator send: publishes a neutral TX request on the bus (meshd owns the radio)."""
+        from flask import request
+        import time as _t
+        if bridge.bus is None:
+            return jsonify({"error": "the bus is off ([mqtt].enabled = false) — nothing owns the radio for the Observatory to ask"}), 503
+        body = request.get_json(silent=True) or {}
+        text = (body.get("text") or "").strip()
+        if not text or len(text) > 200:
+            return jsonify({"error": "text must be 1–200 characters"}), 400
+        to = body.get("to") or "^all"
+        rid = f"obs-{int(_t.time())}"
+        bridge.bus.publish("tx", {"to": to, "text": text, "wantAck": to != "^all", "priority": 3, "id": rid})
+        return jsonify({"ok": True, "id": rid, "to": to})
+
+    @bp.route("/api/restart", methods=["POST"])
+    def api_restart():
+        """Restart the BBS service (systemd on the Pi). Elsewhere: says so."""
+        import shutil, subprocess
+        from flask import request
+        unit = (request.get_json(silent=True) or {}).get("unit", "wildcat-bbs")
+        if unit not in ("wildcat-bbs", "wildcat-telemetry", "wildcat-meshd", "mesh-bbs"):
+            return jsonify({"error": "unknown unit"}), 400
+        if shutil.which("systemctl") is None:
+            return jsonify({"ok": False, "message": "no systemd on this host — restart the process by hand (see logs/)"}), 501
+        try:
+            r = subprocess.run(["sudo", "-n", "systemctl", "restart", f"{unit}.service"], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as e:
+            return jsonify({"ok": False, "message": str(e)}), 500
+        if r.returncode != 0:
+            return jsonify({"ok": False, "message": (r.stderr or r.stdout).strip() or f"exit {r.returncode}"}), 500
+        return jsonify({"ok": True, "message": f"{unit} restarted"})
+
+    @bp.route("/api/services")
+    def api_services():
+        """What's running: bus, meshd, this process; systemd units when present."""
+        import shutil, subprocess, time as _t
+        units = {}
+        if shutil.which("systemctl"):
+            for u in ("wildcat-meshd", "wildcat-bbs", "wildcat-telemetry", "wildcat-observatory", "mosquitto"):
+                try:
+                    out = subprocess.run(["systemctl", "show", "-p", "ActiveState,SubState", f"{u}.service"], capture_output=True, text=True, timeout=5).stdout
+                    units[u] = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+        s = bridge.state
+        return jsonify({"bus": s.bus_connected, "meshd": s.meshd, "my_id": s.my_id, "uptime": _t.time() - bridge.started_at,
+                        "packets_seen": s.total, "mqtt_enabled": bridge.cfg.mqtt.enabled, "units": units, "systemd": bool(units)})
+
     @bp.route("/api/health")
     def api_health():
         s = bridge.state
