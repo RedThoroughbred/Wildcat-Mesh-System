@@ -167,7 +167,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 
 /* ---- legend ---- */
 .legend { left: 12px; bottom: 12px; display: flex; gap: 12px; padding: 8px 12px; color: var(--muted); font-size: 11px; }
-.card:not([hidden]) ~ .legend { bottom: auto; top: 84px; }
+.card:not([hidden]) ~ .legend { bottom: auto; top: 84px; left: 274px; }   /* beside the layers panel, not under it */
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .sw.base { background: var(--terracotta); box-shadow: 0 0 6px var(--terracotta); } .sw.on { background: var(--on); } .sw.warm { background: var(--warm); } .sw.cold { background: var(--cold); }
 .sw.link { border-radius: 2px; height: 3px; width: 16px; background: var(--link); vertical-align: 2px; }

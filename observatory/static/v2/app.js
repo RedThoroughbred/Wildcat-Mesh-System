@@ -199,7 +199,9 @@
         const sig = d.signal || [], tel = d.telemetry || [];
         sparkline("sp-snr", sig, "snr", { lo: -10, hi: 10, color: snrColor(sig.length ? sig[sig.length - 1].snr : null) });
         sparkline("sp-rssi", sig, "rssi", { lo: -125, hi: -70, color: "#6fc3ff" });
-        sparkline("sp-batt", tel.filter(x => x.battery != null && x.battery <= 100), "battery", { lo: 0, hi: 100, color: "#58e39c" });
+        const onBattery = tel.filter(x => x.battery != null && x.battery <= 100);
+        if (onBattery.length) sparkline("sp-batt", onBattery, "battery", { lo: 0, hi: 100, color: "#58e39c" });
+        else sparkline("sp-batt", tel.filter(x => x.voltage != null), "voltage", { color: "#f2c04e" });   // mains-powered: show voltage instead
         $("c-pkts").textContent = d.counts ? d.counts.packets_24h : "–";
         if (sig.length && n.rssi == null) { const last = sig[sig.length - 1]; if (last.rssi != null) $("c-rssi").textContent = last.rssi + " dBm"; }
       }).catch(() => {});
