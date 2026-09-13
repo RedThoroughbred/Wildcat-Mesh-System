@@ -130,7 +130,7 @@
     el.innerHTML = `<div class="bar"></div>
       <div><div class="who">${escape(p.sent ? "you" : (p.from_name || p.from))} ${to} <span class="kind">${escape(p.kind)}</span>${p.sent ? stateChip(p.state || "queued") : ""}</div><div class="sum">${escape(p.summary || "")}</div></div>
       <div class="meta"><span data-ts="${p.ts}">${ago(p.ts)}</span>${snr}${rssi}${hops}</div>`;
-    el.hidden = !(S.filter === "all" || S.filter === p.kind);
+    el.hidden = !((S.filter === "all" && p.kind !== "routing") || S.filter === p.kind || (S.filter === "raw"));
     list.prepend(el);
     if (fresh) setTimeout(() => el.classList.remove("fresh"), 1500);
     while (list.children.length > 150) list.lastChild.remove();
@@ -139,7 +139,7 @@
     const b = e.target.closest(".chip"); if (!b) return;
     S.filter = b.dataset.kind;
     for (const c of $("filters").children) c.classList.toggle("on", c === b);
-    for (const el of list.children) el.hidden = !(S.filter === "all" || S.filter === el.dataset.kind);
+    for (const el of list.children) el.hidden = !((S.filter === "all" && el.dataset.kind !== "routing") || S.filter === el.dataset.kind || S.filter === "raw");
   });
   function refreshTimes() { for (const el of list.querySelectorAll("[data-ts]")) el.textContent = ago(+el.dataset.ts); }
 
