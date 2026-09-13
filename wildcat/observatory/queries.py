@@ -201,3 +201,22 @@ def recent_logs(db_path: str, kind: str = "messages", limit: int = 100) -> List[
     if kind == "neighbors":
         return _rows(db_path, "SELECT timestamp ts, node_id id, neighbor_id neighbor, snr FROM neighbor_info ORDER BY timestamp DESC LIMIT ?", (limit,))
     return _rows(db_path, "SELECT timestamp ts, sender_id id, sender_short_name short_name, to_id, channel_index channel, message text, snr, rssi FROM message_logs ORDER BY timestamp DESC LIMIT ?", (limit,))
+
+
+def bulletins(db_path: str, board: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+    """The BBS's public boards (General / Info / News / Urgent)."""
+    if board:
+        return _rows(db_path, "SELECT id, board, sender_short_name sender, date, subject, content FROM bulletins"
+                              " WHERE board = ? COLLATE NOCASE ORDER BY id DESC LIMIT ?", (board, limit))
+    return _rows(db_path, "SELECT id, board, sender_short_name sender, date, subject, content FROM bulletins ORDER BY id DESC LIMIT ?", (limit,))
+
+
+def bulletin_boards(db_path: str) -> List[Dict[str, Any]]:
+    return _rows(db_path, "SELECT board, COUNT(*) count FROM bulletins GROUP BY board ORDER BY count DESC, board")
+
+
+def mail_summary(db_path: str) -> Dict[str, Any]:
+    """Mail is private: counts only, never contents."""
+    tot = _one(db_path, "SELECT COUNT(*) n, COUNT(DISTINCT recipient) recipients FROM mail") or {}
+    per = _rows(db_path, "SELECT recipient, COUNT(*) waiting, MAX(date) latest FROM mail GROUP BY recipient ORDER BY waiting DESC LIMIT 20")
+    return {"total": tot.get("n") or 0, "recipients": tot.get("recipients") or 0, "per_recipient": per}

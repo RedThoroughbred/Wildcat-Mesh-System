@@ -158,6 +158,12 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         h = _hours(168)
         return jsonify({"hours": h, "my_id": bridge.state.my_id, "messages": Q.bbs_messages(_db(), bridge.state.my_id, h)})
 
+    @bp.route("/api/bulletins")
+    def api_bulletins():
+        from flask import request
+        board = request.args.get("board") or None
+        return jsonify({"boards": Q.bulletin_boards(_db()), "bulletins": Q.bulletins(_db(), board), "mail": Q.mail_summary(_db())})
+
     @bp.route("/api/topology")
     def api_topology():
         with bridge.state.lock:

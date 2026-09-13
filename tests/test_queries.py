@@ -20,7 +20,12 @@ def db(tmp_path):
       CREATE TABLE telemetry_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, battery_level INTEGER, voltage REAL, channel_util REAL, air_util_tx REAL, temperature REAL);
       CREATE TABLE position_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, latitude REAL, longitude REAL, altitude REAL, satellites_in_view INTEGER);
       CREATE TABLE neighbor_info (id INTEGER PRIMARY KEY, timestamp INTEGER, node_id TEXT, neighbor_id TEXT, snr REAL);
+      CREATE TABLE bulletins (id INTEGER PRIMARY KEY, board TEXT, sender_short_name TEXT, date TEXT, subject TEXT, content TEXT, unique_id TEXT);
+      CREATE TABLE mail (id INTEGER PRIMARY KEY, sender TEXT, sender_short_name TEXT, recipient TEXT, date TEXT, subject TEXT, content TEXT, unique_id TEXT);
     """)
+    c.execute("INSERT INTO bulletins (board,sender_short_name,date,subject,content,unique_id) VALUES ('General','GO','2026-09-13','hello','first post','u1')")
+    c.execute("INSERT INTO bulletins (board,sender_short_name,date,subject,content,unique_id) VALUES ('Urgent','STAY','2026-09-13','storm','take cover','u2')")
+    c.execute("INSERT INTO mail (sender,sender_short_name,recipient,date,subject,content,unique_id) VALUES ('!716c668c','GO','!a0388880','2026-09-13','secret','private','m1')")
     now = int(time.time())
     c.execute("INSERT INTO node_info VALUES (?,?,?,?,?)", (GO, "GO", "Wildcat Go", "TRACKER_T1000_E", "CLIENT"))
     msgs = [(now - 100, GO, "GO", 2658560792, 0, "M", 9.0, -70), (now - 90, BASE, "6b18", 1902929548, 0, "menu", None, None),
@@ -82,3 +87,12 @@ def test_topology_low_battery_logs(db):
 
 def test_missing_db_is_empty(tmp_path):
     assert Q.mesh_stats(str(tmp_path / "none.db"))["messages_24h"] == 0 and Q.node_stats(str(tmp_path / "none.db")) == {}
+
+
+def test_bulletins_and_mail_privacy(db):
+    assert [b["board"] for b in Q.bulletins(db)] == ["Urgent", "General"]
+    assert Q.bulletins(db, "general")[0]["subject"] == "hello"
+    assert Q.bulletin_boards(db) == [{"board": "General", "count": 1}, {"board": "Urgent", "count": 1}]
+    m = Q.mail_summary(db)
+    assert m["total"] == 1 and m["per_recipient"][0]["recipient"] == "!a0388880"
+    assert "content" not in m["per_recipient"][0] and "subject" not in m["per_recipient"][0]
