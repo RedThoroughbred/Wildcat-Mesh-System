@@ -11,15 +11,22 @@ from .bridge import NAMESPACE, Bridge
 def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     bp = Blueprint("v2", __name__, url_prefix="/v2")
 
+    def _asset_version() -> str:
+        """Cache-buster: the newest mtime among the v2 assets (no build step, no hashes)."""
+        try:
+            return str(int(max(os.path.getmtime(os.path.join(_static, f)) for f in ("app.js", "app.css"))))
+        except OSError:
+            return "0"
+
     @bp.route("/")
     def index():
-        return render_template("v2/index.html", public=False)
+        return render_template("v2/index.html", public=False, v=_asset_version())
 
     @bp.route("/public")
     def public():
         """Shareable read-only view: same live map + feed, no controls, no install chrome.
         (The whole /v2 API is read-only anyway; this hides the operator affordances.)"""
-        return render_template("v2/index.html", public=True)
+        return render_template("v2/index.html", public=True, v=_asset_version())
 
     @bp.route("/api/history")
     def api_history():

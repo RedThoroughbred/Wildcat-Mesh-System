@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='v2/icons/icon-192.png') }}">
 <title>Wildcat Mesh · The Den</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='v2/app.css') }}?v={{ v }}">
 </head>
 <body{% if public %} class="public"{% endif %} data-public="{{ 'yes' if public else 'no' }}">
 <div id="map" aria-label="Live mesh map"></div>
@@ -160,6 +160,6 @@
 
 <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
-<script src="{{ url_for('static', filename='v2/app.js') }}"></script>
+<script src="{{ url_for('static', filename='v2/app.js') }}?v={{ v }}"></script>
 </body>
 </html>
