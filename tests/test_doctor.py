@@ -114,7 +114,7 @@ def test_radio_serial_explicit_port(tmp_path):
 def test_mqtt_skipped_when_disabled_and_probed_when_enabled():
     r = Report(); doctor.check_mqtt(r, build(SERIAL))
     assert statuses(r, "mqtt")[0][0] == SKIP
-    cfg = build({**SERIAL, "mqtt": {"enabled": True}})
+    cfg = build({**SERIAL, "mqtt": {"enabled": True}, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"}})
     r = Report(); doctor.check_mqtt(r, cfg, probe=lambda h, p, t: (True, ""))
     assert statuses(r, "mqtt")[0][0] == OK
     r = Report(); doctor.check_mqtt(r, cfg, probe=lambda h, p, t: (False, "refused"))
@@ -138,7 +138,7 @@ def test_deps_includes_paho_when_mqtt_enabled():
     seen = []
     def importer(mod, dist):
         seen.append(dist); return True, "x"
-    doctor.check_deps(Report(), build({**SERIAL, "mqtt": {"enabled": True}}), importer=importer)
+    doctor.check_deps(Report(), build({**SERIAL, "mqtt": {"enabled": True}, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"}}), importer=importer)
     assert "paho-mqtt" in seen
 
 

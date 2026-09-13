@@ -49,6 +49,7 @@ from . import paths
 log = logging.getLogger("wildcat.config")
 
 RADIO_TYPES = ("tcp", "serial")
+SOURCES = ("radio", "bus")
 MESHTASTIC_TCP_PORT = 4403
 
 # The stock Wildcat menus. These are what setup.sh has always written and what
@@ -98,6 +99,22 @@ class MqttConfig:
 
 
 @dataclass
+class MeshdConfig:
+    """``[meshd]`` — the radio owner (Phase 1 step 5). Active only when [mqtt].enabled."""
+    nodes_publish_interval: int = 60      # seconds between retained wildcat/nodes snapshots
+    tx_pacing_seconds: float = 2.0        # min gap between chunks on air (v1 BBS used 2 s)
+    max_chunk_chars: int = 200            # raw-slice size; ≤ ~230-byte LoRa payload
+    reconnect_min_seconds: int = 5
+    reconnect_max_seconds: int = 120
+
+
+@dataclass
+class TelemetryConfig:
+    """``[telemetry]`` — where the logger gets its packets."""
+    source: str = "radio"                 # "radio" (opens its own connection, v1) | "bus" (via meshd)
+
+
+@dataclass
 class MenuConfig:
     """``[bbs.menu]`` — which letters each BBS menu shows. Omit the table for stock menus."""
     main: List[str] = field(default_factory=lambda: list(DEFAULT_MAIN_MENU))
@@ -124,6 +141,7 @@ class JS8CallConfig:
 class BBSConfig:
     """``[bbs]`` — the TC² menu bot."""
     name: str = "Wildcat TC² BBS — Northern Kentucky Mesh"
+    source: str = "radio"                 # "radio" (owns the connection, v1) | "bus" (via meshd)
     sync_nodes: List[str] = field(default_factory=list)      # was [sync] bbs_nodes
     allowed_nodes: List[str] = field(default_factory=list)   # was [allow_list] allowed_nodes (Urgent board)
     content_dir: Path = field(default_factory=lambda: paths.repo_root() / "bbs")  # messages.json, fortunes.txt, trivia.txt
@@ -173,6 +191,8 @@ class BrainConfig:
 class WildcatConfig:
     radio: RadioConfig = field(default_factory=RadioConfig)
     mqtt: MqttConfig = field(default_factory=MqttConfig)
+    meshd: MeshdConfig = field(default_factory=MeshdConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
     bbs: BBSConfig = field(default_factory=BBSConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     observatory: ObservatoryConfig = field(default_factory=ObservatoryConfig)
@@ -243,6 +263,24 @@ def _take_int(ctx: _Ctx, table: Dict[str, Any], key: str, where: str, default: A
         return default
     if lo is not None and v < lo:
         ctx.error(f"{where}.{key}", f"must be >= {lo} {_got(v)}")
+        return default
+    return v
+
+
+def _take_float(ctx: _Ctx, table: Dict[str, Any], key: str, where: str, default: float,
+                lo: Optional[float] = None, hi: Optional[float] = None) -> float:
+    if key not in table:
+        return default
+    v = table[key]
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        try:
+            v = float(str(v).strip())
+        except ValueError:
+            ctx.error(f"{where}.{key}", f"must be a number {_got(v)}")
+            return default
+    v = float(v)
+    if lo is not None and hi is not None and not (lo <= v <= hi):
+        ctx.error(f"{where}.{key}", f"must be between {lo:g} and {hi:g} {_got(v)}")
         return default
     return v
 
@@ -341,7 +379,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     if not isinstance(data, dict):
         raise ConfigError(f"{label}: top level must be a table of sections")
 
-    _warn_unknown(ctx, data, "", ("radio", "mqtt", "bbs", "database", "observatory", "brain"))
+    _warn_unknown(ctx, data, "", ("radio", "mqtt", "meshd", "telemetry", "bbs", "database", "observatory", "brain"))
 
     # [radio]
     r = _table(ctx, data, "radio", "[radio]")
@@ -373,9 +411,28 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     if mqtt.topic_prefix.endswith("/") or "#" in mqtt.topic_prefix or "+" in mqtt.topic_prefix:
         ctx.error("[mqtt].topic_prefix", f"must be a plain topic segment like \"wildcat\" {_got(mqtt.topic_prefix)}")
 
+    # [meshd]
+    md = _table(ctx, data, "meshd", "[meshd]")
+    _warn_unknown(ctx, md, "[meshd]", ("nodes_publish_interval", "tx_pacing_seconds", "max_chunk_chars",
+                                      "reconnect_min_seconds", "reconnect_max_seconds"))
+    meshd = MeshdConfig(
+        nodes_publish_interval=_take_int(ctx, md, "nodes_publish_interval", "[meshd]", 60, 5, 3600),
+        tx_pacing_seconds=_take_float(ctx, md, "tx_pacing_seconds", "[meshd]", 2.0, 0.2, 30.0),
+        max_chunk_chars=_take_int(ctx, md, "max_chunk_chars", "[meshd]", 200, 50, 230),
+        reconnect_min_seconds=_take_int(ctx, md, "reconnect_min_seconds", "[meshd]", 5, 1, 600),
+        reconnect_max_seconds=_take_int(ctx, md, "reconnect_max_seconds", "[meshd]", 120, 1, 3600),
+    )
+    if meshd.reconnect_max_seconds < meshd.reconnect_min_seconds:
+        ctx.error("[meshd].reconnect_max_seconds", "must be >= reconnect_min_seconds")
+
+    # [telemetry]
+    tl = _table(ctx, data, "telemetry", "[telemetry]")
+    _warn_unknown(ctx, tl, "[telemetry]", ("source",))
+    telemetry = TelemetryConfig(source=_take_str(ctx, tl, "source", "[telemetry]", "radio", choices=SOURCES))
+
     # [bbs]
     b = _table(ctx, data, "bbs", "[bbs]")
-    _warn_unknown(ctx, b, "[bbs]", ("name", "sync_nodes", "allowed_nodes", "content_dir",
+    _warn_unknown(ctx, b, "[bbs]", ("name", "source", "sync_nodes", "allowed_nodes", "content_dir",
                                    "weather_api_key", "menu", "js8call"))
     menu_t = _table(ctx, b, "menu", "[bbs.menu]")
     _warn_unknown(ctx, menu_t, "[bbs.menu]", ("main", "bbs", "utilities"))
@@ -403,6 +460,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
         ctx.error("[bbs.js8call]", "needs BOTH host and port to enable JS8Call (or neither to disable it)")
     bbs = BBSConfig(
         name=_take_str(ctx, b, "name", "[bbs]", BBSConfig.name),
+        source=_take_str(ctx, b, "source", "[bbs]", "radio", choices=SOURCES),
         sync_nodes=_node_ids(ctx, b, "sync_nodes", "[bbs]"),
         allowed_nodes=_node_ids(ctx, b, "allowed_nodes", "[bbs]"),
         content_dir=_take_path(ctx, b, "content_dir", "[bbs]", base_dir / "bbs"),
@@ -461,12 +519,21 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     if not brain.trigger_prefix:
         ctx.error("[brain].trigger_prefix", "must not be empty")
 
+    # The node accepts ONE API client. [mqtt].enabled starts meshd, which takes that
+    # slot — so every consumer must then be on the bus; and a bus consumer needs meshd.
+    for where, src in (("[bbs].source", bbs.source), ("[telemetry].source", telemetry.source)):
+        if src == "bus" and not mqtt.enabled:
+            ctx.error(where, '= "bus" requires [mqtt].enabled = true (meshd publishes the packets)')
+        if src == "radio" and mqtt.enabled:
+            ctx.error(where, '= "radio" would fight meshd for the node\'s single API socket while '
+                             '[mqtt].enabled = true — set it to "bus" (or disable mqtt)')
+
     if ctx.errors:
         raise ConfigError(
             f"{label}: {len(ctx.errors)} problem(s):\n" + "\n".join(f"  - {e}" for e in ctx.errors)
         )
 
-    return WildcatConfig(radio=radio, mqtt=mqtt, bbs=bbs, database=database,
+    return WildcatConfig(radio=radio, mqtt=mqtt, meshd=meshd, telemetry=telemetry, bbs=bbs, database=database,
                          observatory=observatory, brain=brain,
                          source=source, source_kind=source_kind, warnings=ctx.warnings)
 
@@ -554,6 +621,8 @@ def _toml_scalar(v: Any) -> str:
         return "true" if v else "false"
     if isinstance(v, int):
         return str(v)
+    if isinstance(v, float):
+        return repr(v)
     if isinstance(v, Path):
         v = str(v)
     if isinstance(v, str):

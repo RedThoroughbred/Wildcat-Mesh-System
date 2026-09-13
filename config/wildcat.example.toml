@@ -30,8 +30,19 @@ host = "localhost"
 port = 1883
 topic_prefix = "wildcat"   # topics become wildcat/rx/text, wildcat/tx, …
 
+[meshd]                    # the radio owner (Phase 1 step 5); only runs when [mqtt].enabled
+nodes_publish_interval = 60   # seconds between retained wildcat/nodes snapshots
+tx_pacing_seconds = 2.0       # minimum gap between chunks on air
+max_chunk_chars = 200         # raw-slice chunk size (≤ ~230-byte LoRa payload)
+reconnect_min_seconds = 5     # backoff when the node drops the connection …
+reconnect_max_seconds = 120   # … capped here
+
+[telemetry]
+source = "radio"           # "radio" = opens its own node connection (v1); "bus" = packets via meshd
+
 [bbs]
 name = "Wildcat TC² BBS — Northern Kentucky Mesh"
+source = "radio"           # "radio" = owns the node connection (v1); "bus" = talks to meshd over MQTT
 sync_nodes = []            # other TC²-BBS nodes to sync mail/bulletins with, e.g. ["!17d7e4b7"]
 allowed_nodes = []         # nodes allowed to post to the Urgent board; [] = anyone
 # content_dir = "bbs"      # where messages.json / fortunes.txt / trivia.txt live

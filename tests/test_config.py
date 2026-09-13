@@ -173,7 +173,7 @@ def test_to_toml_round_trips(repo_root):
     cfg = load_file(repo_root / "config" / "wildcat.example.toml")
     text = to_toml(cfg)
     again = build(tomllib.loads(text), source=cfg.source)
-    for section in ("radio", "mqtt", "bbs", "database", "observatory", "brain"):
+    for section in ("radio", "mqtt", "meshd", "telemetry", "bbs", "database", "observatory", "brain"):
         assert getattr(again, section) == getattr(cfg, section), section
 
 
@@ -197,3 +197,39 @@ def test_default_repo_path_is_used(write):
     write("config/wildcat.toml", 'radio.type = "serial"\n[bbs]\nname = "repo default"\n')
     assert load().bbs.name == "repo default"
     assert load().source_kind == "toml"
+
+
+# ---- step 5 tables ---------------------------------------------------------------------
+
+def test_meshd_and_source_defaults():
+    cfg = build(SERIAL)
+    assert cfg.meshd.tx_pacing_seconds == 2.0 and cfg.meshd.max_chunk_chars == 200
+    assert cfg.telemetry.source == "radio" and cfg.bbs.source == "radio"
+
+
+def test_bus_source_requires_mqtt_enabled():
+    with pytest.raises(ConfigError) as ei:
+        build({**SERIAL, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"}})
+    msg = str(ei.value)
+    assert "[bbs].source" in msg and "[telemetry].source" in msg and "[mqtt].enabled" in msg
+    cfg = build({**SERIAL, "mqtt": {"enabled": True}, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"}})
+    assert cfg.bbs.source == "bus"
+
+
+def test_mqtt_enabled_forbids_radio_sources():
+    with pytest.raises(ConfigError) as ei:
+        build({**SERIAL, "mqtt": {"enabled": True}})           # sources default to "radio"
+    msg = str(ei.value)
+    assert "[bbs].source" in msg and "[telemetry].source" in msg and "single API socket" in msg
+
+
+def test_meshd_validation_messages():
+    with pytest.raises(ConfigError) as ei:
+        build({**SERIAL, "meshd": {"tx_pacing_seconds": "fast", "max_chunk_chars": 500,
+                                   "reconnect_min_seconds": 60, "reconnect_max_seconds": 10}})
+    msg = str(ei.value)
+    assert "[meshd].tx_pacing_seconds must be a number" in msg
+    assert "[meshd].max_chunk_chars must be between 50 and 230" in msg
+    assert "[meshd].reconnect_max_seconds must be >= reconnect_min_seconds" in msg
+    cfg = build({**SERIAL, "meshd": {"tx_pacing_seconds": 1}})
+    assert cfg.meshd.tx_pacing_seconds == 1.0

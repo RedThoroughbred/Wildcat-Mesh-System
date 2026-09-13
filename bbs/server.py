@@ -67,30 +67,52 @@ def main():
 
     merge_config(system_config, args)
 
-    interface = get_interface(system_config)
-    interface.bbs_nodes = system_config['bbs_nodes']
-    interface.allowed_nodes = system_config['allowed_nodes']
-
-    logging.info(f"TC²-BBS is running on {system_config['interface_type']} interface...")
-
+    cfg = system_config['wildcat']
     initialize_database()
-
-    def receive_packet(packet, interface):
-        on_receive(packet, interface)
-
-    pub.subscribe(receive_packet, system_config['mqtt_topic'])
-
-    # If the node reboots / drops the TCP session, the meshtastic reader thread ends
-    # and publishes connection.lost — but this process would otherwise sit here
-    # forever with a dead socket. Exit 3 so systemd (Restart=on-failure) brings us
-    # back; the legacy unit's RuntimeMaxSec self-kill is no longer needed.
     lost = threading.Event()
 
-    def on_connection_lost(interface=None, **kwargs):
-        logging.error("Radio connection lost — exiting so the service manager restarts us")
-        lost.set()
+    if cfg.bbs.source == "bus":
+        # v2: meshd owns the radio; we talk to it over MQTT through an adapter that
+        # looks like the meshtastic interface (wildcat/busiface.py), so every
+        # handler below runs unchanged.
+        from wildcat.bus import make_bus
+        from wildcat.busiface import BusInterface
+        bus = make_bus(cfg.mqtt, client_id="wildcat-bbs")
+        bus.start()
+        if not bus.wait_connected(30):
+            logging.error("Cannot reach the MQTT broker at %s:%s — is mosquitto running?", cfg.mqtt.host, cfg.mqtt.port)
+            sys.exit(3)
+        interface = BusInterface(bus, cfg, client_name="bbs")
+        interface.bbs_nodes = system_config['bbs_nodes']
+        interface.allowed_nodes = system_config['allowed_nodes']
+        logging.info("Waiting for meshd (the radio owner) to report a connected node…")
+        if not interface.wait_ready(120):
+            logging.error("meshd never reported a connected radio — is wildcat-meshd running? "
+                          "(journalctl -u wildcat-meshd)")
+            sys.exit(3)
+        interface.start(lambda packet, iface: on_receive(packet, iface))
+        logging.info(f"TC²-BBS is running on the MQTT bus (node {interface.myInfo.my_node_num}; meshd owns the radio)...")
+    else:
+        interface = get_interface(system_config)
+        interface.bbs_nodes = system_config['bbs_nodes']
+        interface.allowed_nodes = system_config['allowed_nodes']
 
-    pub.subscribe(on_connection_lost, "meshtastic.connection.lost")
+        logging.info(f"TC²-BBS is running on {system_config['interface_type']} interface...")
+
+        def receive_packet(packet, interface):
+            on_receive(packet, interface)
+
+        pub.subscribe(receive_packet, system_config['mqtt_topic'])
+
+        # If the node reboots / drops the TCP session, the meshtastic reader thread ends
+        # and publishes connection.lost — but this process would otherwise sit here
+        # forever with a dead socket. Exit 3 so systemd (Restart=on-failure) brings us
+        # back; the legacy unit's RuntimeMaxSec self-kill is no longer needed.
+        def on_connection_lost(interface=None, **kwargs):
+            logging.error("Radio connection lost — exiting so the service manager restarts us")
+            lost.set()
+
+        pub.subscribe(on_connection_lost, "meshtastic.connection.lost")
 
     # Initialize and start JS8Call Client if configured
     js8call_client = JS8CallClient(interface)

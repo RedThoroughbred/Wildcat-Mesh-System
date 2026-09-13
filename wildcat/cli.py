@@ -6,6 +6,7 @@
     wildcat config migrate     # legacy bbs/config.ini → TOML (add --write to save it)
     wildcat doctor             # preflight: python, config, deps, db, content, radio, mqtt, systemd
     wildcat db backup          # online SQLite backup into backups/ (the nightly timer runs this)
+    wildcat meshd              # the single radio owner → MQTT bus (systemd: wildcat-meshd.service)
 
 Exit codes: 0 ok · 1 runtime failure · 2 config problem.
 """
@@ -144,6 +145,47 @@ def cmd_db_backup(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_meshd(args: argparse.Namespace) -> int:
+    """Run the radio owner. Exits 0 immediately when [mqtt].enabled = false so the
+    systemd unit is harmless in v1 (direct-radio) mode."""
+    import signal
+    logging.getLogger().setLevel(logging.INFO)
+    try:
+        cfg = load(args.config)
+    except ConfigError as e:
+        print(f"CONFIG ERROR\n{e}", file=sys.stderr)
+        return EXIT_CONFIG
+    if not cfg.mqtt.enabled:
+        print("meshd: [mqtt].enabled = false — nothing to do; the BBS/telemetry open the radio themselves "
+              "(set enabled = true and source = \"bus\" on both to switch).")
+        return EXIT_OK
+    from .bus import make_bus
+    from .meshd.daemon import MeshDaemon, STATUS_TOPIC
+    from .meshd.radio import open_interface
+    from pubsub import pub  # type: ignore
+
+    bus = make_bus(cfg.mqtt, client_id="wildcat-meshd",
+                   will=(STATUS_TOPIC, {"state": "dead", "error": "meshd process died"}))
+    bus.start()
+    if not bus.wait_connected(30):
+        print(f"meshd: cannot reach the MQTT broker at {cfg.mqtt.host}:{cfg.mqtt.port} "
+              f"(sudo systemctl status mosquitto)", file=sys.stderr)
+        bus.stop()
+        return EXIT_FAIL
+    daemon = MeshDaemon(cfg, bus, lambda: open_interface(cfg.radio), pub)
+
+    def _quit(signum, frame):
+        logging.getLogger("wildcat.meshd").info("signal %s — stopping", signum)
+        daemon.stop()
+    signal.signal(signal.SIGINT, _quit)
+    signal.signal(signal.SIGTERM, _quit)
+    try:
+        daemon.run()
+    finally:
+        bus.stop()
+    return EXIT_OK
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from . import doctor  # Phase 1 step 3
@@ -190,6 +232,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dir", help=f"destination (default: {paths.repo_root() / 'backups'})")
     s.add_argument("--keep", type=int, default=30, help="how many dated backups to keep (0 = all)")
     s.set_defaults(func=cmd_db_backup)
+
+    m = sub.add_parser("meshd", help="run the radio owner (radio ↔ MQTT bus); no-op unless [mqtt].enabled")
+    _add_config_arg(m)
+    m.set_defaults(func=cmd_meshd)
 
     d = sub.add_parser("doctor", help="preflight checks: config, deps, database, radio, mqtt")
     _add_config_arg(d)

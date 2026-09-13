@@ -266,6 +266,31 @@ def main():
         logger.error("CONFIG ERROR\n%s", e)
         sys.exit(2)
 
+    cfg = system_config['wildcat']
+    if cfg.telemetry.source == "bus":
+        # v2: meshd owns the radio and republishes every packet; we subscribe and feed
+        # the same log_* functions the original packet dict.
+        from wildcat.bus import make_bus
+        from wildcat.busiface import BusInterface
+        bus = make_bus(cfg.mqtt, client_id="wildcat-telemetry")
+        bus.start()
+        if not bus.wait_connected(30):
+            logger.error("Cannot reach the MQTT broker at %s:%s — is mosquitto running?", cfg.mqtt.host, cfg.mqtt.port)
+            sys.exit(3)
+        iface = BusInterface(bus, cfg, client_name="telemetry")
+        logger.info("Waiting for meshd (the radio owner) to report a connected node…")
+        if not iface.wait_ready(120):
+            logger.error("meshd never reported a connected radio — is wildcat-meshd running?")
+            sys.exit(3)
+        iface.start(on_receive)
+        logger.info("✅ Logging telemetry/position/neighbor/node info from the bus (meshd owns the radio)")
+        try:
+            while True:
+                time.sleep(1)       # paho reconnects the bus by itself; meshd reconnects the radio
+        except KeyboardInterrupt:
+            logger.info("\n👋 Shutting down telemetry logger...")
+        return
+
     try:
         # Connect to Meshtastic interface (shared with the BBS: serial auto-detect, tcp host)
         logger.info(f"Connecting to Meshtastic via {system_config['interface_type']}"
