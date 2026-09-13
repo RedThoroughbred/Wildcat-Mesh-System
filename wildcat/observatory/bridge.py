@@ -14,7 +14,7 @@ import os
 import sqlite3
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any, Deque, Dict, List, Optional
 
 from ..config import WildcatConfig
@@ -79,6 +79,8 @@ class State:
         self.by_kind: Dict[str, int] = {}
         self.signal: Dict[str, Deque[Dict[str, Any]]] = {}      # per node: recent rx samples (live only)
         self.brain: Deque[Dict[str, Any]] = deque(maxlen=100)     # Ask-the-Cat exchanges (wildcat/brain/exchange)
+        self.tx: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()  # operator sends by id: queued → sent → delivered | failed
+        self._tx_by_packet: Dict[int, str] = {}                    # radio packet id → our send id (for ACK correlation)
         self._times: Deque[float] = deque(maxlen=5000)
         self.lock = threading.RLock()
 
@@ -187,6 +189,71 @@ class State:
             self.packets.append(rec)
             return {"packet": rec, "node": dict(node), "links": [dict(l) for l in links], "my_id": self.my_id}
 
+    # ---- operator sends ------------------------------------------------------------------
+    def new_tx(self, tx_id: str, to: Any, to_id: Optional[str], text: str, channel: int, now: float,
+               broadcast: bool) -> Dict[str, Any]:
+        with self.lock:
+            rec = {"id": tx_id, "ts": now, "to": to_id, "to_name": (self.roster.get(to_id or "", {}).get("short_name") if to_id else None),
+                   "broadcast": broadcast, "channel": channel, "text": text, "state": "queued", "packet_id": None,
+                   "chunks": None, "sent_at": None, "delivered_at": None, "error": None, "acked_by": None}
+            self.tx[tx_id] = rec
+            while len(self.tx) > 100:
+                old_id, old_rec = self.tx.popitem(last=False)
+                if old_rec.get("packet_id") is not None:
+                    self._tx_by_packet.pop(old_rec["packet_id"], None)
+            # the feed + threads see what we said, like any other packet
+            pkt = {"ts": now, "kind": "text", "proto": None, "from": self.my_id, "from_name": "you", "to": to_id,
+                   "to_name": rec["to_name"], "broadcast": broadcast, "channel": channel, "snr": None, "rssi": None,
+                   "hops": None, "summary": text, "text": text, "sent": True, "tx_id": tx_id, "state": "queued"}
+            self.packets.append(pkt)
+            return dict(rec)
+
+    def apply_tx_result(self, payload: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
+        """meshd's wildcat/tx/result: per chunk {id, index, count, ok, packetId?, error?}."""
+        tx_id = payload.get("id") if isinstance(payload, dict) else None
+        with self.lock:
+            rec = self.tx.get(tx_id) if tx_id else None
+            if rec is None:
+                return None
+            if payload.get("ok"):
+                rec["chunks"] = payload.get("count")
+                if payload.get("packetId") is not None:
+                    rec["packet_id"] = payload["packetId"]
+                    self._tx_by_packet[payload["packetId"]] = tx_id
+                if rec["state"] == "queued":
+                    rec["state"] = "sent"; rec["sent_at"] = now
+                    if rec["broadcast"]:
+                        rec["state"] = "sent"          # broadcasts are never acked; 'sent' is final
+            else:
+                rec["state"] = "failed"; rec["error"] = payload.get("error") or "send failed"
+            self._sync_packet(rec)
+            return dict(rec)
+
+    def apply_routing(self, env: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
+        """A ROUTING_APP packet answering one of our sends = the mesh's ACK (or error)."""
+        pkt = env.get("packet") if isinstance(env.get("packet"), dict) else {}
+        dec = pkt.get("decoded") if isinstance(pkt.get("decoded"), dict) else {}
+        req = dec.get("requestId")
+        if not isinstance(req, int):
+            return None
+        with self.lock:
+            tx_id = self._tx_by_packet.get(req)
+            rec = self.tx.get(tx_id) if tx_id else None
+            if rec is None or rec["state"] in ("delivered", "failed"):
+                return None
+            reason = (dec.get("routing") or {}).get("errorReason") if isinstance(dec.get("routing"), dict) else None
+            if reason in (None, "NONE", 0):
+                rec["state"] = "delivered"; rec["delivered_at"] = now; rec["acked_by"] = env.get("from")
+            else:
+                rec["state"] = "failed"; rec["error"] = f"routing: {reason}"
+            self._sync_packet(rec)
+            return dict(rec)
+
+    def _sync_packet(self, rec: Dict[str, Any]) -> None:
+        for p in self.packets:
+            if p.get("tx_id") == rec["id"]:
+                p["state"] = rec["state"]
+
     def apply_brain(self, payload: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
         """An Ask-the-Cat exchange (Phase 2 publishes these on wildcat/brain/exchange):
         {node, prompt, reply, provider, latency_ms, chunks, ts, rate_limited?}. Stored + echoed."""
@@ -221,7 +288,7 @@ class State:
             return {
                 "now": now, "my_id": self.my_id, "meshd": self.meshd, "bus": self.bus_connected,
                 "roster": self.roster, "links": list(self.links.values()), "packets": list(self.packets),
-                "brain": list(self.brain),
+                "brain": list(self.brain), "tx": list(self.tx.values())[-30:],
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
@@ -394,12 +461,17 @@ class Bridge:
             return
         from ..bus import MqttBus
         self.bus = MqttBus(self.cfg.mqtt, client_id=f"wildcat-observatory-{os.getpid()}")
-        self.bus.subscribe("nodes", self._on_nodes)
-        self.bus.subscribe("meshd/status", self._on_status)
-        self.bus.subscribe("rx/+", self._on_rx)
-        self.bus.subscribe("brain/exchange", self._on_brain)
+        self.wire(self.bus)
         self.bus.start()
         threading.Thread(target=self._watch_bus, name="v2-bus-watch", daemon=True).start()
+
+    def wire(self, bus: Any) -> None:
+        """Subscribe everything the Observatory listens to (any Bus implementation)."""
+        bus.subscribe("nodes", self._on_nodes)
+        bus.subscribe("meshd/status", self._on_status)
+        bus.subscribe("rx/+", self._on_rx)
+        bus.subscribe("brain/exchange", self._on_brain)
+        bus.subscribe("tx/result", self._on_tx_result)
 
     def _watch_bus(self) -> None:
         last = None
@@ -447,8 +519,60 @@ class Bridge:
         self._seed_links()
         self._emit("status", {"bus": self.state.bus_connected, "meshd": payload, "my_id": self.state.my_id})
 
+    def _on_tx_result(self, topic: str, payload: Dict[str, Any]) -> None:
+        rec = self.state.apply_tx_result(payload, time.time())
+        if rec:
+            self._emit("tx", rec)
+
+    def send(self, to: Any, text: str, channel: int = 0, wantAck: Optional[bool] = None) -> Dict[str, Any]:
+        """The operator's one way out: a neutral TX request on the bus (meshd paces + chunks it)."""
+        if self.bus is None:
+            raise RuntimeError("the bus is off ([mqtt].enabled = false) — nothing owns the radio")
+        now = time.time()
+        broadcast = to in ("^all", None, "", "broadcast")
+        to_id = None if broadcast else str(to).strip()
+        tx_id = f"obs-{int(now * 1000)}"
+        rec = self.state.new_tx(tx_id, to, to_id, text, channel, now, broadcast)
+        self.bus.publish("tx", {"to": "^all" if broadcast else to_id, "text": text, "channel": channel,
+                                "wantAck": (not broadcast) if wantAck is None else bool(wantAck), "priority": 3, "id": tx_id})
+        self._record_outgoing(now, to_id, text, channel)
+        self._emit("packet", {"packet": next(p for p in reversed(self.state.packets) if p.get("tx_id") == tx_id),
+                              "node": None, "links": [], "my_id": self.state.my_id, "per_min": self.state.rate_per_min(now)})
+        self._emit("tx", rec)
+        return rec
+
+    def _record_outgoing(self, now: float, to_id: Optional[str], text: str, channel: int) -> None:
+        """Mirror what the BBS does for its replies: log our outgoing text so the Messages
+        threads, replay and exports include the operator's side of the conversation."""
+        db = str(self.cfg.database.path)
+        if not os.path.exists(db):
+            return
+        my = self.state.my_id or "unknown"
+        name = self.state.roster.get(my, {}).get("short_name") or "Den"
+        to_num = 4294967295
+        if to_id and to_id.startswith("!"):
+            try:
+                to_num = int(to_id[1:], 16)
+            except ValueError:
+                pass
+        try:
+            conn = sqlite3.connect(db, timeout=3)
+            try:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                conn.execute("INSERT INTO message_logs (timestamp, sender_id, sender_short_name, to_id, channel_index, message, snr, rssi, hop_limit)"
+                             " VALUES (?,?,?,?,?,?,?,?,?)", (int(now), my, name, to_num, channel, text, None, None, None))
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            log.warning("could not log outgoing message: %s", e)
+
     def _on_rx(self, topic: str, env: Dict[str, Any]) -> None:
         now = time.time()
+        if env.get("kind") == "routing":
+            ack = self.state.apply_routing(env, now)
+            if ack:
+                self._emit("tx", ack)
         ev = self.state.apply_packet(env, now)
         if ev:
             ev["per_min"] = self.state.rate_per_min(now)

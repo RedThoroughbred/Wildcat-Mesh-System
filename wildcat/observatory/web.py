@@ -235,19 +235,40 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
 
     @bp.route("/api/tx", methods=["POST"])
     def api_tx():
-        """Operator send: publishes a neutral TX request on the bus (meshd owns the radio)."""
+        """Operator send: a neutral TX request on the bus (meshd owns, paces and chunks it).
+        Body: {"to": "!nodeid" | "^all", "text": "…", "channel": 0}. Returns the tracked send."""
         from flask import request
-        import time as _t
         if bridge.bus is None:
             return jsonify({"error": "the bus is off ([mqtt].enabled = false) — nothing owns the radio for the Observatory to ask"}), 503
         body = request.get_json(silent=True) or {}
         text = (body.get("text") or "").strip()
-        if not text or len(text) > 200:
-            return jsonify({"error": "text must be 1–200 characters"}), 400
+        if not text or len(text.encode("utf-8")) > 200:
+            return jsonify({"error": "text must be 1–200 bytes (one LoRa packet)"}), 400
         to = body.get("to") or "^all"
-        rid = f"obs-{int(_t.time())}"
-        bridge.bus.publish("tx", {"to": to, "text": text, "wantAck": to != "^all", "priority": 3, "id": rid})
-        return jsonify({"ok": True, "id": rid, "to": to})
+        if to != "^all" and not (isinstance(to, str) and to.startswith("!") and len(to) == 9):
+            return jsonify({"error": "'to' must be a node id like !9e766b18 or ^all"}), 400
+        try:
+            channel = int(body.get("channel", 0))
+        except (TypeError, ValueError):
+            channel = 0
+        if not 0 <= channel <= 7:
+            return jsonify({"error": "channel must be 0–7"}), 400
+        try:
+            rec = bridge.send(to, text, channel)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 503
+        return jsonify({"ok": True, **rec})
+
+    @bp.route("/api/tx")
+    def api_tx_list():
+        with bridge.state.lock:
+            return jsonify({"sends": list(bridge.state.tx.values())[-50:]})
+
+    @bp.route("/api/tx/<tx_id>")
+    def api_tx_one(tx_id):
+        with bridge.state.lock:
+            rec = bridge.state.tx.get(tx_id)
+        return (jsonify(rec), 200) if rec else (jsonify({"error": "unknown send"}), 404)
 
     @bp.route("/api/restart", methods=["POST"])
     def api_restart():
