@@ -1565,15 +1565,17 @@
   function closeView() { if (S.mini) { try { S.mini.remove(); } catch (e) {} S.mini = null; } document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   // Some sidebar entries are ACTIONS on the Home map, not places. They run, then the URL
   // is put back to #/ so what the address bar says always matches what's on screen.
-  function actionDone() { history.replaceState(null, "", location.pathname + location.search + "#/"); setNav("home"); }
+  // Home is the bare /v2/ — no '#/' left in the address bar once you're back on the map.
+  const homeUrl = () => location.pathname + location.search;
+  function actionDone() { history.replaceState(null, "", homeUrl()); setNav("home"); }
   function route() {
     const h = location.hash || "#/", m = h.match(/^#\/([a-z]+)(?:\/(.+))?/);
     const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;
-    if (name === "home" || h === "#/" || h === "#") { closeView(); return; }
+    if (name === "home" || h === "#/" || h === "#") { closeView(); if (location.hash) history.replaceState(null, "", homeUrl()); return; }
     if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } toast("Coverage layer on"); actionDone(); return; }
     if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast("Replay isn't available in the public view"); return; } if (window.innerWidth <= 760) { toast("Replay needs a wider screen — the timeline lives below the map on tablets and desktops"); return; } if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
     if (name === "cat") { closeView(); actionDone(); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
-    if (!VIEWS[name]) { toast("No such page: " + name, "err"); location.replace(location.pathname + location.search + "#/"); return; }
+    if (!VIEWS[name]) { toast("No such page: " + name, "err"); history.replaceState(null, "", homeUrl()); closeView(); return; }
     showView(name, arg);
   }
   window.addEventListener("hashchange", route);

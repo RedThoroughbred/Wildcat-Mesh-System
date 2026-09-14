@@ -5,7 +5,7 @@
 (async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const $ = id => document.getElementById(id);
-  const st = () => ({ hash: location.hash, view: !$("view").hidden, viewing: document.body.classList.contains("viewing"),
+  const st = () => ({ hash: location.hash || "#/", view: !$("view").hidden, viewing: document.body.classList.contains("viewing"),
     title: $("view-title").textContent.trim().slice(0, 18), nav: [...document.querySelectorAll(".sidebar a.on")].map(a => a.dataset.view).join(","),
     card: !$("card").hidden, compose: !$("compose").hidden && getComputedStyle($("compose")).display !== "none", replaying: document.body.classList.contains("replaying"),
     body: $("view-body").innerText.trim().slice(0, 24).replace(/\s+/g, " ") });

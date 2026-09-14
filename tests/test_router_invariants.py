@@ -31,7 +31,8 @@ def test_every_view_write_is_guarded_against_stale_renders():
 def test_action_routes_put_the_url_back():
     for action in ("coverage", "replay", "cat"):
         assert re.search(rf'name === "{action}"\) \{{.*actionDone\(\)', APP), action
-    assert 'history.replaceState(null, "", location.pathname + location.search + "#/")' in APP
+    assert 'history.replaceState(null, "", homeUrl())' in APP                 # home is the bare /v2/, never '#/'
+    assert 'if (location.hash) history.replaceState(null, "", homeUrl())' in APP
 
 
 def test_sidebar_highlight_maps_detail_routes():
