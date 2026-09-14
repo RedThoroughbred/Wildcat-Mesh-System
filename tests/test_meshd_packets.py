@@ -61,9 +61,9 @@ def test_non_json_objects_stringified():
 
 def test_neutral_text_fields():
     _, env = packets.envelope({**TEXT, "hopStart": 3, "hopLimit": 2}, 0)
-    assert env["v"] == 1 and env["proto"] == "meshtastic" and env["kind"] == "text"
+    assert env["v"] == 2 and env["proto"] == "meshtastic" and env["kind"] == "text"
     assert env["from"] == "!9e766b18" and env["to"] == "!9e69a9d8" and env["broadcast"] is False
-    assert env["rx"] == {"time": 1700000000, "snr": 5.5, "rssi": -86, "hops": 1}
+    assert env["rx"] == {"time": 1700000000, "snr": 5.5, "rssi": -86, "hops": 1, "via_mqtt": False}
     assert env["text"] == "M"
 
 
@@ -107,3 +107,17 @@ def test_roster_from_interface_nodes():
     assert stay["battery"] == 100 and stay["hops_away"] == 0 and stay["role"] == "CLIENT_BASE" and stay["proto"] == "meshtastic"
     assert r["!00000002"]["position"] is None
     assert packets.node_id(2688059520) == "!a0388880" and packets.node_id(packets.BROADCAST_NUM) is None
+
+
+def test_via_mqtt_is_explicit_on_meshtastic_envelopes_and_roster_rows():
+    from wildcat.meshd.packets import ENVELOPE_VERSION, envelope, roster
+    base = {"from": 111, "to": 4294967295, "fromId": "!0000006f", "channel": 0, "id": 9, "rxTime": 1,
+            "decoded": {"portnum": "TEXT_MESSAGE_APP", "payload": b"hi", "text": "hi"}}
+    assert ENVELOPE_VERSION == 2
+    _, rf = envelope(dict(base), 1.0)
+    assert rf["v"] == 2 and rf["rx"]["via_mqtt"] is False                       # Meshtastic omits a false flag → radio
+    _, mq = envelope({**base, "viaMqtt": True, "hopStart": 3, "hopLimit": 3}, 1.0)
+    assert mq["rx"]["via_mqtt"] is True and mq["rx"]["hops"] == 0                # hops mean nothing here; the flag says so
+    r = roster({"!a": {"num": 10, "user": {"id": "!0000000a", "shortName": "A"}, "viaMqtt": True, "lastHeard": 5},
+                "!b": {"num": 11, "user": {"id": "!0000000b", "shortName": "B"}, "lastHeard": 6}})
+    assert r["!0000000a"]["via_mqtt"] is True and r["!0000000b"]["via_mqtt"] is False

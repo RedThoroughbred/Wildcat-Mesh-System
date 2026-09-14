@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 
 BROADCAST_NUM = 0xFFFFFFFF
 
-ENVELOPE_VERSION = 1
+ENVELOPE_VERSION = 2      # v2 (2026-09-14): rx.via_mqtt (bool) on meshtastic packets; roster.via_mqtt. Additive — v1 consumers ignore it.
 PROTO = "meshtastic"
 
 PORT_KINDS = {
@@ -127,7 +127,11 @@ def neutral_fields(packet: Dict[str, Any], kind: str) -> Dict[str, Any]:
         "broadcast": to_num == BROADCAST_NUM,
         "channel": packet.get("channel", 0),
         "rx": {"time": _num(packet.get("rxTime")), "snr": _num(packet.get("rxSnr")),
-               "rssi": _num(packet.get("rxRssi")), "hops": hops},
+               "rssi": _num(packet.get("rxRssi")), "hops": hops,
+               # True when the node got this packet from its MQTT uplink, not the radio. Meshtastic
+               # only serialises the flag when set, so absent == heard over RF. Producers for other
+               # protocols omit the key entirely (unknown), never guess.
+               "via_mqtt": bool(packet.get("viaMqtt"))},
     }
     if kind == "position":
         pos = decoded.get("position") if isinstance(decoded.get("position"), dict) else {}
@@ -183,6 +187,7 @@ def roster_entry(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "hw": user.get("hwModel"), "role": user.get("role"),
         "last_heard": _num(node.get("lastHeard")), "hops_away": _num(node.get("hopsAway")),
         "snr": _num(node.get("snr")),
+        "via_mqtt": bool(node.get("viaMqtt")),      # the radio's node DB: this entry was last learned over MQTT
         "position": {"lat": _num(lat), "lon": _num(lon), "alt": _num(pos.get("altitude"))} if _num(lat) is not None and _num(lon) is not None else None,
         "position_ts": _num(pos.get("time")) if _num(lat) is not None else None,
         "battery": _num(dm.get("batteryLevel")), "voltage": _num(dm.get("voltage")),

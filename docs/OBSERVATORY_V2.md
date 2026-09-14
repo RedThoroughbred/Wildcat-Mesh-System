@@ -61,7 +61,9 @@ fill, whatever the radio:
   "to": "!716c668c",               // or null
   "broadcast": false,
   "channel": 0,                    // proto channel index/name; null if n/a
-  "rx": { "time": 1700000000, "snr": 5.5, "rssi": -86, "hops": 0 },   // hops USED to reach us; null if unknown
+  "rx": { "time": 1700000000, "snr": 5.5, "rssi": -86, "hops": 0,     // hops USED to reach us; null if unknown
+          "via_mqtt": false },   // v2: true = the node got it from its MQTT uplink, not the air (no radio truth in
+                                 // snr/hops then). Omitted by producers that can't know — never guessed.
   "received_at": 1700000001.5,     // when meshd saw it
   // exactly one payload block, by kind:
   "text": "M",
