@@ -19,6 +19,7 @@ from typing import Any, Deque, Dict, List, Optional
 
 from ..config import WildcatConfig
 from .coverage import CoverageStore, coverage_point
+from .sos import SosController, is_distress
 
 log = logging.getLogger("wildcat.observatory")
 
@@ -80,6 +81,7 @@ class State:
         self.signal: Dict[str, Deque[Dict[str, Any]]] = {}      # per node: recent rx samples (live only)
         self.brain: Deque[Dict[str, Any]] = deque(maxlen=100)     # Ask-the-Cat exchanges (wildcat/brain/exchange)
         self.brain_status: Optional[Dict[str, Any]] = None         # the responder's retained wildcat/brain/status
+        self.sos: Dict[str, Any] = {"active": False, "sent": 0, "ended": None}   # the SOS controller's status (mirrored)
         self.tx: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()  # operator sends by id: queued → sent → delivered | failed
         self._tx_by_packet: Dict[int, str] = {}                    # radio packet id → our send id (for ACK correlation)
         self._times: Deque[float] = deque(maxlen=5000)
@@ -187,16 +189,18 @@ class State:
             }
             if kind == "text":
                 rec["text"] = env.get("text")
+                if is_distress(env.get("text")):
+                    rec["sos"] = True
             self.packets.append(rec)
             return {"packet": rec, "node": dict(node), "links": [dict(l) for l in links], "my_id": self.my_id}
 
     # ---- operator sends ------------------------------------------------------------------
     def new_tx(self, tx_id: str, to: Any, to_id: Optional[str], text: str, channel: int, now: float,
-               broadcast: bool) -> Dict[str, Any]:
+               broadcast: bool, sos: bool = False) -> Dict[str, Any]:
         with self.lock:
             rec = {"id": tx_id, "ts": now, "to": to_id, "to_name": (self.roster.get(to_id or "", {}).get("short_name") if to_id else None),
                    "broadcast": broadcast, "channel": channel, "text": text, "state": "queued", "packet_id": None,
-                   "chunks": None, "sent_at": None, "delivered_at": None, "error": None, "acked_by": None}
+                   "chunks": None, "sent_at": None, "delivered_at": None, "error": None, "acked_by": None, "sos": bool(sos)}
             self.tx[tx_id] = rec
             while len(self.tx) > 100:
                 old_id, old_rec = self.tx.popitem(last=False)
@@ -206,6 +210,8 @@ class State:
             pkt = {"ts": now, "kind": "text", "proto": None, "from": self.my_id, "from_name": "you", "to": to_id,
                    "to_name": rec["to_name"], "broadcast": broadcast, "channel": channel, "snr": None, "rssi": None,
                    "hops": None, "summary": text, "text": text, "sent": True, "tx_id": tx_id, "state": "queued"}
+            if sos:
+                pkt["sos"] = True
             self.packets.append(pkt)
             return dict(rec)
 
@@ -307,7 +313,7 @@ class State:
             return {
                 "now": now, "my_id": self.my_id, "meshd": self.meshd, "bus": self.bus_connected,
                 "roster": self.roster, "links": list(self.links.values()), "packets": list(self.packets),
-                "brain": list(self.brain), "brain_status": self.brain_status, "tx": list(self.tx.values())[-30:],
+                "brain": list(self.brain), "brain_status": self.brain_status, "sos": dict(self.sos), "tx": list(self.tx.values())[-30:],
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
@@ -463,6 +469,8 @@ class Bridge:
         self.socketio = socketio
         self.state = State()
         self.bus: Any = None
+        self.sos = SosController(sender=lambda msg, ch: self.send("^all", msg, ch, priority=0, sos=True),
+                                 publish=self._on_sos, name_fn=self._my_name, position_fn=self._my_position)
         self.started_at = time.time()
         self.coverage = CoverageStore(str(self.cfg.database.path))
 
@@ -475,6 +483,7 @@ class Bridge:
             log.info("observatory v2: coverage table ready, %d rx points backfilled from message/position history", n)
         except Exception:
             log.exception("coverage store init failed")
+        threading.Thread(target=self._sos_loop, name="v2-sos", daemon=True).start()
         if not self.cfg.mqtt.enabled:
             log.warning("observatory v2: [mqtt].enabled = false — live view is off, rendering from the database only")
             return
@@ -544,22 +553,52 @@ class Bridge:
         if rec:
             self._emit("tx", rec)
 
-    def send(self, to: Any, text: str, channel: int = 0, wantAck: Optional[bool] = None) -> Dict[str, Any]:
-        """The operator's one way out: a neutral TX request on the bus (meshd paces + chunks it)."""
+    def send(self, to: Any, text: str, channel: int = 0, wantAck: Optional[bool] = None, priority: int = 3,
+             sos: bool = False) -> Dict[str, Any]:
+        """The operator's one way out: a neutral TX request on the bus (meshd paces + chunks it).
+        ``priority`` 0 is the most urgent (SOS); ordinary operator sends are 3."""
         if self.bus is None:
             raise RuntimeError("the bus is off ([mqtt].enabled = false) — nothing owns the radio")
         now = time.time()
         broadcast = to in ("^all", None, "", "broadcast")
         to_id = None if broadcast else str(to).strip()
-        tx_id = f"obs-{int(now * 1000)}"
-        rec = self.state.new_tx(tx_id, to, to_id, text, channel, now, broadcast)
+        tx_id = f"{'sos' if sos else 'obs'}-{int(now * 1000)}"
+        rec = self.state.new_tx(tx_id, to, to_id, text, channel, now, broadcast, sos=sos)
         self.bus.publish("tx", {"to": "^all" if broadcast else to_id, "text": text, "channel": channel,
-                                "wantAck": (not broadcast) if wantAck is None else bool(wantAck), "priority": 3, "id": tx_id})
+                                "wantAck": (not broadcast) if wantAck is None else bool(wantAck), "priority": int(priority), "id": tx_id})
         self._record_outgoing(now, to_id, text, channel)
         self._emit("packet", {"packet": next(p for p in reversed(self.state.packets) if p.get("tx_id") == tx_id),
                               "node": None, "links": [], "my_id": self.state.my_id, "per_min": self.state.rate_per_min(now)})
         self._emit("tx", rec)
         return rec
+
+    # ---- SOS ------------------------------------------------------------------------------
+    def _my_name(self) -> str:
+        my = self.state.my_id
+        return (self.state.roster.get(my or "", {}).get("short_name") if my else None) or "the Den"
+
+    def _my_position(self) -> Optional[Dict[str, Any]]:
+        my = self.state.my_id
+        pos = self.state.roster.get(my or "", {}).get("position") if my else None
+        return pos if isinstance(pos, dict) else None
+
+    def _on_sos(self, st: Dict[str, Any]) -> None:
+        with self.state.lock:
+            self.state.sos = dict(st)
+        if self.bus is not None:
+            try:
+                self.bus.publish("alert/sos", st, retain=True)
+            except Exception:
+                log.exception("could not publish the SOS state")
+        self._emit("sos", st)
+
+    def _sos_loop(self) -> None:
+        while True:
+            time.sleep(1.0)
+            try:
+                self.sos.tick()
+            except Exception as e:
+                log.error("SOS repeat failed: %s", e)
 
     def _record_outgoing(self, now: float, to_id: Optional[str], text: str, channel: int) -> None:
         """Mirror what the BBS does for its replies: log our outgoing text so the Messages

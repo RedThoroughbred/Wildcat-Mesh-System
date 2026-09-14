@@ -156,3 +156,33 @@ def test_responder_switch_writes_the_file_and_flips_the_bus(tmp_path):
                                    "reason": "responder is off", "chunks": 0, "latency_ms": 0, "ts": 1})
     x = c.get("/v2/api/state").get_json()["brain"][-1]
     assert x["status"] == "off" and x["reason"] == "responder is off" and x["node"] == "!716c668c"
+
+
+def test_sos_routes_broadcast_at_top_priority_and_stop(tmp_path):
+    from wildcat.bus import MemoryBus
+    (tmp_path / "content").mkdir()
+    cfg = build({"radio": {"type": "serial"}, "mqtt": {"enabled": True}, "bbs": {"source": "bus", "content_dir": str(tmp_path / "content")},
+                 "telemetry": {"source": "bus"}, "database": {"path": str(tmp_path / "b.db")}})
+    app = flask.Flask("obs-test4", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    app.register_blueprint(create_blueprint(bridge, sio))
+    c = app.test_client()
+    assert c.post("/v2/api/sos", json={"text": "help"}).status_code == 503          # no bus → nothing owns the radio
+    bus = MemoryBus(); bridge.bus = bus; bridge.wire(bus)
+    bus.publish("nodes", {"my_id": "!9e766b18", "roster": {"!9e766b18": {"id": "!9e766b18", "short_name": "6b18", "position": {"lat": 38.88, "lon": -84.62}}}}, retain=True)
+    assert c.get("/v2/api/sos").get_json()["active"] is False
+    assert c.post("/v2/api/sos", json={"text": ""}).status_code == 400
+    assert c.post("/v2/api/sos", json={"text": "x", "repeat": 3, "interval": 5}).status_code == 400
+    r = c.post("/v2/api/sos", json={"text": "Barn fire on Rich Road, need pumps", "repeat": 3, "interval": 120})
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json()
+    assert j["active"] is True and j["sent"] == 1 and j["message"].startswith("🆘 SOS from 6b18: Barn fire on Rich Road, need pumps @ 38.88000,-84.62000 [1/3]")
+    tx = [p for t, p in bus.published if t == "wildcat/tx"][-1]
+    assert tx["priority"] == 0 and tx["to"] == "^all" and tx["id"].startswith("sos-") and tx["text"] == j["message"]
+    assert bus.last("alert/sos")["active"] is True and bus.last("alert/sos")["sent"] == 1
+    snap = c.get("/v2/api/state").get_json()
+    assert snap["sos"]["active"] is True and snap["packets"][-1]["sos"] is True and snap["packets"][-1]["sent"] is True
+    assert snap["tx"][-1]["sos"] is True and snap["tx"][-1]["id"] == j["last_tx_id"]
+    r = c.delete("/v2/api/sos")
+    assert r.status_code == 200 and r.get_json()["ended"] == "stopped" and bus.last("alert/sos")["active"] is False

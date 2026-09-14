@@ -43,6 +43,7 @@
     <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
   </div>
   <div class="tools">
+    <button class="tool sos-btn op-only" id="sos-btn" title="Emergency broadcast (SOS)" aria-label="emergency broadcast">🆘</button>
     <button class="tool alert-btn" id="alerts" title="mesh health" hidden><span id="alerts-n">0</span></button>
     <button class="tool compose-btn" id="compose-btn" title="Compose a message (c)" aria-label="compose a message">✎</button>
     <button class="tool" id="palette-btn" title="Find a node (⌘K or /)" aria-label="find a node">⌕</button>
@@ -53,6 +54,22 @@
   <button class="install" id="install" hidden title="Install as an app">⤓ Install</button>
 </header>
 
+<section class="glass sos-sheet op-only" id="sos" hidden aria-label="emergency broadcast">
+  <header class="compose-head"><h2>🆘 Emergency broadcast</h2><span class="dim">everyone in range · top priority</span><button class="close" id="sos-close" aria-label="close">×</button></header>
+  <div class="compose-body">
+    <p class="sos-note">Sends <b>🆘 SOS from <span id="sos-name">the Den</span>: your message</b> to every node on the channel, optionally repeating until you stop it. For a real emergency, or a drill you've announced.</p>
+    <textarea id="sos-text" rows="3" maxlength="120" placeholder="What's wrong, where, what you need…"></textarea>
+    <div class="sos-opts">
+      <label class="sos-pos"><input type="checkbox" id="sos-pos" checked> include the Den's position <span class="dim" id="sos-pos-val">(no fix)</span></label>
+      <label>repeat <select class="vsearch" id="sos-repeat"><option value="1">once</option><option value="3">3×</option><option value="6" selected>6×</option><option value="12">12×</option><option value="0">until stopped</option></select></label>
+      <label>every <select class="vsearch" id="sos-interval"><option value="120">2 min</option><option value="300" selected>5 min</option><option value="600">10 min</option><option value="900">15 min</option></select></label>
+      <label>channel <select class="vsearch" id="sos-channel"><option value="0">0 · primary</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option></select></label>
+    </div>
+    <div class="sos-preview" id="sos-preview"></div>
+    <div class="compose-foot"><span class="dim" id="sos-count">0 / 120</span><button class="send sos-go" id="sos-go" disabled>Broadcast SOS</button></div>
+  </div>
+</section>
+<div class="glass sos-banner" id="sos-banner" hidden role="alert"><span class="sos-pulse"></span><span class="sos-banner-text" id="sos-banner-text">🆘 SOS active</span><button class="link-btn op-only" id="sos-stop">Stop</button><button class="close" id="sos-dismiss" aria-label="dismiss" hidden>×</button></div>
 <div class="glass health-bar" id="health-bar" hidden><span class="hb-dot"></span><span id="health-bar-text"></span><a href="#/health" class="link-btn">details</a></div>
 
 <section class="glass compose" id="compose" hidden aria-label="compose a message">

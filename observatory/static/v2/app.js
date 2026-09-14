@@ -122,7 +122,7 @@
   const list = $("feed-list");
   let addPacket = function (p, fresh) {
     const el = document.createElement("div");
-    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
+    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : "") + (p.sos ? " sos" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
     const snr = p.snr != null ? `<span class="snr ${snrClass(p.snr)}">${p.snr.toFixed(1)} dB</span>` : "";
     const rssi = p.rssi != null ? `<span>${p.rssi} dBm</span>` : "";
@@ -285,6 +285,7 @@
       for (const x of (s.brain || [])) addExchange(x, true);
     }
     if (s.brain_status && typeof rsRender === "function") rsRender(s.brain_status);
+    if (s.sos && typeof sosRender === "function") sosRender(s.sos);
     setStatus(s.bus, s.meshd); refreshStats(s.stats); fitOnce();
   }
   function applyPacket(ev) {
@@ -298,6 +299,7 @@
     addPacket(ev.packet, true);
     if (ev.packet.sent) { maybeExchange(ev.packet); refreshStats(); return; }
     if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
+    if (ev.packet.sos && typeof sosIncoming === "function") sosIncoming(ev.packet);
     const p = ev.packet;
     (S.traffic[p.from] = S.traffic[p.from] || []).push(now());
     flashNode(p.from);
@@ -560,6 +562,74 @@
   anQ.addEventListener("input", () => { anSend.disabled = !AN.ok || AN.busy || !anQ.value.trim(); });
   document.querySelector(".an-hints").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) { anQ.value = b.dataset.q; anAsk(b.dataset.q); } });
   anInit();
+
+  // ---------------------------------------------------------------- 🆘 emergency broadcast
+  const SOS = { st: null, armTimer: null, tick: null, dismissed: null };
+  const sosEl = $("sos"), sosText = $("sos-text"), sosGo = $("sos-go"), sosBanner = $("sos-banner");
+  function sosMyPos() { const me = S.myId && S.roster[S.myId]; return me && me.position && me.position.lat != null ? me.position : null; }
+  function sosPreview() {
+    if (!sosEl || sosEl.hidden) return;
+    const me = S.myId && S.roster[S.myId]; const nm = (me && (me.short_name || me.id)) || "the Den";
+    $("sos-name").textContent = nm;
+    const pos = sosMyPos(); $("sos-pos-val").textContent = pos ? `(${pos.lat.toFixed(5)}, ${pos.lon.toFixed(5)})` : "(no fix yet — sent without one)";
+    const t = sosText.value.trim().replace(/\s+/g, " "); $("sos-count").textContent = `${sosText.value.length} / 120`;
+    const rep = +$("sos-repeat").value; const tail = rep === 1 ? "" : rep === 0 ? " [1]" : ` [1/${rep}]`;
+    $("sos-preview").textContent = t ? `🆘 SOS from ${nm}: ${t}${pos && $("sos-pos").checked ? ` @ ${pos.lat.toFixed(5)},${pos.lon.toFixed(5)}` : ""}${tail}` : "";
+    $("sos-interval").disabled = rep === 1;
+    sosGo.disabled = !t;
+  }
+  function sosDisarm() { if (SOS.armTimer) clearTimeout(SOS.armTimer); SOS.armTimer = null; sosGo.classList.remove("armed"); sosGo.textContent = "Broadcast SOS"; }
+  function sosOpen() { if (PUBLIC || !sosEl) return; sosEl.hidden = false; if (typeof composeClose === "function") composeClose(); if (feedEl.dataset.sheet !== "peek" && window.innerWidth <= 760) setSheet("peek"); sosPreview(); setTimeout(() => sosText.focus(), 40); }
+  function sosClose() { if (!sosEl) return; sosEl.hidden = true; sosDisarm(); }
+  if (sosEl) {
+    $("sos-btn").addEventListener("click", () => sosEl.hidden ? sosOpen() : sosClose());
+    $("sos-close").addEventListener("click", sosClose);
+    for (const id of ["sos-text", "sos-pos", "sos-repeat", "sos-interval", "sos-channel"]) $(id).addEventListener("input", () => { sosDisarm(); sosPreview(); });
+    sosGo.addEventListener("click", async () => {
+      if (!SOS.armTimer) {           // two taps, on purpose: arm, then confirm within 6 s
+        sosGo.classList.add("armed"); sosGo.textContent = "Tap again to broadcast now";
+        SOS.armTimer = setTimeout(sosDisarm, 6000); return;
+      }
+      sosDisarm(); sosGo.disabled = true;
+      const body = { text: sosText.value, channel: +$("sos-channel").value, repeat: +$("sos-repeat").value, interval: +$("sos-interval").value, include_position: $("sos-pos").checked };
+      try {
+        const r = await fetch("api/sos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (!r.ok) { toast(j.error || "SOS failed", "err"); sosGo.disabled = false; return; }
+        toast(j.repeat === 1 ? "🆘 SOS broadcast" : `🆘 SOS broadcast · repeating every ${Math.round(j.interval / 60)} min`, "ok");
+        sosRender(j); sosClose(); sosText.value = "";
+      } catch (e) { toast("SOS failed — is the Den reachable?", "err"); sosGo.disabled = false; }
+    });
+    $("sos-stop").addEventListener("click", async () => { try { const j = await (await fetch("api/sos", { method: "DELETE" })).json(); sosRender(j); toast("SOS stopped", "ok"); } catch (e) { toast("could not stop the SOS", "err"); } });
+    $("sos-dismiss").addEventListener("click", () => { SOS.dismissed = SOS.st && (SOS.st.stopped_at || SOS.st.last_at); sosBanner.hidden = true; });
+  }
+  function sosRender(st) {
+    if (!sosBanner || !st) return;
+    SOS.st = st;
+    if (SOS.tick) { clearInterval(SOS.tick); SOS.tick = null; }
+    const txt = $("sos-banner-text");
+    if (st.active) {
+      sosBanner.hidden = false; sosBanner.classList.remove("done"); $("sos-stop").hidden = false; $("sos-dismiss").hidden = true;
+      const paint = () => { const left = st.next_at ? Math.max(0, Math.round(st.next_at - Date.now() / 1000)) : null;
+        txt.textContent = `🆘 SOS ACTIVE · sent ${st.sent}${st.repeat ? "/" + st.repeat : ""}` + (left != null ? ` · next in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "") + (st.text ? ` · ${st.text}` : ""); };
+      paint(); SOS.tick = setInterval(paint, 1000);
+    } else if (st.ended && (st.stopped_at || st.last_at) !== SOS.dismissed && (Date.now() / 1000 - (st.stopped_at || st.last_at || 0)) < 1800) {
+      sosBanner.hidden = false; sosBanner.classList.add("done"); $("sos-stop").hidden = true; $("sos-dismiss").hidden = false;
+      txt.textContent = st.ended === "failed" ? `🆘 SOS FAILED · ${st.error || "send failed"}` : `🆘 SOS ${st.ended} · ${st.sent} sent` + (st.text ? ` · ${st.text}` : "");
+    } else sosBanner.hidden = true;
+  }
+  function alarm() {        // a distinct, longer tone than the chime — a distress call came in
+    if (!soundOn) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const t = audioCtx.currentTime, g = audioCtx.createGain(); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+      [[660, 0], [880, 0.25], [660, 0.5], [880, 0.75]].forEach(([f, d]) => { const o = audioCtx.createOscillator(); o.type = "square"; o.frequency.value = f; o.connect(g); o.start(t + d); o.stop(t + d + 0.22); });
+    } catch (e) {}
+  }
+  function sosIncoming(p) { if (p.sent || p.from === S.myId) return; alarm(); toast(`🆘 ${p.from_name || p.from}: ${p.text || p.summary || ""}`.slice(0, 160), "err"); }
+  sock.on("sos", sosRender);
 
   // ---------------------------------------------------------------- Bobcat on the air (Part B switch)
   const RS = { st: null };

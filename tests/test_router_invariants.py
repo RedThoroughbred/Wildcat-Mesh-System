@@ -90,3 +90,17 @@ def test_replay_is_operator_only():
     assert re.search(r'data-view="replay" class="op-only"', HTML)
     assert re.search(r"body\.public [^{]*\.op-only[^{]*\{ display: none !important; \}", CSS)
     assert 'if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast(' in APP
+
+
+# --- SOS broadcast ---------------------------------------------------------------
+
+def test_sos_controls_are_operator_only_and_the_sheet_is_home_only():
+    assert re.search(r'id="sos-btn"', HTML) and re.search(r'class="tool sos-btn op-only"', HTML)
+    assert re.search(r'<section class="glass sos-sheet op-only" id="sos" hidden', HTML)
+    assert re.search(r'id="sos-stop"', HTML) and 'class="link-btn op-only" id="sos-stop"' in HTML
+    rule = re.search(r"body\.viewing \.feed[^{]*\{ display: none !important; \}", CSS)
+    assert rule and ".sos-sheet" in rule.group(0)
+    # two taps to send, never one
+    assert 'sosGo.textContent = "Tap again to broadcast now"' in APP and "SOS.armTimer = setTimeout(sosDisarm, 6000)" in APP
+    # incoming distress is styled + alarmed
+    assert '(p.sos ? " sos" : "")' in APP and "function sosIncoming" in APP

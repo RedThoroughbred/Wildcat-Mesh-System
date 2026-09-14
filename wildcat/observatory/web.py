@@ -259,6 +259,32 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             return jsonify({"error": str(e)}), 503
         return jsonify({"ok": True, **rec})
 
+    @bp.route("/api/sos", methods=["GET"])
+    def api_sos():
+        return jsonify(bridge.sos.status())
+
+    @bp.route("/api/sos", methods=["POST"])
+    def api_sos_start():
+        """Operator: broadcast an SOS now, optionally repeating. Body: {"text", "channel"?,
+        "interval"? (s), "repeat"? (0 = until stopped, 1 = once, n = n sends), "include_position"?}."""
+        from flask import request
+        if bridge.bus is None:
+            return jsonify({"error": "the bus is off ([mqtt].enabled = false) — nothing owns the radio"}), 503
+        body = request.get_json(silent=True) or {}
+        try:
+            st = bridge.sos.start(str(body.get("text") or ""), channel=int(body.get("channel", 0)),
+                                  interval=int(body.get("interval", 300)), repeat=int(body.get("repeat", 1)),
+                                  include_position=bool(body.get("include_position", True)), by=str(body.get("by") or "operator"))
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 503
+        return jsonify({"ok": True, **st})
+
+    @bp.route("/api/sos", methods=["DELETE"])
+    def api_sos_stop():
+        return jsonify({"ok": True, **bridge.sos.stop(by="operator")})
+
     @bp.route("/api/tx")
     def api_tx_list():
         with bridge.state.lock:
