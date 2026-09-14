@@ -80,3 +80,13 @@ def test_phone_header_is_one_row_with_share_in_the_drawer():
     # the drawer button is hidden on desktop and in the public view
     assert re.search(r"^\.sb-share\s*\{\s*display:\s*none", CSS, re.M)
     assert re.search(r"body\.public \.sb-share\s*\{\s*display:\s*none", CSS)
+
+
+# --- QA finding 11: Replay in the public view ------------------------------
+
+def test_replay_is_operator_only():
+    # the timeline (scrubber, speeds, back-to-live) is hidden in /v2/public, so the
+    # Replay entry must be hidden there too and the action must not start a replay
+    assert re.search(r'data-view="replay" class="op-only"', HTML)
+    assert re.search(r"body\.public [^{]*\.op-only[^{]*\{ display: none !important; \}", CSS)
+    assert 'if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast(' in APP

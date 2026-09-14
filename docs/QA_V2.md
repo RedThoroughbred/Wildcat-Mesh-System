@@ -14,6 +14,7 @@
 | 8 | Unknown hash (typo) showed nothing and the URL stayed wrong | Low | No fallback | Toast + `#/` |
 | 9 | Feed cards weren't tappable, so "open a node from the feed" didn't exist | Low | Never built | Tap a packet → the node's map card (with a fix) or its page |
 | 10 | Phone header: the toolbar wrapped onto a second right-aligned row with dead space on the left; the alert count sat on the badge's edge (Seth's report) | Medium | `.topbar` wrapped `brand` / `stats` / `tools` freely; a mobile `.tool { width: 30px }` rule also clamped the alert badge (which is a `.tool`) so two glyphs overflowed | Phones get one row (brand left, tools pushed right with `margin-left: auto`, stats on their own row below); the badge is `width: auto` with padding and a nowrap count capped at `9+`; the share tool moves into the drawer as "Copy public link" to make room. Verified at 375, 390 and 1280 px |
+| 11 | `/v2/public`: the sidebar offered Replay, which started a replay with every timeline control hidden (only the badge showed; the only way out was clicking Live map) | Low | The timeline is hidden in the public view by design, but the Replay entry and `#/replay` action weren't gated | Replay entry is operator-only; the action toasts "not available in the public view" and does nothing there |
 
 Verified good already (no change): refresh on `#/node/<id>` / `#/channels` / `#/channel/<n>` restores the view; deep links in a fresh tab; Esc and × from every view; map/list/feed all land on the same node view; drawer closes on tap; Back/Forward walk the history (hash routing).
 
@@ -22,4 +23,4 @@ Verified good already (no change): refresh on `#/node/<id>` / `#/channels` / `#/
 - Static invariants: `pytest tests/test_router_invariants.py` (runs with the suite).
 - Behavioural: open `/v2` in a browser, paste `tests/qa/router_qa.js` into the console (or run it through Playwright's `evaluate`). Every line must begin with `OK`.
 - Then at phone width (375 / 390): the header is one row, the ⚠ badge fits its count, ☰ → each entry → view opens, drawer closes; × returns to the map; "Copy public link" lives in the drawer.
-- `/v2/public`: no ✎ compose, no analyst, no send/save/restart controls, no Admin entry, no layers/timeline.
+- `/v2/public`: no ✎ compose, no analyst, no send/save/restart controls, no Admin or Replay entry, no layers/timeline; `#/replay` typed by hand only toasts.

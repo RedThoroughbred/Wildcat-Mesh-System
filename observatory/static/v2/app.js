@@ -1233,7 +1233,7 @@
     const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;
     if (name === "home" || h === "#/" || h === "#") { closeView(); return; }
     if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } toast("Coverage layer on"); actionDone(); return; }
-    if (name === "replay") { closeView(); actionDone(); if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
+    if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast("Replay isn't available in the public view"); return; } if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
     if (name === "cat") { closeView(); actionDone(); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
     if (!VIEWS[name]) { toast("No such page: " + name, "err"); location.replace(location.pathname + location.search + "#/"); return; }
     showView(name, arg);
