@@ -79,6 +79,7 @@ class State:
         self.by_kind: Dict[str, int] = {}
         self.signal: Dict[str, Deque[Dict[str, Any]]] = {}      # per node: recent rx samples (live only)
         self.brain: Deque[Dict[str, Any]] = deque(maxlen=100)     # Ask-the-Cat exchanges (wildcat/brain/exchange)
+        self.brain_status: Optional[Dict[str, Any]] = None         # the responder's retained wildcat/brain/status
         self.tx: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()  # operator sends by id: queued → sent → delivered | failed
         self._tx_by_packet: Dict[int, str] = {}                    # radio packet id → our send id (for ACK correlation)
         self._times: Deque[float] = deque(maxlen=5000)
@@ -265,7 +266,7 @@ class State:
 
     def apply_brain(self, payload: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
         """An Ask-the-Cat exchange (Phase 2 publishes these on wildcat/brain/exchange):
-        {node, prompt, reply, provider, latency_ms, chunks, ts, rate_limited?}. Stored + echoed."""
+        {node, prompt, reply, provider, latency_ms, chunks, ts, status, reason?, cost_usd?, rate_limited?}. Stored + echoed."""
         if not isinstance(payload, dict) or not payload.get("node"):
             return None
         with self.lock:
@@ -273,9 +274,18 @@ class State:
                    "node_name": self.roster.get(payload["node"], {}).get("short_name") or str(payload["node"])[-4:],
                    "prompt": str(payload.get("prompt") or "")[:500], "reply": str(payload.get("reply") or "")[:1000],
                    "provider": payload.get("provider"), "latency_ms": payload.get("latency_ms"),
-                   "chunks": payload.get("chunks"), "rate_limited": bool(payload.get("rate_limited"))}
+                   "chunks": payload.get("chunks"), "rate_limited": bool(payload.get("rate_limited")),
+                   "status": payload.get("status") or ("limited" if payload.get("rate_limited") else "sent"),
+                   "reason": payload.get("reason"), "cost_usd": payload.get("cost_usd"), "tx_id": payload.get("tx_id")}
             self.brain.append(rec)
         return rec
+
+    def apply_brain_status(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not isinstance(payload, dict):
+            return None
+        with self.lock:
+            self.brain_status = payload
+        return payload
 
     # ---- views --------------------------------------------------------------------------
     def rate_per_min(self, now: float) -> float:
@@ -297,7 +307,7 @@ class State:
             return {
                 "now": now, "my_id": self.my_id, "meshd": self.meshd, "bus": self.bus_connected,
                 "roster": self.roster, "links": list(self.links.values()), "packets": list(self.packets),
-                "brain": list(self.brain), "tx": list(self.tx.values())[-30:],
+                "brain": list(self.brain), "brain_status": self.brain_status, "tx": list(self.tx.values())[-30:],
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
@@ -480,6 +490,7 @@ class Bridge:
         bus.subscribe("meshd/status", self._on_status)
         bus.subscribe("rx/+", self._on_rx)
         bus.subscribe("brain/exchange", self._on_brain)
+        bus.subscribe("brain/status", self._on_brain_status)
         bus.subscribe("tx/result", self._on_tx_result)
 
     def _watch_bus(self) -> None:
@@ -598,6 +609,18 @@ class Bridge:
         rec = self.state.apply_brain(payload, time.time())
         if rec:
             self._emit("brain", rec)
+
+    def _on_brain_status(self, topic: str, payload: Dict[str, Any]) -> None:
+        st = self.state.apply_brain_status(payload)
+        if st is not None:
+            self._emit("brain_status", st)
+
+    def set_responder(self, enabled: bool, by: str = "observatory") -> None:
+        """The operator's switch: a retained control message the running responder honours
+        immediately (the caller also patches wildcat.toml so a restart agrees)."""
+        if self.bus is None:
+            raise RuntimeError("the bus is off ([mqtt].enabled = false) — Bobcat needs meshd + the bus")
+        self.bus.publish("brain/control", {"enabled": bool(enabled), "by": by, "ts": time.time()}, retain=True)
 
     def snapshot(self) -> Dict[str, Any]:
         snap = self.state.snapshot(time.time())

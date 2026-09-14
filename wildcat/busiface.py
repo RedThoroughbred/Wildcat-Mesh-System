@@ -49,8 +49,13 @@ class BusInterface:
         self._ready = threading.Event()
         self._seq = itertools.count(1)
         self._on_packet: Optional[Callable[[Dict[str, Any], "BusInterface"], None]] = None
+        # Bobcat (wildcat brain) answers `?`-prefixed DMs; while it reports itself ON we keep
+        # those DMs away from the BBS so a question doesn't also get the menu (double airtime).
+        # This lives here, in the adapter, so the v1 BBS code stays untouched.
+        self.brain_enabled: bool = False
         bus.subscribe("nodes", self._on_nodes)
         bus.subscribe("meshd/status", self._on_status)
+        bus.subscribe("brain/status", self._on_brain_status)
 
     # ---- snapshots ------------------------------------------------------------------
     def _on_nodes(self, topic: str, payload: Dict[str, Any]) -> None:
@@ -69,6 +74,20 @@ class BusInterface:
             log.warning("meshd reports radio %s%s", self.meshd_state,
                         f" ({payload['error']})" if payload.get("error") else "")
         self._check_ready()
+
+    def _on_brain_status(self, topic: str, payload: Dict[str, Any]) -> None:
+        self.brain_enabled = bool(payload.get("enabled")) and bool(payload.get("running", True))
+
+    def is_brain_question(self, env: Dict[str, Any]) -> bool:
+        """A text DM to us that starts with [brain].trigger_prefix, while Bobcat is on."""
+        if not self.brain_enabled or env.get("kind") != "text" or env.get("broadcast"):
+            return False
+        my = self.myInfo.my_node_num
+        me = f"!{my:08x}" if isinstance(my, int) else None
+        if not me or env.get("to") != me:
+            return False
+        text = env.get("text")
+        return isinstance(text, str) and text.startswith(self.cfg.brain.trigger_prefix)
 
     def _check_ready(self) -> None:
         if self.meshd_state == "connected" and self.myInfo.my_node_num is not None:
@@ -106,6 +125,9 @@ class BusInterface:
 
     def _on_rx(self, topic: str, env: Dict[str, Any]) -> None:
         if self._on_packet is None:
+            return
+        if self.is_brain_question(env):
+            log.info("DM from %s is a Bobcat question — left to wildcat brain", env.get("from"))
             return
         try:
             packet = packets.packet_from_envelope(env)

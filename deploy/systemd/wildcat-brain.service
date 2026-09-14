@@ -1,0 +1,44 @@
+# wildcat-brain — Wildcat Mesh "The Den". Installed by deploy/install.sh, which replaces
+# @REPO@ / @VENV@ / @USER@ with the real paths. Do not edit the installed copy in
+# /etc/systemd/system by hand; edit this file and re-run install.sh.
+[Unit]
+Description=Wildcat Mesh — Bobcat, the mesh-facing AI responder (off until [brain].enabled)
+Documentation=file://@REPO@/docs/DEPLOY_PI.md
+# network-online (not just network) so a cold boot waits for Wi-Fi/Ethernet to
+# actually come up before we try to reach the node / bind the dashboard port.
+After=network-online.target mosquitto.service wildcat-meshd.service
+Wants=network-online.target
+# Part of the group: 'systemctl restart wildcat.target' bounces the lot.
+PartOf=wildcat.target
+# Never give up restarting (the default is 5 tries in 10 s, then stop forever —
+# exactly wrong for a node that takes 90 s to boot after a power cut).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=@USER@
+# Not load-bearing anymore (paths resolve from the package), but set anyway.
+WorkingDirectory=@REPO@
+Environment=WILDCAT_CONFIG=@REPO@/config/wildcat.toml
+Environment=PYTHONUNBUFFERED=1
+# Refuse to start on a broken config — the error lands in journalctl, not mid-DM.
+ExecStartPre=@VENV@/bin/wildcat config validate
+ExecStart=@VENV@/bin/wildcat brain
+Restart=on-failure
+RestartSec=10
+# Exit 2 = config error (see wildcat.cli): restarting won't fix it, stay down and visible.
+RestartPreventExitStatus=2
+# The services handle SIGINT by closing the radio/db cleanly.
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wildcat-brain
+
+[Install]
+WantedBy=wildcat.target
+# NOTE: harmless by default — with [brain].enabled = false Bobcat only RECORDS the
+# questions it would have answered (they show in the dashboard's Ask-the-Cat panel);
+# it never transmits or spends until the operator flips the toggle. Needs the claude
+# CLI on this machine for the first provider tier; without it the cascade falls
+# through to Ollama (if configured) and then the canned "AI unavailable" line.

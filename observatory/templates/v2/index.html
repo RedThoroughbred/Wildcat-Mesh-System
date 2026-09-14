@@ -139,6 +139,13 @@
   <div class="feed-list" id="feed-list" role="log" aria-live="polite" aria-relevant="additions" tabindex="-1"></div>
   <div class="feed-empty" id="feed-empty"><div class="empty radar">Listening on the bus…<br><span style="font-size:11px">packets appear here the moment the radio hears them</span></div></div>
   <div class="cat" id="cat" hidden>
+    <section class="responder op-only" id="responder">
+      <div class="rs-head"><b>Bobcat on the air</b>
+        <label class="switch" title="Answer ?-questions over LoRa"><input type="checkbox" id="rs-toggle" disabled><span class="knob"></span></label>
+        <span class="rs-state off" id="rs-state">…</span></div>
+      <div class="rs-meta" id="rs-meta">checking the responder…</div>
+      <div class="rs-cost" id="rs-cost"></div>
+    </section>
     <section class="analyst op-only" id="analyst">
       <div class="an-head"><b>Analyst</b><span class="dim" id="an-status">checking the local claude CLI…</span></div>
       <div class="an-log" id="an-log"></div>
@@ -150,7 +157,7 @@
       <div><b>Bobcat</b> — the mesh's AI, answered over LoRa.<br><span class="dim">DM the Den with <code>?your question</code>. Exchanges appear here live: who asked, what Bobcat said, which brain answered, how many packets it cost.</span></div>
     </div>
     <div class="cat-list" id="cat-list"></div>
-    <div class="cat-empty" id="cat-empty">Bobcat isn't awake yet (Phase 2). Conversations with the Den's BBS show below as they happen.</div>
+    <div class="cat-empty" id="cat-empty">No questions yet. Conversations with the Den's BBS show here as they happen.</div>
   </div>
 </aside>
 

@@ -657,7 +657,9 @@ def to_toml(cfg: WildcatConfig, *, redact: bool = False) -> str:
         scalars = []
         subtables = []
         for f in fields(obj):
-            if f.name in _PROVENANCE:
+            # provenance lives on the top-level config only; nested tables have real keys
+            # that happen to share a name ([bbs].source / [telemetry].source = "bus")
+            if obj is cfg and f.name in _PROVENANCE:
                 continue
             v = getattr(obj, f.name)
             if is_dataclass(v):

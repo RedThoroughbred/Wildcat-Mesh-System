@@ -398,12 +398,65 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
                         "warnings": new.warnings, "note": "restart the BBS to apply"})
 
     # ---- Bobcat, Part A: the operator's analyst (local claude CLI, read-only DB) ---------
+    def _responder_status():
+        """What the dashboard shows for Part B: the responder's retained status if the service
+        is running, else what the config says (and that nothing is listening)."""
+        b = bridge.cfg.brain
+        live = bridge.state.brain_status
+        base = {"running": False, "enabled": b.enabled, "prefix": b.trigger_prefix, "persona": b.persona,
+                "providers": [p for p in b.providers if p != "ollama" or b.ollama_url], "model": b.cli_model,
+                "max_chunks": b.max_chunks, "max_reply_chars": b.max_reply_chars,
+                "limits": {"per_node_per_hour": b.per_node_per_hour, "per_node_per_day": b.per_node_per_day,
+                           "global_per_hour": b.global_per_hour, "max_channel_util_pct": b.max_channel_util_pct},
+                "cost_note": "each answered question ≈ one claude CLI call (a few cents) + up to %d LoRa packets of airtime" % b.max_chunks}
+        if isinstance(live, dict):
+            base.update(live)
+            base["cost_note"] = base["cost_note"] if "cost_note" in live else base["cost_note"]
+        base["config_enabled"] = b.enabled
+        return base
+
+    @bp.route("/api/brain/responder", methods=["POST"])
+    def api_brain_responder():
+        """The operator's hard switch for Bobcat on the air. Writes [brain].enabled to
+        wildcat.toml (with a .bak) FIRST — the file is the truth across restarts — then
+        publishes the retained control message the running responder acts on at once."""
+        import shutil
+        from flask import request
+        from ..config import ConfigError, build, to_toml, set_config, tomllib
+        body = request.get_json(silent=True) or {}
+        want = body.get("enabled")
+        if not isinstance(want, bool):
+            return jsonify({"error": "enabled must be true or false"}), 400
+        cfg = bridge.cfg
+        if bridge.bus is None:
+            return jsonify({"error": "the bus is off ([mqtt].enabled = false) — Bobcat needs meshd + the bus"}), 409
+        if cfg.source is None or cfg.source_kind != "toml":
+            return jsonify({"error": "config is not a wildcat.toml (run `wildcat config migrate --write` first)"}), 400
+        data = tomllib.loads(to_toml(cfg))
+        data.setdefault("brain", {})["enabled"] = want
+        try:
+            new = build(data, label=str(cfg.source), source=cfg.source, source_kind="toml")
+        except ConfigError as e:
+            return jsonify({"error": str(e)}), 400
+        try:
+            shutil.copy2(cfg.source, str(cfg.source) + ".bak")
+            cfg.source.write_text("# rewritten by Observatory v2's config editor — every key explicit; comments from the\n"
+                                  "# example file are in config/wildcat.example.toml\n\n" + to_toml(new), encoding="utf-8")
+        except OSError as e:
+            return jsonify({"error": str(e)}), 500
+        set_config(new); bridge.cfg = new
+        bridge.set_responder(want, by="observatory")
+        return jsonify({"ok": True, "enabled": want, "path": str(cfg.source),
+                        "note": "on the air now" if want else "Bobcat is off — questions are recorded, nothing is sent",
+                        "responder": _responder_status()})
+
     @bp.route("/api/brain/status")
     def api_brain_status():
         from ..brain import cli as bcli
         st = bcli.status()
         st.update({"analyst_enabled": bridge.cfg.brain.analyst_enabled, "model": bridge.cfg.brain.analyst_model,
-                   "responder_enabled": bridge.cfg.brain.enabled, "cost_note": "each question is one to three CLI calls (cents)"})
+                   "responder_enabled": bridge.cfg.brain.enabled, "cost_note": "each question is one to three CLI calls (cents)",
+                   "responder": _responder_status()})
         return jsonify(st)
 
     @bp.route("/api/brain/ask", methods=["POST"])

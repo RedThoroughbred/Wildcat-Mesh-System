@@ -284,6 +284,7 @@
       for (const p of (s.packets || [])) maybeExchange(p);
       for (const x of (s.brain || [])) addExchange(x, true);
     }
+    if (s.brain_status && typeof rsRender === "function") rsRender(s.brain_status);
     setStatus(s.bus, s.meshd); refreshStats(s.stats); fitOnce();
   }
   function applyPacket(ev) {
@@ -560,14 +561,59 @@
   document.querySelector(".an-hints").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) { anQ.value = b.dataset.q; anAsk(b.dataset.q); } });
   anInit();
 
+  // ---------------------------------------------------------------- Bobcat on the air (Part B switch)
+  const RS = { st: null };
+  function rsRender(st) {
+    const t = $("rs-toggle"), s = $("rs-state"), m = $("rs-meta"), c = $("rs-cost"); if (!t || !st) return;
+    RS.st = st;
+    const running = !!st.running, on = !!st.enabled, lim = st.limits || {}, counts = st.counts || {};
+    t.checked = on; t.disabled = false;
+    s.textContent = !running ? (on ? "ON · not running" : "OFF · not running") : on ? "ON THE AIR" : "OFF";
+    s.className = "rs-state " + (!running ? "down" : on ? "on" : "off");
+    const bits = [
+      `DM the Den <b>${escape(st.prefix || "?")}question</b> → up to ${st.max_chunks || 3} packets · <b>${escape(st.prefix || "?")}help</b> / <b>${escape(st.prefix || "?")}status</b> are free`,
+      `brains: ${escape((st.providers || []).join(" → ") || "none")}${st.cli === false ? " · <span class=\"brake\">claude CLI not found</span>" : st.model ? " · " + escape(st.model) : ""}`,
+      `limits ${lim.per_node_per_hour}/h · ${lim.per_node_per_day}/day per node · ${lim.global_per_hour}/h total · brake above ${lim.max_channel_util_pct}% util${st.brake ? ' · <span class="brake">BRAKING NOW</span>' : ""}`,
+      running ? `answered ${st.answered || 0} since start · ${counts.hour || 0} this hour · ${counts.day || 0} today${st.channel_util != null ? ` · util ${Number(st.channel_util).toFixed(0)}%` : ""}${st.busy ? " · thinking…" : ""}`
+              : `service not running — start <code>wildcat brain</code> (systemd: wildcat-brain.service)`,
+    ];
+    m.innerHTML = bits.join("<br>");
+    c.textContent = "Cost: " + (st.cost_note || "each answer ≈ one claude CLI call (cents) + LoRa airtime") + ". Off by default — flip it only when you mean it.";
+  }
+  async function rsInit() {
+    try { const st = await (await fetch("api/brain/status")).json(); if (st.responder) rsRender(st.responder); }
+    catch (e) { const m = $("rs-meta"); if (m) m.textContent = "responder status unavailable"; }
+  }
+  if ($("rs-toggle")) {
+    $("rs-toggle").addEventListener("change", async (e) => {
+      const want = e.target.checked; e.target.disabled = true;
+      if (want && !confirm(`Put Bobcat on the air?\n\nEvery ?question then costs one claude CLI call (a few cents) and up to ${(RS.st && RS.st.max_chunks) || 3} LoRa packets. Rate limits and the airtime brake stay on. This writes [brain].enabled = true to wildcat.toml.`)) {
+        e.target.checked = false; e.target.disabled = false; return;
+      }
+      try {
+        const r = await fetch("api/brain/responder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: want }) });
+        const j = await r.json();
+        if (!r.ok) { toast(j.error || "could not switch Bobcat"); e.target.checked = !want; }
+        else { toast(j.note || (want ? "Bobcat is on the air" : "Bobcat is off")); if (j.responder) rsRender(j.responder); }
+      } catch (err) { toast("could not switch Bobcat"); e.target.checked = !want; }
+      e.target.disabled = false;
+    });
+    rsInit();
+  }
+  sock.on("brain_status", (st) => { if (st) rsRender(RS.st ? { ...RS.st, ...st } : st); });
+
   // ---------------------------------------------------------------- Ask the Cat panel
   const catList = $("cat-list"); let catN = 0;
   function addExchange(x, isBrain) {
     const el = document.createElement("div"); el.className = "xch" + (isBrain ? " brain" : "");
     const who = `<div class="who"><span><b>${escape(x.node_name || x.from_name || "?")}</b> ${isBrain ? "asked the Cat" : "↔ the Den"}</span><span data-ts="${x.ts}">${ago(x.ts)}</span></div>`;
     if (isBrain) {
-      const meta = [x.provider ? `<span class="prov">${escape(x.provider)}</span>` : "", x.latency_ms != null ? `${(x.latency_ms / 1000).toFixed(1)} s` : "", x.chunks != null ? `${x.chunks} pkt${x.chunks === 1 ? "" : "s"}` : "", x.rate_limited ? "rate-limited" : ""].filter(Boolean).join("<span>·</span>");
-      el.innerHTML = who + `<div class="q">${escape(x.prompt)}</div><div class="a">${escape(x.reply)}</div><div class="meta">${meta}</div>`;
+      const st = x.status || (x.rate_limited ? "limited" : "sent");
+      const meta = [x.provider ? `<span class="prov">${escape(x.provider)}</span>` : "", x.latency_ms ? `${(x.latency_ms / 1000).toFixed(1)} s` : "",
+        x.chunks != null ? `${x.chunks} pkt${x.chunks === 1 ? "" : "s"}` : "", x.cost_usd ? `$${Number(x.cost_usd).toFixed(3)}` : "",
+        st !== "sent" ? `<span class="st ${escape(st)}">${escape(st)}${x.reason ? " · " + escape(x.reason) : ""}</span>` : ""].filter(Boolean).join("<span>·</span>");
+      const answer = x.reply ? `<div class="a">${escape(x.reply)}</div>` : `<div class="a unsent">${st === "off" ? "not answered — Bobcat is off" : st === "braked" ? "not answered — airtime brake" : st === "limited" ? "not answered — rate limit" : "no reply sent"}</div>`;
+      el.innerHTML = who + `<div class="q">${escape(x.prompt)}</div>${answer}<div class="meta">${meta}</div>`;
     } else {
       el.innerHTML = who + `<div class="${x.from === S.myId ? "a bbs" : "q"}">${escape(x.text || x.summary || "")}</div>`;
     }

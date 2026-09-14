@@ -118,3 +118,31 @@ path = "{db}"
     conn = db_operations.get_db_connection()
     rows = conn.execute("SELECT sender_id, message FROM message_logs").fetchall()
     assert ("!0000006f", "M") in rows
+
+
+# ---------------------------------------------------------------------------- Bobcat hand-off
+def _text_dm(text, frm="!0000006f", to="!000000de"):
+    return {"v": 1, "proto": "meshtastic", "kind": "text", "from": frm, "to": to, "broadcast": False, "channel": 0,
+            "rx": {"snr": 6.0, "rssi": -80, "hops": 0}, "text": text, "id": 77, "received_at": 1.0,
+            "packet": {"from": 111, "to": 222, "fromId": frm, "toId": to, "channel": 0, "id": 77,
+                       "decoded": {"portnum": "TEXT_MESSAGE_APP", "payload": {"__bytes_b64__": "TQ=="}, "text": text}}}
+
+
+def test_brain_questions_bypass_the_bbs_only_while_bobcat_reports_on():
+    bus = MemoryBus(); _snapshot(bus)
+    iface = BusInterface(bus, build(CFG))
+    got = []
+    iface.start(lambda packet, i: got.append(packet["decoded"]["text"]))
+    bus.publish("rx/text", _text_dm("?who is online"))          # Bobcat not running → the BBS sees it (v1 behaviour)
+    assert got == ["?who is online"]
+    bus.publish("brain/status", {"enabled": True, "running": True}, retain=True)
+    bus.publish("rx/text", _text_dm("?who is online"))          # Bobcat on → handed to wildcat brain, not the BBS
+    bus.publish("rx/text", _text_dm("M"))                       # ordinary DMs still reach the BBS
+    bus.publish("rx/text", {**_text_dm("?bcast"), "to": None, "broadcast": True})
+    assert got == ["?who is online", "M", "?bcast"]
+    bus.publish("brain/status", {"enabled": False, "running": True}, retain=True)
+    bus.publish("rx/text", _text_dm("?again"))
+    assert got[-1] == "?again"
+    bus.publish("brain/status", {"enabled": True, "running": False}, retain=True)   # process died → BBS takes over
+    bus.publish("rx/text", _text_dm("?dead"))
+    assert got[-1] == "?dead"

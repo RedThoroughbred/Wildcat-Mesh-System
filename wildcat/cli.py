@@ -186,6 +186,47 @@ def cmd_meshd(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_brain(args: argparse.Namespace) -> int:
+    """Run Bobcat's mesh-facing responder. Off by default ([brain].enabled = false): it then
+    only records questions it would have answered. Needs the bus (it talks to meshd)."""
+    import signal
+    import time as _time
+    logging.getLogger().setLevel(logging.INFO)
+    try:
+        cfg = load(args.config)
+    except ConfigError as e:
+        print(f"CONFIG ERROR\n{e}", file=sys.stderr)
+        return EXIT_CONFIG
+    if not cfg.mqtt.enabled:
+        print("brain: [mqtt].enabled = false — Bobcat needs the bus (meshd owns the radio); nothing to do.")
+        return EXIT_OK
+    from .bus import make_bus
+    from .brain.responder import Responder, STATUS_TOPIC
+
+    bus = make_bus(cfg.mqtt, client_id="wildcat-brain",
+                   will=(STATUS_TOPIC, {"running": False, "state": "dead", "error": "brain process died"}))
+    bus.start()
+    if not bus.wait_connected(30):
+        print(f"brain: cannot reach the MQTT broker at {cfg.mqtt.host}:{cfg.mqtt.port}", file=sys.stderr)
+        bus.stop()
+        return EXIT_FAIL
+    r = Responder(cfg, bus)
+    print(f"brain: Bobcat responder {'ENABLED' if r.enabled else 'off (flip [brain].enabled or the dashboard toggle)'}; "
+          f"prefix {cfg.brain.trigger_prefix!r}; providers {[n for n, _ in r.providers]}")
+
+    def _quit(signum, frame):
+        logging.getLogger("wildcat.brain").info("signal %s — stopping", signum)
+        r.stop()
+    signal.signal(signal.SIGINT, _quit)
+    signal.signal(signal.SIGTERM, _quit)
+    try:
+        r.run()
+    finally:
+        _time.sleep(0.2)          # let the retained 'stopped' status leave
+        bus.stop()
+    return EXIT_OK
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from . import doctor  # Phase 1 step 3
@@ -236,6 +277,10 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("meshd", help="run the radio owner (radio ↔ MQTT bus); no-op unless [mqtt].enabled")
     _add_config_arg(m)
     m.set_defaults(func=cmd_meshd)
+
+    b = sub.add_parser("brain", help="run Bobcat, the mesh-facing AI responder (off until [brain].enabled = true)")
+    _add_config_arg(b)
+    b.set_defaults(func=cmd_brain)
 
     d = sub.add_parser("doctor", help="preflight checks: config, deps, database, radio, mqtt")
     _add_config_arg(d)

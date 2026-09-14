@@ -627,3 +627,26 @@ body.following .follow-flag { display: block; }
   body.public .sb-share { display: none; }
 }
 @media (max-width: 400px) { .brand .title { font-size: 13px; } .tool { width: 28px; height: 28px; } .menu-btn { width: 30px; height: 30px; } .mark { width: 22px; height: 22px; } }
+
+/* ---- Bobcat responder switch (Part B) ---- */
+.responder { display: flex; flex-direction: column; gap: 4px; padding: 6px 6px 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; font-size: 13px; }
+.rs-head { display: flex; align-items: center; gap: 10px; }
+.rs-state { font: 700 10.5px var(--mono); letter-spacing: .06em; white-space: nowrap; }
+.rs-state.on { color: #8ff0a4; }
+.rs-state.off { color: var(--muted); }
+.rs-state.down { color: #ff8a8a; }
+.switch { position: relative; width: 38px; height: 22px; margin-left: auto; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch .knob { position: absolute; inset: 0; background: rgba(255,255,255,.12); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; transition: background .2s, border-color .2s; }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #c9d3df; transition: transform .2s, background .2s; }
+.switch input:checked + .knob { background: rgba(224,112,75,.45); border-color: var(--terracotta); }
+.switch input:checked + .knob::after { transform: translateX(16px); background: #fff; }
+.switch input:disabled + .knob { opacity: .45; cursor: not-allowed; }
+.switch input:focus-visible + .knob { outline: 2px solid var(--terracotta); outline-offset: 2px; }
+.rs-meta, .rs-cost { font-size: 11px; color: var(--muted); line-height: 1.45; }
+.rs-meta b, .rs-meta code { color: var(--text); font-family: var(--mono); font-size: 11px; }
+.rs-meta .brake { color: #ffd166; font-weight: 700; }
+.xch .meta .st { padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); }
+.xch .meta .st.limited, .xch .meta .st.braked { color: #ffd166; }
+.xch .meta .st.failed, .xch .meta .st.dropped { color: #ff8a8a; }
+.xch .a.unsent { color: var(--muted); font-style: italic; border-left-color: rgba(255,255,255,.15); }

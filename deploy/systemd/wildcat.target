@@ -7,7 +7,7 @@ Description=Wildcat Mesh — The Den (all services)
 Documentation=file://@REPO@/docs/DEPLOY_PI.md
 After=network-online.target
 Wants=network-online.target
-Wants=wildcat-meshd.service wildcat-bbs.service wildcat-telemetry.service wildcat-observatory.service
+Wants=wildcat-meshd.service wildcat-bbs.service wildcat-telemetry.service wildcat-observatory.service wildcat-brain.service
 Wants=wildcat-backup.timer
 
 [Install]

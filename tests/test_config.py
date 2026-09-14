@@ -177,6 +177,16 @@ def test_to_toml_round_trips(repo_root):
         assert getattr(again, section) == getattr(cfg, section), section
 
 
+def test_to_toml_keeps_the_consumers_source_keys():
+    # regression: [bbs].source / [telemetry].source were dropped as if they were the
+    # top-level provenance field, so re-saving a bus-mode Den failed validation
+    cfg = build({**SERIAL, "mqtt": {"enabled": True}, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"}})
+    text = to_toml(cfg)
+    assert 'source = "bus"' in text.split("[telemetry]")[1].split("[")[0]
+    again = build(tomllib.loads(text), source=cfg.source)
+    assert again.bbs.source == "bus" and again.telemetry.source == "bus" and again.mqtt.enabled is True
+
+
 def test_to_toml_redacts_secrets():
     cfg = build({**SERIAL, "bbs": {"weather_api_key": "abc"}, "mqtt": {"password": "pw"}})
     text = to_toml(cfg, redact=True)

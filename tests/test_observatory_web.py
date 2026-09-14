@@ -114,3 +114,45 @@ def test_exports_and_config_editor(tmp_path):
     assert again.bbs.name == "Test BBS" and again.bbs.menu.main == ["Q", "X"] and again.radio.type == "serial"
     bad = c.post("/v2/api/config", json={"menu": {"main": ["QQ"]}})
     assert bad.status_code == 400 and "[bbs.menu].main" in bad.get_json()["error"]
+
+
+def test_responder_switch_writes_the_file_and_flips_the_bus(tmp_path):
+    from wildcat.bus import MemoryBus
+    from wildcat.config import load_file
+    (tmp_path / "content").mkdir()
+    toml = tmp_path / "wildcat.toml"
+    toml.write_text('radio.type = "serial"\n[mqtt]\nenabled = true\n[bbs]\nsource = "bus"\ncontent_dir = "%s"\n[telemetry]\nsource = "bus"\n[database]\npath = "%s"\n'
+                    % (tmp_path / "content", tmp_path / "b.db"))
+    cfg = load_file(toml)
+    assert cfg.brain.enabled is False                      # the default: off
+    app = flask.Flask("obs-test3", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    app.register_blueprint(create_blueprint(bridge, sio))
+    c = app.test_client()
+    # no bus wired → refuse (and touch nothing)
+    r = c.post("/v2/api/brain/responder", json={"enabled": True})
+    assert r.status_code == 409 and not (tmp_path / "wildcat.toml.bak").exists()
+    bus = MemoryBus(); bridge.bus = bus; bridge.wire(bus)         # what start() does with the real MqttBus
+    st = c.get("/v2/api/brain/status").get_json()["responder"]
+    assert st["running"] is False and st["enabled"] is False and st["config_enabled"] is False and "cost_note" in st
+    assert c.post("/v2/api/brain/responder", json={"enabled": "yes"}).status_code == 400
+    r = c.post("/v2/api/brain/responder", json={"enabled": True})
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json()
+    assert j["enabled"] is True and j["responder"]["config_enabled"] is True
+    assert bus.last("brain/control")["enabled"] is True and bus.last("brain/control")["by"] == "observatory"
+    assert (tmp_path / "wildcat.toml.bak").exists() and load_file(toml).brain.enabled is True
+    # the running responder's retained status is what the panel shows
+    bus.publish("brain/status", {"running": True, "enabled": True, "counts": {"hour": 2, "day": 5}, "brake": False, "providers": ["claude-cli", "canned"]}, retain=True)
+    st = c.get("/v2/api/brain/status").get_json()["responder"]
+    assert st["running"] is True and st["counts"] == {"hour": 2, "day": 5} and st["providers"] == ["claude-cli", "canned"]
+    snap = c.get("/v2/api/state").get_json()
+    assert snap["brain_status"]["running"] is True
+    r = c.post("/v2/api/brain/responder", json={"enabled": False})
+    assert r.status_code == 200 and bus.last("brain/control")["enabled"] is False and load_file(toml).brain.enabled is False
+    # an exchange with a reason is kept verbatim for the panel
+    bus.publish("brain/exchange", {"node": "!716c668c", "prompt": "hi", "reply": "", "provider": None, "status": "off",
+                                   "reason": "responder is off", "chunks": 0, "latency_ms": 0, "ts": 1})
+    x = c.get("/v2/api/state").get_json()["brain"][-1]
+    assert x["status"] == "off" and x["reason"] == "responder is off" and x["node"] == "!716c668c"
