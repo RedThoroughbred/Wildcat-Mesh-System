@@ -68,6 +68,8 @@ wal = true
 
 [observatory]
 # operator_token = ""     # set (openssl rand -hex 24) to require it on every write: `Authorization: Bearer …` or open /v2/?token=… once. docs/WATCH_SEND.md
+# community_name = "Wildcat Mesh"   # first-time visitors of /v2/public see a welcome card with these
+# community_blurb = "Northern Kentucky's community LoRa mesh. Anyone with a Meshtastic radio can join."
 host = "0.0.0.0"
 port = 5000
 debug = false              # true exposes the Werkzeug debugger (remote code exec) to the LAN. Don't.
