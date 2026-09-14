@@ -170,6 +170,8 @@ class ObservatoryConfig:
     active_node_threshold: int = 3600
     bbs_node_id: str = "!9e766b18"     # which node's DMs count as "BBS responses" in the BBS view
     operator_token: str = ""           # blank = LAN-trust writes (v1 behaviour); set → POST/PATCH/DELETE need it (docs/WATCH_SEND.md)
+    community_name: str = ""           # shown to first-time visitors of /v2/public (blank → the BBS name)
+    community_blurb: str = ""          # one or two sentences about this mesh for those visitors
 
 
 @dataclass
@@ -489,7 +491,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     # [observatory]
     o = _table(ctx, data, "observatory", "[observatory]")
     _warn_unknown(ctx, o, "[observatory]", ("host", "port", "debug", "secret_key", "refresh_interval",
-                                           "max_recent_messages", "active_node_threshold", "bbs_node_id", "operator_token"))
+                                           "max_recent_messages", "active_node_threshold", "bbs_node_id", "operator_token", "community_name", "community_blurb"))
     observatory = ObservatoryConfig(
         host=_take_str(ctx, o, "host", "[observatory]", "0.0.0.0"),
         port=_take_int(ctx, o, "port", "[observatory]", 5000, 1, 65535),
@@ -500,6 +502,8 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
         active_node_threshold=_take_int(ctx, o, "active_node_threshold", "[observatory]", 3600, 1, None),
         bbs_node_id=_take_str(ctx, o, "bbs_node_id", "[observatory]", ObservatoryConfig.bbs_node_id),
         operator_token=_take_str(ctx, o, "operator_token", "[observatory]", ""),
+        community_name=_take_str(ctx, o, "community_name", "[observatory]", ""),
+        community_blurb=_take_str(ctx, o, "community_blurb", "[observatory]", ""),
     )
     if observatory.debug:
         ctx.warn(f"{label}: [observatory].debug = true exposes the Werkzeug debugger (remote code execution) to anyone on the LAN — never leave this on")

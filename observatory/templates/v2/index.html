@@ -141,6 +141,7 @@
 </section>
 
 <aside class="glass feed" id="feed" data-sheet="half">
+  {% if public %}<div class="about" id="about" hidden><button class="close" id="about-close" aria-label="dismiss">×</button><b id="about-name">This mesh</b><p id="about-blurb"></p><p class="dim" id="about-facts"></p><p class="dim">Solid dots are radios the Den hears over the air; hollow ☁ dots only reach it through the internet. Tap any dot or feed card for details. <a href="#/nodes">Nodes</a> · <a href="#/coverage">Coverage</a> · <a href="#/digest">Daily digest</a></p></div>{% endif %}
   <button class="handle" id="sheet-handle" aria-label="expand or collapse the feed"><i></i></button>
   <div class="feed-head">
     <div class="feed-tabs"><button class="ftab on" data-tab="live">Live<span class="live-dot"></span></button><button class="ftab" data-tab="cat">Ask the Cat<span class="cat-count" id="cat-count"></span></button></div>

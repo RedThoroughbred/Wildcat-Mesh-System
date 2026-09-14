@@ -152,6 +152,20 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             row["stats"] = {k: st[k] for k in ("message_count", "first_seen", "last_seen", "avg_snr", "best_snr", "worst_snr", "avg_rssi")}
         return jsonify({"my_id": bridge.state.my_id, "nodes": list(roster.values()), "mesh": Q.mesh_stats(_db())})
 
+    @bp.route("/api/about")
+    def api_about():
+        """What a first-time visitor needs to know about this mesh (public view welcome card)."""
+        o, b = bridge.cfg.observatory, bridge.cfg.bbs
+        with bridge.state.lock:
+            R = list(bridge.state.roster.values()); my = bridge.state.my_id
+            den = bridge.state.roster.get(my or "", {})
+        now = time.time()
+        return jsonify({"name": o.community_name or b.name, "blurb": o.community_blurb, "den": {"id": my, "name": den.get("short_name") or "the Den"},
+                        "counts": {"nodes": len(R), "rf": sum(1 for n in R if n.get("transport") in ("rf", "both")),
+                                   "internet_only": sum(1 for n in R if n.get("transport") == "mqtt"),
+                                   "heard_1h": sum(1 for n in R if (n.get("last_heard") or 0) >= now - 3600)},
+                        "bobcat": bool(bridge.cfg.brain.enabled and (bridge.state.brain_status or {}).get("running"))})
+
     @bp.route("/api/auth")
     def api_auth():
         """Does this device hold the operator token? (No token configured → everything is open.)"""

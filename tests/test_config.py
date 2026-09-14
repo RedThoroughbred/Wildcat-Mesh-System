@@ -252,3 +252,10 @@ def test_brain_cli_keys():
     assert cfg.brain.cli_model == "claude-haiku-4-5-20251001" and cfg.brain.analyst_enabled is False
     with pytest.raises(ConfigError):
         build({**SERIAL, "brain": {"cli_timeout": 5}})
+
+
+def test_community_fields_round_trip():
+    cfg = build({**SERIAL, "observatory": {"community_name": "Wildcat Mesh NKY", "community_blurb": "Northern Kentucky's LoRa mesh."}})
+    assert cfg.observatory.community_name == "Wildcat Mesh NKY"
+    again = build(tomllib.loads(to_toml(cfg)), source=cfg.source)
+    assert again.observatory.community_blurb == "Northern Kentucky's LoRa mesh."

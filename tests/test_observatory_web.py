@@ -312,3 +312,10 @@ def test_operator_token_gates_writes_via_header_or_cookie(tmp_path):
 
 def test_no_token_means_open_writes_as_before(client):
     assert client.get("/v2/api/auth").get_json() == {"required": False, "authorized": True}
+
+
+def test_about_route_and_public_welcome(client):
+    a = client.get("/v2/api/about").get_json()
+    assert a["name"] and a["den"]["id"] == "!9e766b18" and a["counts"]["nodes"] >= 1 and a["bobcat"] is False
+    pub = client.get("/v2/public").data.decode()
+    assert 'id="about"' in pub and 'id="about"' not in client.get("/v2/").data.decode()

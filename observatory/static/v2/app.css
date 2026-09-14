@@ -787,3 +787,11 @@ body.rail-collapsed { --rail: 52px; }
 .view-error { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 24px; color: var(--muted); }
 .view-error b { color: var(--text); font-size: 1.07rem; }
 .compose-path.warn { color: #9ec5ff; }
+
+/* ---- public welcome card ---- */
+.about { position: relative; margin: 8px 8px 4px; padding: 12px 34px 10px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(224,112,75,.14), rgba(111,195,255,.08)); border: 1px solid rgba(224,112,75,.35); font-size: .93rem; line-height: 1.45; }
+.about b { display: block; font-size: 1.07rem; margin-bottom: 4px; }
+.about p { margin: 0 0 6px; } .about p:last-child { margin-bottom: 0; }
+.about .dim { color: var(--muted); font-size: .86rem; }
+.about a { color: var(--link); text-decoration: none; } .about a:hover { text-decoration: underline; }
+.about .close { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); font-size: 1.3rem; cursor: pointer; line-height: 1; }

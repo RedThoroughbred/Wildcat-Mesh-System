@@ -93,7 +93,9 @@
     const ll = linkLabel(n, true); if (ll) bits.push(`<span class="dim">${escape(ll)}</span>`);
     return bits.join("<br>");
   }
-  function refreshAges() { for (const id in S.markers) S.markers[id].setIcon(icon(S.roster[id])); }
+  function refreshAges() {          // only rebuild a marker whose look actually changed (130 setIcon()s every 15 s hurt phones)
+    for (const id in S.markers) { const n = S.roster[id], m = S.markers[id]; const cls = ageClass(n) + trafficClass(id) + (n.transport === "mqtt" ? " mqtt-only" : "") + "|" + name(n); if (m._cls === cls) continue; m._cls = cls; m.setIcon(icon(n)); }
+  }
   // an inline map for one node: its fix, the Den, and the radio links we've seen (neighbour reports + direct hears)
   function miniMap(n, links, base) {
     const el = $("minimap"), p = pos(n); if (!el || !p) return;
@@ -675,6 +677,22 @@
   }
   function sosIncoming(p) { if (p.sent || p.from === S.myId) return; alarm(); toast(`🆘 ${p.from_name || p.from}: ${p.text || p.summary || ""}`.slice(0, 160), "err"); }
   sock.on("sos", sosRender);
+
+  // ---------------------------------------------------------------- public welcome card
+  (async () => {
+    const box = $("about"); if (!box) return;
+    let seen = false; try { seen = localStorage.getItem("v2.about") === "1"; } catch (e) {}
+    if (seen) return;
+    try {
+      const a = await (await fetch("api/about")).json();
+      $("about-name").textContent = a.name || "This mesh";
+      $("about-blurb").textContent = a.blurb || `A community LoRa mesh radio network. The Den (${a.den.name}) listens to it around the clock and this page is its live window.`;
+      const c = a.counts || {};
+      $("about-facts").textContent = `${c.nodes || 0} nodes known · ${c.rf || 0} heard on the radio · ${c.internet_only || 0} internet-only · ${c.heard_1h || 0} active in the last hour.` + (a.bobcat ? ` DM ${a.den.name} with ?your question to ask Bobcat, the mesh's AI.` : "");
+      box.hidden = false;
+    } catch (e) {}
+    $("about-close").addEventListener("click", () => { box.hidden = true; try { localStorage.setItem("v2.about", "1"); } catch (e) {} });
+  })();
 
   // ---------------------------------------------------------------- Bobcat on the air (Part B switch)
   const RS = { st: null };
