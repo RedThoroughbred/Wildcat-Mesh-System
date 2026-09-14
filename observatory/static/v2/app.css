@@ -707,3 +707,23 @@ body.following .follow-flag { display: block; }
 .sc-days { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
 .sc-days label { display: inline-flex; align-items: center; gap: 2px; }
 .vt tr.off td { opacity: .55; }
+
+/* ---- RF vs MQTT (internet-bridged) ---- */
+.node.mqtt-only { opacity: .78; }
+.node.mqtt-only .core { background: transparent !important; box-shadow: 0 0 0 2px rgba(0,0,0,.35), inset 0 0 0 2px var(--muted) !important; }
+.node.mqtt-only::before, .node.mqtt-only::after { display: none !important; }
+.node.mqtt-only .lbl { color: var(--muted); }
+.node.mqtt-only .lbl::before { content: "☁ "; }
+.sw.mqtt { background: transparent !important; border: 2px dashed var(--muted); box-sizing: border-box; }
+.pkt .via { border-radius: 999px; padding: 0 6px; font: 600 10px var(--mono); }
+.pkt .via.mqtt { color: #9ec5ff; background: rgba(111,195,255,.12); }
+.pkt[data-via="mqtt"] .bar { background: repeating-linear-gradient(180deg, #6fc3ff 0 3px, transparent 3px 6px) !important; }
+.card-link { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.card-link.mqtt { color: #9ec5ff; }
+.card-link.rf, .card-link.both { color: #8ff0a4; }
+.reach-flag { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: rgba(111,195,255,.10); border: 1px solid rgba(111,195,255,.4); color: #d6efff; font-size: 13px; line-height: 1.45; }
+.reach-flag b { color: #fff; }
+body.rfonly .pkt[data-via="mqtt"] { display: none !important; }
+.link-chip { display: inline-block; border-radius: 999px; padding: 1px 7px; font: 600 10.5px var(--mono); background: rgba(255,255,255,.06); color: var(--muted); white-space: nowrap; }
+.link-chip.rf, .link-chip.both { color: #8ff0a4; background: rgba(88,227,156,.12); }
+.link-chip.mqtt { color: #9ec5ff; background: rgba(111,195,255,.12); }

@@ -193,6 +193,7 @@
       <div class="card-name" id="card-long">–</div>
       <div class="card-id"><span id="card-id">–</span><span class="proto" id="card-proto"></span></div>
       <div class="card-heard"><i class="pulse-dot" id="card-pulse"></i><span id="c-heard">–</span><span class="dim" id="c-hops"></span></div>
+      <div class="card-link" id="c-link"></div>
     </div>
   </div>
   <div class="card-grid">
@@ -221,6 +222,7 @@
     <label class="lay"><input type="checkbox" id="rings-on"> <span>Range rings</span><span class="hint">1 · 2 · 5 · 10 km</span></label>
     <label class="lay"><input type="checkbox" id="follow-on"> <span>Follow activity</span><span class="hint">camera</span></label>
     <label class="lay"><input type="checkbox" id="size-on" checked> <span>Size by traffic</span><span class="hint">1 h</span></label>
+    <label class="lay"><input type="checkbox" id="rf-only"> <span>RF only</span><span class="hint">hide internet-only</span></label>
   </div>
 </div>
 
@@ -230,6 +232,7 @@
   <span><i class="sw warm"></i>&lt; 1 h</span>
   <span><i class="sw cold"></i>older</span>
   <span><i class="sw link"></i>heard directly</span>
+  <span><i class="sw mqtt"></i>☁ internet-only</span>
 </div>
 
 <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>

@@ -29,7 +29,7 @@
   const fxLayer = L.layerGroup().addTo(map);
 
   // ---------------------------------------------------------------- state
-  const S = { myId: null, roster: {}, links: {}, markers: {}, lines: {}, filter: "all", times: [], fitted: false, selected: null, traffic: {}, sizeOn: true, follow: false, lastFollow: 0 };
+  const S = { myId: null, roster: {}, links: {}, markers: {}, lines: {}, filter: "all", times: [], fitted: false, selected: null, traffic: {}, sizeOn: true, follow: false, lastFollow: 0, rfOnly: false };
 
   function ageClass(n) {
     if (n.id === S.myId) return "base";
@@ -47,6 +47,16 @@
     return Math.floor(d / 86400) + "d ago";
   }
   function snrClass(v) { return v == null ? "" : v >= 5 ? "good" : v >= -5 ? "ok" : "bad"; }
+  // how we hear a node: "rf" | "mqtt" | "both" | null (unknown). MQTT = internet-bridged, not your radio.
+  function linkLabel(n, long) {
+    if (!n || n.id === S.myId) return "";
+    const t = n.transport;
+    if (t === "mqtt") return long ? "☁ internet-only — never heard on your radio" : "☁ internet-only";
+    if (t === "rf") return "📡 radio" + (n.last_rf ? ` · on RF ${ago(n.last_rf)}` : long ? " (node DB)" : "");
+    if (t === "both") return "📡 radio + ☁ internet" + (n.last_rf ? ` · on RF ${ago(n.last_rf)}` : "");
+    return long ? "link unknown — no packet seen yet" : "";
+  }
+  function linkChip(n) { const t = n && n.transport; return t ? `<span class="link-chip ${t}">${t === "mqtt" ? "☁ MQTT" : t === "rf" ? "📡 RF" : "📡☁ both"}</span>` : '<span class="link-chip">–</span>'; }
 
   // ---------------------------------------------------------------- nodes
   function trafficClass(id) {
@@ -56,7 +66,7 @@
     return arr.length >= 30 ? " t3" : arr.length >= 12 ? " t2" : arr.length >= 4 ? " t1" : "";
   }
   function icon(n) {
-    const cls = ageClass(n) + trafficClass(n.id);
+    const cls = ageClass(n) + trafficClass(n.id) + (n.transport === "mqtt" && n.id !== S.myId ? " mqtt-only" : "");
     const html = `<div class="node ${cls}"><div class="core"></div><div class="lbl">${escape(name(n))}</div></div>`;
     const size = cls === "base" ? 22 : 14;
     return L.divIcon({ className: "", html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
@@ -66,7 +76,7 @@
     S.roster[n.id] = Object.assign(S.roster[n.id] || {}, n);
     const node = S.roster[n.id], p = pos(node);
     let m = S.markers[n.id];
-    if (!p) { if (m) { nodeLayer.removeLayer(m); delete S.markers[n.id]; } return; }
+    if (!p || (S.rfOnly && node.transport === "mqtt" && n.id !== S.myId)) { if (m) { nodeLayer.removeLayer(m); delete S.markers[n.id]; } return; }
     if (!m) {
       m = L.marker(p, { icon: icon(node), zIndexOffset: n.id === S.myId ? 1000 : 0 });
       m.bindTooltip(tip(node), { className: "node-tip", direction: "top", offset: [0, -10] });
@@ -80,9 +90,16 @@
     const bits = [`<b>${escape(name(n))}</b>`];
     if (n.long_name) bits.push(escape(n.long_name));
     bits.push(`${escape(n.id)} · ${ago(n.last_heard)}` + (n.hops_away != null ? ` · ${n.hops_away} hop${n.hops_away === 1 ? "" : "s"}` : ""));
+    const ll = linkLabel(n, true); if (ll) bits.push(`<span class="dim">${escape(ll)}</span>`);
     return bits.join("<br>");
   }
   function refreshAges() { for (const id in S.markers) S.markers[id].setIcon(icon(S.roster[id])); }
+  function applyRfOnly() {      // the "true local mesh": internet-only nodes off the map, internet-arrived packets out of the feed
+    document.body.classList.toggle("rfonly", S.rfOnly);
+    let hidden = 0;
+    for (const n of Object.values(S.roster)) { if (n.transport === "mqtt" && n.id !== S.myId && pos(n)) hidden++; upsertNode(n); }
+    return hidden;
+  }
 
   function flashNode(id) {
     const m = S.markers[id]; if (!m) return;
@@ -122,14 +139,15 @@
   const list = $("feed-list");
   let addPacket = function (p, fresh) {
     const el = document.createElement("div");
-    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : "") + (p.sos ? " sos" : ""); el.dataset.kind = p.kind; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
+    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : "") + (p.sos ? " sos" : ""); el.dataset.kind = p.kind; if (p.via_mqtt === true) el.dataset.via = "mqtt"; else if (p.via_mqtt === false) el.dataset.via = "rf"; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
     const snr = p.snr != null ? `<span class="snr ${snrClass(p.snr)}">${p.snr.toFixed(1)} dB</span>` : "";
     const rssi = p.rssi != null ? `<span>${p.rssi} dBm</span>` : "";
     const hops = p.hops != null ? `<span>${p.hops === 0 ? "direct" : p.hops + " hop" + (p.hops === 1 ? "" : "s")}</span>` : "";
+    const via = p.via_mqtt === true ? '<span class="via mqtt" title="arrived through the internet (MQTT), not your radio">☁ MQTT</span>' : "";
     el.innerHTML = `<div class="bar"></div>
       <div><div class="who">${escape(p.sent ? "you" : (p.from_name || p.from))} ${to} <span class="kind">${escape(p.kind)}</span>${p.sent ? stateChip(p.state || "queued") : ""}</div><div class="sum">${escape(p.summary || "")}</div></div>
-      <div class="meta"><span data-ts="${p.ts}">${ago(p.ts)}</span>${snr}${rssi}${hops}</div>`;
+      <div class="meta"><span data-ts="${p.ts}">${ago(p.ts)}</span>${snr}${rssi}${hops}${via}</div>`;
     el.hidden = !((S.filter === "all" && p.kind !== "routing") || S.filter === p.kind || (S.filter === "raw"));
     list.prepend(el);
     if (fresh) setTimeout(() => el.classList.remove("fresh"), 1500);
@@ -208,6 +226,7 @@
     $("card-pulse").className = "pulse-dot " + cls;
     $("c-heard").textContent = n.id === S.myId ? "this node · live" : ago(n.last_heard);
     $("c-hops").textContent = n.id === S.myId ? "" : n.hops_away != null ? (n.hops_away === 0 ? "· heard direct" : `· ${n.hops_away} hop${n.hops_away === 1 ? "" : "s"} away`) : "";
+    const cl = $("c-link"); cl.textContent = linkLabel(n, true); cl.className = "card-link " + (n.transport || ""); cl.hidden = !cl.textContent;
     const g = $("card-gauge"); g.className = "gauge " + cls;
     const arc = $("g-arc"), q = n.id === S.myId ? 1 : snrPct(n.snr);
     arc.style.strokeDashoffset = (ARC * (1 - q)).toFixed(1);
@@ -821,6 +840,8 @@
   }
   $("follow-on").addEventListener("change", (e) => { S.follow = e.target.checked; document.body.classList.toggle("following", S.follow); try { localStorage.setItem("v2.follow", S.follow ? "1" : "0"); } catch (x) {} });
   $("size-on").addEventListener("change", (e) => { S.sizeOn = e.target.checked; refreshAges(); try { localStorage.setItem("v2.size", S.sizeOn ? "1" : "0"); } catch (x) {} });
+  $("rf-only").addEventListener("change", (e) => { S.rfOnly = e.target.checked; const h = applyRfOnly(); try { localStorage.setItem("v2.rfonly", S.rfOnly ? "1" : "0"); } catch (x) {} toast(S.rfOnly ? `RF only · ${h} internet-only node${h === 1 ? "" : "s"} hidden` : "Showing internet-bridged nodes again"); });
+  try { if (localStorage.getItem("v2.rfonly") === "1") { $("rf-only").checked = true; S.rfOnly = true; document.body.classList.add("rfonly"); } } catch (e) {}
   try { if (localStorage.getItem("v2.follow") === "1") { $("follow-on").checked = true; S.follow = true; document.body.classList.add("following"); } if (localStorage.getItem("v2.size") === "0") { $("size-on").checked = false; S.sizeOn = false; } } catch (e) {}
   map.on("dragstart", () => { if (S.follow) { S.follow = false; $("follow-on").checked = false; document.body.classList.remove("following"); toast("Follow paused — you took the wheel"); } });
 
@@ -980,18 +1001,23 @@
       title: "Nodes",
       async render() {
         const d = await (await fetch("api/nodes")).json();
-        const rows = d.nodes.map(n => ({ ...n, id: n.id, name: n.short_name || n.id.slice(-4), msgs: n.stats ? n.stats.message_count : 0,
+        const self = VIEWS.nodes;
+        const rows = d.nodes.filter(n => !self.rfOnly || n.transport !== "mqtt").map(n => ({ ...n, id: n.id, name: n.short_name || n.id.slice(-4), msgs: n.stats ? n.stats.message_count : 0, link: n.transport || "",
           avg_snr: n.stats ? n.stats.avg_snr : null, best_snr: n.stats ? n.stats.best_snr : null, worst_snr: n.stats ? n.stats.worst_snr : null,
           avg_rssi: n.stats ? n.stats.avg_rssi : null, last: n.last_heard || (n.stats && n.stats.last_seen) || 0, hasPos: n.position ? 1 : 0 }));
         const t = now() - 3600, online = rows.filter(r => r.last >= t).length;
-        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
+        const rf = d.nodes.filter(n => n.transport === "rf" || n.transport === "both").length, mq = d.nodes.filter(n => n.transport === "mqtt").length;
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${rows.length}</b><span>nodes known</span></div><div class="kpi"><b>${online}</b><span>heard · 1h</span></div><div class="kpi"><b>📡 ${rf}</b><span>heard on RF</span></div><div class="kpi"><b>☁ ${mq}</b><span>internet-only</span></div><div class="kpi"><b>${rows.filter(r => r.hasPos).length}</b><span>with GPS</span></div><div class="kpi"><b>${d.mesh.messages_24h}</b><span>msgs · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div><div id="nodes-table"></div>`;
         const search = document.createElement("input"); search.className = "vsearch"; search.placeholder = "search name, id, hardware…";
         const exp = document.createElement("a"); exp.className = "link-btn"; exp.href = A("api/export/nodes.csv"); exp.textContent = "⇩ CSV";
-        viewTools.replaceChildren(search, exp);
+        const rfl = document.createElement("label"); rfl.className = "dim"; rfl.style.cssText = "display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap"; rfl.innerHTML = `<input type="checkbox" id="nodes-rf-only"${self.rfOnly ? " checked" : ""}> RF only`;
+        rfl.querySelector("input").onchange = (e) => { self.rfOnly = e.target.checked; route(); };
+        viewTools.replaceChildren(search, rfl, exp);
         const tb = table($("nodes-table"), [
           { key: "name", label: "Node", render: r => `${dot(r)}<b>${escape(r.name)}</b> <span class="dim" style="color:var(--muted)">${escape(r.long_name || "")}</span>` },
           { key: "id", label: "ID", dim: true }, { key: "hw", label: "Hardware", dim: true }, { key: "role", label: "Role", dim: true, render: r => escape(r.role ? r.role.replace("CLIENT_", "") : "–") },
-          { key: "last", label: "Last heard", render: r => ago(r.last) }, { key: "hops_away", label: "Hops", num: true, render: r => r.hops_away == null ? "–" : r.hops_away === 0 ? "direct" : r.hops_away },
+          { key: "last", label: "Last heard", render: r => ago(r.last) }, { key: "link", label: "Link", render: r => linkChip(r) + (r.last_rf ? `<br><span class="dim" style="font-size:10.5px">RF ${ago(r.last_rf)}</span>` : "") },
+          { key: "hops_away", label: "Hops", num: true, render: r => r.hops_away == null ? "–" : r.hops_away === 0 ? "direct" : r.hops_away },
           { key: "snr", label: "SNR now", num: true, render: r => snrSpan(r.snr) }, { key: "avg_snr", label: "avg", num: true, render: r => snrSpan(r.avg_snr) },
           { key: "best_snr", label: "best", num: true, render: r => snrSpan(r.best_snr) }, { key: "worst_snr", label: "worst", num: true, render: r => snrSpan(r.worst_snr) },
           { key: "avg_rssi", label: "RSSI", num: true, render: r => r.avg_rssi == null ? "–" : r.avg_rssi + " dBm" },
@@ -1015,12 +1041,14 @@
         if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis">
             <div class="kpi"><b>${ago(n.last_heard || st.last_seen)}</b><span>last heard</span></div>
+            <div class="kpi"><b>${n.transport === "mqtt" ? "☁ internet" : n.transport === "rf" ? "📡 radio" : n.transport === "both" ? "📡+☁" : "–"}</b><span>${n.transport === "both" ? "radio & internet" : n.transport ? "reach" : "reach unknown"}</span></div>
             <div class="kpi"><b>${n.hops_away == null ? "–" : n.hops_away === 0 ? "direct" : n.hops_away}</b><span>hops away</span></div>
             <div class="kpi"><b>${fmt1(n.snr != null ? n.snr : lastSig.snr, " dB")}</b><span>SNR now</span></div>
             <div class="kpi"><b>${st.message_count || 0}</b><span>messages</span></div>
             <div class="kpi"><b>${rel.reliability_pct == null ? "–" : rel.reliability_pct + "%"}</b><span>good-signal share · 7d</span></div>
             <div class="kpi"><b>${n.battery == null ? "–" : n.battery > 100 ? "⚡ mains" : n.battery + "%"}</b><span>battery${n.voltage != null ? " · " + n.voltage.toFixed(2) + " V" : ""}</span></div>
           </div>
+          ${n.transport === "mqtt" ? `<div class="reach-flag"><span style="font-size:18px">☁</span><div><b>Internet-only — not reachable on your radio.</b> Every packet from this node arrived through the MQTT bridge; the Den has never heard it over RF${n.mqtt_count ? ` (${n.mqtt_count} packet${n.mqtt_count === 1 ? "" : "s"} via MQTT` + (n.last_mqtt ? `, last ${ago(n.last_mqtt)}` : "") + ")" : ""}. If the internet goes away, so does this node.</div></div>` : ""}
           <div class="vgrid">
             <div class="vcard wide"><h2>Signal quality · 7 days <span class="sel" style="color:var(--muted);text-transform:none;letter-spacing:0">${sig.length} samples</span></h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.snr })).filter(x => x.y != null), { lo: -10, hi: 10, wide: true })}</div>
             <div class="vcard"><h2>RSSI</h2>${lineChart(sig.map(x => ({ x: new Date(x.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), y: x.rssi })).filter(x => x.y != null), { lo: -125, hi: -70 })}</div>
@@ -1032,6 +1060,8 @@
             <div class="vcard"><h2>Details</h2><table class="vt"><tbody>
               <tr><td class="dim">ID</td><td class="num">${escape(id)}</td></tr><tr><td class="dim">Protocol</td><td>${escape(n.proto || "–")}</td></tr>
               <tr><td class="dim">Hardware</td><td>${escape(n.hw || "–")}</td></tr><tr><td class="dim">Role</td><td>${escape(n.role || "–")}</td></tr>
+              <tr><td class="dim">Heard over RF</td><td>${n.rf_heard ? `yes${n.rf_count ? ` · ${n.rf_count} packet${n.rf_count === 1 ? "" : "s"}` : " (node DB)"}${n.last_rf ? ` · last ${ago(n.last_rf)}` : ""}` : n.transport === "mqtt" ? "never" : "not yet"}</td></tr>
+              <tr><td class="dim">Via MQTT</td><td>${n.mqtt_count ? `yes · ${n.mqtt_count} packet${n.mqtt_count === 1 ? "" : "s"}${n.last_mqtt ? ` · last ${ago(n.last_mqtt)}` : ""}` : n.transport === "mqtt" ? "yes (node DB)" : "no"}</td></tr>
               <tr><td class="dim">First seen</td><td>${fmtTs(st.first_seen)}</td></tr><tr><td class="dim">Best / worst SNR</td><td>${snrSpan(st.best_snr)} / ${snrSpan(st.worst_snr)}</td></tr>
               <tr><td class="dim">Avg RSSI</td><td class="num">${st.avg_rssi == null ? "–" : st.avg_rssi + " dBm"}</td></tr><tr><td class="dim">Position</td><td class="num">${n.position && n.position.lat != null ? n.position.lat.toFixed(5) + ", " + n.position.lon.toFixed(5) : "–"}</td></tr>
               <tr><td class="dim">Ch. util</td><td class="num">${fmt1(n.channel_util, "%")}</td></tr></tbody></table></div>

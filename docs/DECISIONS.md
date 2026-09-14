@@ -365,3 +365,26 @@ own `bulletins` table (same columns), so `[B]ulletins` on the mesh serves it;
 the BBS's node-to-node bulletin sync runs inside the BBS process and is not
 triggered from here — the post is read from THIS Den. The v1 BBS is untouched.
 
+## D-027 · 2026-09-14 · RF vs MQTT: internet-bridged evidence is shown, counted and persisted, but never mistaken for radio truth
+
+**Decision.** Every Meshtastic packet says whether the node got it over the air or
+from its MQTT uplink (`rx.via_mqtt`, envelope v2); the radio's node DB says the
+same per node. The Observatory keeps, per node, how many packets came each way
+and when (`rf_count`, `mqtt_count`, `last_rf`, `last_mqtt`), persists that in
+`node_transport`, and derives one word — `rf`, `mqtt`, `both`, or unknown —
+with live evidence outranking the node-DB prior. A packet that came via MQTT
+contributes nothing to SNR history, hops, inferred direct links or coverage: those
+are radio measurements and an internet-bridged packet has none.
+
+**Why it matters.** The resilience question is "what can I still reach when the
+internet is gone?". On the first live look, 126 of 210 known nodes had only ever
+been seen through MQTT — more than half the map was not on Seth's radio at all.
+Without the distinction the map lies by omission.
+
+**How it shows.** Internet-only nodes are hollow, dimmed and cloud-marked on the
+map (no rings, no glow); MQTT-arrived packets carry a ☁ MQTT badge and a dashed
+bar in the feed; the card and node page say "internet-only — never heard on your
+radio" outright, with last-RF time when there is one; "RF only" in the layers
+panel hides both, leaving the true local mesh. Producers for other protocols
+omit the flag rather than guess, and the UI then says "link unknown".
+

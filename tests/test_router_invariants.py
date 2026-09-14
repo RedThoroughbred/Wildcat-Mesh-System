@@ -106,3 +106,13 @@ def test_sos_controls_are_operator_only_and_the_sheet_is_home_only():
     assert 'sosGo.textContent = "Tap again to broadcast now"' in APP and "SOS.armTimer = setTimeout(sosDisarm, 6000)" in APP
     # incoming distress is styled + alarmed
     assert '(p.sos ? " sos" : "")' in APP and "function sosIncoming" in APP
+
+
+# --- RF vs MQTT ------------------------------------------------------------------
+
+def test_rf_only_toggle_and_internet_only_styling_exist():
+    assert 'id="rf-only"' in HTML and 'id="c-link"' in HTML and 'class="sw mqtt"' in HTML
+    assert re.search(r"\.node\.mqtt-only \.core \{[^}]*background: transparent", CSS)      # hollow, not solid
+    assert re.search(r"body\.rfonly \.pkt\[data-via=\"mqtt\"\] \{ display: none !important; \}", CSS)
+    assert 'el.dataset.via = "mqtt"' in APP and "function applyRfOnly" in APP and "function linkLabel" in APP
+    assert "Internet-only — not reachable on your radio." in APP
