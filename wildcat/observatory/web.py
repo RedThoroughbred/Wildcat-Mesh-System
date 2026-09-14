@@ -12,6 +12,9 @@ from .bridge import NAMESPACE, Bridge
 def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     bp = Blueprint("v2", __name__, url_prefix="/v2")
 
+    def url_for_index() -> str:
+        return bp.url_prefix.rstrip("/") + "/"
+
     def _asset_version() -> str:
         """Cache-buster: the newest mtime among the v2 assets (no build step, no hashes)."""
         try:
@@ -19,8 +22,42 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         except OSError:
             return "0"
 
+    COOKIE = "wildcat_op"
+
+    def _token() -> str:
+        return (getattr(bridge.cfg.observatory, "operator_token", "") or "").strip()
+
+    def _authorized() -> bool:
+        """Writes need the operator token once one is configured: a bearer/X-Wildcat-Token
+        header (Shortcuts, scripts) or the cookie the dashboard sets from /v2/?token=…"""
+        from flask import request
+        import hmac
+        tok = _token()
+        if not tok:
+            return True
+        auth = request.headers.get("Authorization", "")
+        given = auth[7:].strip() if auth.lower().startswith("bearer ") else request.headers.get("X-Wildcat-Token", "")
+        given = given or request.cookies.get(COOKIE, "")
+        return bool(given) and hmac.compare_digest(given, tok)
+
+    @bp.before_request
+    def _gate_writes():
+        from flask import request
+        if request.method in ("POST", "PATCH", "PUT", "DELETE") and not _authorized():
+            return jsonify({"error": "operator token required", "hint": "send Authorization: Bearer <token>, or open /v2/?token=<token> once on this device"}), 401
+
     @bp.route("/")
     def index():
+        from flask import request, redirect, make_response
+        tok = _token()
+        given = request.args.get("token")
+        if tok and given is not None:
+            import hmac
+            if hmac.compare_digest(given, tok):
+                resp = make_response(redirect(url_for_index()))
+                resp.set_cookie(COOKIE, tok, max_age=365 * 86400, httponly=True, samesite="Lax", path="/v2")
+                return resp
+            return jsonify({"error": "wrong operator token"}), 403
         return render_template("v2/index.html", public=False, v=_asset_version())
 
     @bp.route("/public")
@@ -114,6 +151,11 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
                                           "last_heard": st.get("last_seen")})
             row["stats"] = {k: st[k] for k in ("message_count", "first_seen", "last_seen", "avg_snr", "best_snr", "worst_snr", "avg_rssi")}
         return jsonify({"my_id": bridge.state.my_id, "nodes": list(roster.values()), "mesh": Q.mesh_stats(_db())})
+
+    @bp.route("/api/auth")
+    def api_auth():
+        """Does this device hold the operator token? (No token configured → everything is open.)"""
+        return jsonify({"required": bool(_token()), "authorized": _authorized()})
 
     @bp.route("/api/node/<nid>/full")
     def api_node_full(nid):

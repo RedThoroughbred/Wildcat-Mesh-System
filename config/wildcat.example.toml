@@ -67,6 +67,7 @@ busy_timeout_ms = 5000         # several writers, one file: wait instead of "dat
 wal = true
 
 [observatory]
+# operator_token = ""     # set (openssl rand -hex 24) to require it on every write: `Authorization: Bearer …` or open /v2/?token=… once. docs/WATCH_SEND.md
 host = "0.0.0.0"
 port = 5000
 debug = false              # true exposes the Werkzeug debugger (remote code exec) to the LAN. Don't.

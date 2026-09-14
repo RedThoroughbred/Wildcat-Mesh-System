@@ -423,6 +423,8 @@
 
   // ---------------------------------------------------------------- public view + share
   const PUBLIC = document.body.dataset.public === "yes";
+  // writes answer 401 when an operator token is configured and this device hasn't presented it
+  (() => { const raw = window.fetch; let told = 0; window.fetch = async function (u, o) { const r = await raw.apply(this, arguments); try { if (r.status === 401 && o && /post|patch|delete/i.test(o.method || "") && Date.now() - told > 8000) { told = Date.now(); toast("Operator token required — open /v2/?token=… once on this device", "err"); } } catch (e) {} return r; }; })();
   function toast(msg, kind) { const t = document.createElement("div"); t.className = "toast" + (kind ? " " + kind : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), kind === "err" ? 4200 : 2600); }
   async function sharePublic() {
     const url = API ? API + "/v2/public" : new URL("public", location.href).href;

@@ -169,6 +169,7 @@ class ObservatoryConfig:
     max_recent_messages: int = 20
     active_node_threshold: int = 3600
     bbs_node_id: str = "!9e766b18"     # which node's DMs count as "BBS responses" in the BBS view
+    operator_token: str = ""           # blank = LAN-trust writes (v1 behaviour); set → POST/PATCH/DELETE need it (docs/WATCH_SEND.md)
 
 
 @dataclass
@@ -488,7 +489,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
     # [observatory]
     o = _table(ctx, data, "observatory", "[observatory]")
     _warn_unknown(ctx, o, "[observatory]", ("host", "port", "debug", "secret_key", "refresh_interval",
-                                           "max_recent_messages", "active_node_threshold", "bbs_node_id"))
+                                           "max_recent_messages", "active_node_threshold", "bbs_node_id", "operator_token"))
     observatory = ObservatoryConfig(
         host=_take_str(ctx, o, "host", "[observatory]", "0.0.0.0"),
         port=_take_int(ctx, o, "port", "[observatory]", 5000, 1, 65535),
@@ -498,6 +499,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
         max_recent_messages=_take_int(ctx, o, "max_recent_messages", "[observatory]", 20, 1, 1000),
         active_node_threshold=_take_int(ctx, o, "active_node_threshold", "[observatory]", 3600, 1, None),
         bbs_node_id=_take_str(ctx, o, "bbs_node_id", "[observatory]", ObservatoryConfig.bbs_node_id),
+        operator_token=_take_str(ctx, o, "operator_token", "[observatory]", ""),
     )
     if observatory.debug:
         ctx.warn(f"{label}: [observatory].debug = true exposes the Werkzeug debugger (remote code execution) to anyone on the LAN — never leave this on")
@@ -667,7 +669,7 @@ def to_toml(cfg: WildcatConfig, *, redact: bool = False) -> str:
             elif v is None:
                 continue
             else:
-                if redact and f.name in ("password", "secret_key", "weather_api_key") and v:
+                if redact and f.name in ("password", "secret_key", "weather_api_key", "operator_token") and v:
                     v = "***"
                 scalars.append((f.name, v))
         lines.append(f"[{name}]")

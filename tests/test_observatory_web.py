@@ -281,3 +281,34 @@ def test_schedule_routes(tmp_path, monkeypatch):
     job = next(s for s in cl.get("/v2/api/schedules").get_json()["schedules"] if s["id"] == bid)
     assert job["last_result"]["ok"] is True and job["last_run"]
     assert cl.delete(f"/v2/api/schedules/{bid}").status_code == 200 and cl.delete(f"/v2/api/schedules/{bid}").status_code == 404
+
+
+def test_operator_token_gates_writes_via_header_or_cookie(tmp_path):
+    from wildcat.bus import MemoryBus
+    (tmp_path / "content").mkdir()
+    cfg = build({"radio": {"type": "serial"}, "mqtt": {"enabled": True}, "bbs": {"source": "bus", "content_dir": str(tmp_path / "content")},
+                 "telemetry": {"source": "bus"}, "database": {"path": str(tmp_path / "b.db")}, "observatory": {"operator_token": "s3cret-token"}})
+    app = flask.Flask("obs-test7", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    app.register_blueprint(create_blueprint(bridge, sio))
+    bus = MemoryBus(); bridge.bus = bus; bridge.wire(bus)
+    c = app.test_client()
+    assert c.get("/v2/api/state").status_code == 200                                  # reads stay open
+    a = c.get("/v2/api/auth").get_json(); assert a == {"required": True, "authorized": False}
+    r = c.post("/v2/api/tx", json={"text": "hi"}); assert r.status_code == 401 and "token" in r.get_json()["error"]
+    assert c.post("/v2/api/tx", json={"text": "hi"}, headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert c.delete("/v2/api/sos").status_code == 401
+    r = c.post("/v2/api/tx", json={"text": "hi"}, headers={"Authorization": "Bearer s3cret-token"}); assert r.status_code == 200, r.get_json()
+    r = c.post("/v2/api/tx", json={"text": "hi2"}, headers={"X-Wildcat-Token": "s3cret-token"}); assert r.status_code == 200
+    assert [p for t, p in bus.published if t == "wildcat/tx"][-1]["text"] == "hi2"
+    # the dashboard hand-off: /v2/?token= sets the cookie, then writes work with no header
+    assert c.get("/v2/?token=wrong").status_code == 403
+    r = c.get("/v2/?token=s3cret-token"); assert r.status_code == 302 and r.headers["Location"].endswith("/v2/")
+    assert c.get("/v2/api/auth").get_json()["authorized"] is True
+    assert c.post("/v2/api/tx", json={"text": "hi3"}).status_code == 200
+    assert "***" in c.get("/v2/api/config").get_json()["toml"] and "s3cret" not in c.get("/v2/api/config").get_json()["toml"]
+
+
+def test_no_token_means_open_writes_as_before(client):
+    assert client.get("/v2/api/auth").get_json() == {"required": False, "authorized": True}
