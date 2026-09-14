@@ -116,3 +116,14 @@ def test_rf_only_toggle_and_internet_only_styling_exist():
     assert re.search(r"body\.rfonly \.pkt\[data-via=\"mqtt\"\] \{ display: none !important; \}", CSS)
     assert 'el.dataset.via = "mqtt"' in APP and "function applyRfOnly" in APP and "function linkLabel" in APP
     assert "Internet-only — not reachable on your radio." in APP
+
+
+# --- desktop scale ------------------------------------------------------------------
+
+def test_ui_scales_from_one_root_font_size():
+    assert re.search(r"html \{ font-size: var\(--fs\); \}", CSS)
+    assert not re.search(r"html, body \{[^}]*font:", CSS)                # rem on <html> is the browser default, not --fs
+    assert re.search(r"@media \(min-width: 1600px\) \{\s*:root \{ --fs: 15px;", CSS) and re.search(r"@media \(min-width: 2200px\) \{\s*:root \{ --fs: 16px;", CSS)
+    assert len(re.findall(r"font-size: \d+(?:\.\d+)?px", CSS)) <= 3     # type is rem-based so the whole UI scales together
+    assert "function miniMap" in APP and 'id="minimap"' in APP and "minimap-empty" in APP
+    assert "Open in classic v1" not in APP                                 # v2 never links out to v1

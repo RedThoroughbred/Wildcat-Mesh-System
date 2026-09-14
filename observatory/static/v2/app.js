@@ -94,6 +94,25 @@
     return bits.join("<br>");
   }
   function refreshAges() { for (const id in S.markers) S.markers[id].setIcon(icon(S.roster[id])); }
+  // an inline map for one node: its fix, the Den, and the radio links we've seen (neighbour reports + direct hears)
+  function miniMap(n, links, base) {
+    const el = $("minimap"), p = pos(n); if (!el || !p) return;
+    const m = L.map(el, { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "dark-tiles" }).addTo(m);
+    const pts = [p];
+    const mk = (node, cls) => L.marker(pos(node), { icon: L.divIcon({ className: "", html: `<div class="node ${cls}"><div class="core"></div><div class="lbl">${escape(name(node))}</div></div>`, iconSize: [14, 14], iconAnchor: [7, 7] }), interactive: false }).addTo(m);
+    mk(n, ageClass(n) + (n.transport === "mqtt" ? " mqtt-only" : ""));
+    if (base && base.position && base.id !== n.id) { pts.push(pos(base)); mk({ ...base, short_name: base.name }, "base"); }
+    for (const l of links) {
+      if (!l.position || l.position.lat == null) continue;
+      const q = [l.position.lat, l.position.lon]; pts.push(q);
+      L.polyline([p, q], { color: l.kind === "neighbor" ? "#c78bff" : "#6fc3ff", weight: 2, opacity: .8, dashArray: l.kind === "neighbor" ? "4 4" : null }).addTo(m);
+      if (!(base && l.id === base.id)) mk({ id: l.id, short_name: l.name, last_heard: l.last, transport: l.transport }, "warm" + (l.transport === "mqtt" ? " mqtt-only" : ""));
+    }
+    if (pts.length > 1) m.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 13 }); else m.setView(p, 12);
+    setTimeout(() => m.invalidateSize(), 60);
+    S.mini = m;
+  }
   function applyRfOnly() {      // the "true local mesh": internet-only nodes off the map, internet-arrived packets out of the feed
     document.body.classList.toggle("rfonly", S.rfOnly);
     let hidden = 0;
@@ -1059,6 +1078,10 @@
               <div class="bands">${["excellent", "good", "fair", "poor", "unknown"].map(k => `<i class="${k}" style="width:${(100 * (bands[k] || 0) / tot).toFixed(1)}%" title="${k}: ${bands[k] || 0}"></i>`).join("")}</div>
               <div style="font-size:12px;color:var(--muted)">excellent ≥8 dB · good ≥3 · fair ≥−3 · poor below · ${rel.messages || 0} messages</div>
               <div style="margin-top:10px">${(rel.per_day || []).length ? barChart(rel.per_day.map(x => ({ label: x.day.slice(5), value: x.count }))) : '<div class="empty">no messages in 7 days</div>'}</div></div>
+            <div class="vcard mm"><h2>📍 Where <span class="sel dim" style="text-transform:none;letter-spacing:0;font-weight:500">${(d.links || []).length ? `${d.links.length} link${d.links.length === 1 ? "" : "s"} seen` : ""}</span></h2>
+              ${pos(n) ? `<div class="minimap" id="minimap" aria-label="map of this node"></div>` : `<div class="minimap-empty"><span style="font-size:20px">🗺</span><span>No position reported — this node hasn't shared a GPS fix with the mesh${n.transport === "mqtt" ? " (and it's internet-only)" : ""}.</span></div>`}
+              <div class="minimap-foot">${(d.links || []).length ? d.links.slice(0, 6).map(l => `<span class="mm-link ${l.kind}" title="${l.kind === "neighbor" ? "reported as a neighbour" : "heard directly"}"><i></i>${escape(l.name)}${l.snr != null ? ` <span class="dim">${fmt1(l.snr, " dB")}</span>` : ""}</span>`).join("") : `<span>${pos(n) ? "no radio links recorded with this node yet" : ""}</span>`}${pos(n) ? `<button class="link-btn" id="mm-open">⌖ open on the live map</button>` : ""}</div>
+            </div>
             <div class="vcard"><h2>Details</h2><table class="vt"><tbody>
               <tr><td class="dim">ID</td><td class="num">${escape(id)}</td></tr><tr><td class="dim">Protocol</td><td>${escape(n.proto || "–")}</td></tr>
               <tr><td class="dim">Hardware</td><td>${escape(n.hw || "–")}</td></tr><tr><td class="dim">Role</td><td>${escape(n.role || "–")}</td></tr>
@@ -1069,6 +1092,8 @@
               <tr><td class="dim">Ch. util</td><td class="num">${fmt1(n.channel_util, "%")}</td></tr></tbody></table></div>
             <div class="vcard wide"><h2>Recent messages</h2>${(d.messages || []).length ? d.messages.map(m => `<div class="msgrow"><div class="m">${escape(m.text)}</div><div class="r">${ago(m.ts)}<br>${snrSpan(m.snr)} ${m.rssi != null ? m.rssi + " dBm" : ""}</div></div>`).join("") : '<div class="empty">no messages logged from this node</div>'}</div>
           </div>`;
+        miniMap(n, d.links || [], d.base);
+        const mo = $("mm-open"); if (mo) mo.onclick = center.onclick;
       }
     },
     channels: {
@@ -1463,14 +1488,25 @@
     dashboard: {
       title: "Dashboard",
       async render() {
-        const d = await (await fetch("api/dashboard")).json(), st = await (await fetch("api/state")).json();
+        const [d, st, hist] = await Promise.all([fetch("api/dashboard").then(r => r.json()), fetch("api/state").then(r => r.json()), fetch("api/history?hours=24").then(r => r.json()).catch(() => ({ events: [] }))]);
+        const wide = window.innerWidth >= 1600;
         const t = now(), R = Object.values(st.roster || {}), active = R.filter(n => (n.last_heard || 0) >= t - 3600).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0));
-        const recent = (st.packets || []).slice(-20).reverse();
+        const recent = (st.packets || []).slice(wide ? -40 : -20).reverse();
+        const rf = R.filter(n => n.transport === "rf" || n.transport === "both"), mq = R.filter(n => n.transport === "mqtt");
+        const rfActive = active.filter(n => n.transport === "rf" || n.transport === "both").length;
+        const hours = new Array(24).fill(0), h0 = t - 24 * 3600;
+        for (const e of (hist.events || [])) { const i = Math.floor((e.ts - h0) / 3600); if (i >= 0 && i < 24) hours[i]++; }
+        const hourLabel = (i) => { const dt = new Date((h0 + i * 3600) * 1000); return i % 6 === 0 ? dt.getHours() + ":00" : ""; };
         if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${d.mesh.messages_24h}</b><span>messages · 24h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div><div class="kpi"><b>${active.length}</b><span>active nodes · 1h</span></div><div class="kpi"><b>${R.length}</b><span>nodes known</span></div><div class="kpi"><b>${st.stats ? Math.round(st.stats.per_min) : "–"}</b><span>packets / min</span></div></div>
           <div class="vgrid">
             <div class="vcard"><h2>📻 Recent activity</h2>${recent.length ? recent.map(p => `<div class="msgrow pkt" data-kind="${escape(p.kind)}" style="display:grid"><div class="m"><b>${escape(p.from_name || p.from)}</b><span class="kind" style="margin-right:6px">${escape(p.kind)}</span>${escape(p.summary || "")}</div><div class="r">${ago(p.ts)}${p.snr != null ? "<br>" + snrSpan(p.snr) : ""}</div></div>`).join("") : '<div class="empty">quiet</div>'}</div>
-            <div class="vcard"><h2>🟢 Active nodes · 1h</h2>${active.length ? `<table class="vt"><tbody>${active.slice(0, 25).map(n => `<tr class="row" data-id="${escape(n.id)}"><td>${dot(n)}<b>${escape(name(n))}</b> <span style="color:var(--muted)">${escape(n.long_name || "")}</span></td><td class="num">${n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops"}</td><td class="num">${snrSpan(n.snr)}</td><td class="dim">${ago(n.last_heard)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody heard in the last hour</div>'}</div>
+            <div class="vcard"><h2>📡 Reach</h2>
+              <div class="reach"><div><b>${rf.length}</b><span>heard on the radio</span></div><div><b>${mq.length}</b><span>internet-only</span></div><div><b>${rfActive}</b><span>on RF in the last hour</span></div><div><b>${R.length - rf.length - mq.length}</b><span>unknown link</span></div></div>
+              <div class="reach-bar" title="share of known nodes heard on RF"><i style="width:${R.length ? (100 * rf.length / R.length).toFixed(1) : 0}%"></i></div>
+              <p class="dim" style="margin:6px 0 0;font-size:.86rem">The radio mesh is the ${rf.length} — the rest only reach the Den through the internet bridge. <a href="#/nodes">Nodes ›</a></p></div>
+            <div class="vcard"><h2>🕐 Packets · last 24 h</h2>${(hist.events || []).length ? barChart(hours.map((v, i) => ({ label: hourLabel(i), value: v, cls: i === 23 ? "t" : "" }))) : '<div class="empty">no history yet</div>'}</div>
+            <div class="vcard"><h2>🟢 Active nodes · 1h</h2>${active.length ? `<table class="vt"><tbody>${active.slice(0, wide ? 60 : 25).map(n => `<tr class="row" data-id="${escape(n.id)}"><td class="clip">${dot(n)}<b>${escape(name(n))}</b> <span style="color:var(--muted)">${escape(n.long_name || "")}</span></td><td class="num">${n.hops_away == null ? "" : n.hops_away === 0 ? "direct" : n.hops_away + " hops"}</td><td class="num">${snrSpan(n.snr)}</td><td class="dim">${ago(n.last_heard)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody heard in the last hour</div>'}</div>
             <div class="vcard"><h2>📊 Channel activity · 24h</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in 24 h</div>'}</div>
             <div class="vcard"><h2>🔋 Low battery</h2>${d.low_battery.length ? `<table class="vt"><tbody>${d.low_battery.map(b => `<tr class="row" data-id="${escape(b.id)}"><td><b>${escape((S.roster[b.id] || {}).short_name || b.id.slice(-4))}</b></td><td class="num" style="color:${b.battery < 10 ? "#ff8a8a" : "var(--warm)"}">${b.battery}%</td><td class="num">${b.voltage != null ? b.voltage.toFixed(2) + " V" : ""}</td><td class="dim">${ago(b.ts)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no node under 20% — nice</div>'}</div>
             <div class="vcard"><h2>👥 Top senders · 24h</h2>${d.top.length ? `<table class="vt"><tbody>${d.top.map(x => `<tr class="row" data-id="${escape(x.id)}"><td><b>${escape(x.short_name || x.id.slice(-4))}</b></td><td class="num">${x.message_count}</td><td class="num">${snrSpan(x.avg_snr)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">no messages yet</div>'}</div>
@@ -1493,6 +1529,7 @@
   async function showView(name, arg) {
     const v = VIEWS[name]; if (!v) return;
     v.seq = S.viewSeq = (S.viewSeq || 0) + 1;                     // stale renders (fast nav) must not paint
+    if (S.mini) { try { S.mini.remove(); } catch (e) {} S.mini = null; }
     if (document.body.classList.contains("replaying")) tlExitReplay();   // replay is a Home-only mode
     if (!$("card").hidden) { $("card").hidden = true; S.selected = null; }
     if (!viewEl.hidden) { viewEl.classList.remove("swap"); void viewEl.offsetWidth; viewEl.classList.add("swap"); }
@@ -1500,10 +1537,9 @@
     viewTitle.textContent = v.title; viewTools.replaceChildren();
     viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
     viewBody.scrollTop = 0;
-    if (v.soon) { viewBody.innerHTML = `<div class="vcard"><h2>${escape(v.title)}</h2><p style="margin:0 0 10px">Next increment: ${escape(v.soon)}.</p><a class="link-btn" href="/${name === "messages" ? "bbs-messages" : name}">Open in classic v1 →</a></div>`; return; }
     try { await v.render(arg); if (v.seq === S.viewSeq) countUp(); } catch (e) { if (v.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
   }
-  function closeView() { document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
+  function closeView() { if (S.mini) { try { S.mini.remove(); } catch (e) {} S.mini = null; } document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   // Some sidebar entries are ACTIONS on the Home map, not places. They run, then the URL
   // is put back to #/ so what the address bar says always matches what's on screen.
   function actionDone() { history.replaceState(null, "", location.pathname + location.search + "#/"); setNav("home"); }

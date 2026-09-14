@@ -374,6 +374,17 @@ def node_detail(state: State, db_path: str, nid: str, hours: float = 24.0, now: 
         node = dict(node)
         samples = {s["ts"]: dict(s) for s in state.signal.get(nid, ()) if s["ts"] >= since}
         packets = [p for p in state.packets if p["from"] == nid][-30:]
+        links = []
+        for l in state.links.values():
+            if nid not in (l["a"], l["b"]):
+                continue
+            other = l["b"] if l["a"] == nid else l["a"]
+            o = state.roster.get(other, {})
+            links.append({"id": other, "name": o.get("short_name") or other[-4:], "kind": l["kind"], "snr": l.get("snr"),
+                          "count": l.get("count"), "last": l.get("last"), "position": o.get("position"), "transport": o.get("transport")})
+        links.sort(key=lambda x: -(x.get("last") or 0))
+        base = state.roster.get(state.my_id or "", {})
+        base = {"id": state.my_id, "name": base.get("short_name") or "Den", "position": base.get("position")} if state.my_id else None
     telemetry: List[Dict[str, Any]] = []
     if os.path.exists(db_path):
         try:
@@ -398,8 +409,8 @@ def node_detail(state: State, db_path: str, nid: str, hours: float = 24.0, now: 
         except sqlite3.Error as e:
             log.warning("node_detail db: %s", e)
     signal = sorted(samples.values(), key=lambda s: s["ts"])
-    return {"node": node, "since": since, "signal": signal, "telemetry": telemetry, "packets": packets,
-            "counts": {"signal": len(signal), "telemetry": len(telemetry), "packets_24h": len(packets)}}
+    return {"node": node, "since": since, "signal": signal, "telemetry": telemetry, "packets": packets, "links": links, "base": base,
+            "counts": {"signal": len(signal), "telemetry": len(telemetry), "packets_24h": len(packets), "links": len(links)}}
 
 
 HISTORY_KINDS = ("text", "telemetry", "position", "neighbors")

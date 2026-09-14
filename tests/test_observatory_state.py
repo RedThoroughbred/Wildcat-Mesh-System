@@ -211,3 +211,17 @@ def test_persisted_evidence_is_folded_in_at_startup():
     stay, d = s.roster["!a0388880"], s.roster["!0000000d"]
     assert stay["transport"] == "rf" and stay["rf_count"] == 12 and stay["last_rf"] == 800
     assert d["transport"] == "mqtt" and d["last_heard"] == 700 and d["short_name"] == "000d"
+
+
+def test_node_detail_carries_links_with_the_far_ends_position(tmp_path):
+    from wildcat.observatory.bridge import node_detail
+    s = fresh()
+    s.apply_packet(env("text", "!a0388880", text="hi"), now=2000)                                       # STAY heard direct → link STAY↔base
+    s.apply_packet(env("neighbors", "!a0388880", neighbors=[{"id": "!0000000c", "snr": 3.5}], rx={"time": 1, "snr": 5, "rssi": -80, "hops": 1}), now=2100)
+    d = node_detail(s, str(tmp_path / "none.db"), "!a0388880", now=2200)
+    ids = {l["id"]: l for l in d["links"]}
+    assert set(ids) == {BASE, "!0000000c"}
+    assert ids[BASE]["kind"] == "direct" and ids[BASE]["position"] == {"lat": 38.88, "lon": -84.62, "alt": 278} and ids[BASE]["name"] == "6b18"
+    assert ids["!0000000c"]["kind"] == "neighbor" and ids["!0000000c"]["snr"] == 3.5 and ids["!0000000c"]["position"] is None
+    assert d["base"]["id"] == BASE and d["base"]["position"]["lat"] == 38.88 and d["counts"]["links"] == 2
+    assert node_detail(s, str(tmp_path / "none.db"), BASE, now=2200)["links"][0]["id"] == "!a0388880"
