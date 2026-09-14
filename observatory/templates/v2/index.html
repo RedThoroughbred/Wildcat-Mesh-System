@@ -33,21 +33,21 @@
     </a>
   </div>
   <div class="stats">
-    <div class="stat"><span class="v" id="s-heard">–</span><span class="l">heard 1h</span></div>
-    <div class="stat"><span class="v" id="s-map">–</span><span class="l">on map</span></div>
-    <div class="stat"><span class="v" id="s-nodes">–</span><span class="l">nodes</span></div>
-    <div class="stat"><span class="v" id="s-rate">–</span><span class="l">pkts/min</span><svg class="spark-mini" id="s-rate-spark" viewBox="0 0 60 14" preserveAspectRatio="none" aria-hidden="true"></svg></div>
-    <div class="stat"><span class="v" id="s-util">–</span><span class="l">ch util</span></div>
+    <div class="stat" title="nodes the Den has heard in the last hour"><span class="v" id="s-heard">–</span><span class="l">heard 1h</span></div>
+    <div class="stat" title="nodes with a position, drawn on the map"><span class="v" id="s-map">–</span><span class="l">on map</span></div>
+    <div class="stat" title="every node the Den knows about, heard or not"><span class="v" id="s-nodes">–</span><span class="l">nodes</span></div>
+    <div class="stat" title="packets received in the last minute"><span class="v" id="s-rate">–</span><span class="l">pkts/min</span><svg class="spark-mini" id="s-rate-spark" viewBox="0 0 60 14" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+    <div class="stat" title="the Den radio's channel utilization — above 25% the air is crowded"><span class="v" id="s-util">–</span><span class="l">ch util</span></div>
   </div>
   <div class="status" id="status" title="bus / radio status">
     <span class="dot" id="dot-bus"></span><span id="status-text">connecting…</span>
   </div>
   <div class="tools">
     <button class="tool sos-btn op-only" id="sos-btn" title="Emergency broadcast (SOS)" aria-label="emergency broadcast">🆘</button>
-    <button class="tool alert-btn" id="alerts" title="mesh health" hidden><span id="alerts-n">0</span></button>
+    <button class="tool alert-btn" id="alerts" title="mesh health alerts" aria-label="mesh health alerts" hidden><span id="alerts-n">0</span></button>
     <button class="tool compose-btn" id="compose-btn" title="Compose a message (c)" aria-label="compose a message">✎</button>
     <button class="tool" id="palette-btn" title="Find a node (⌘K or /)" aria-label="find a node">⌕</button>
-    <button class="tool" id="sound" title="Chime on new messages (off)" aria-pressed="false">🔕</button>
+    <button class="tool" id="sound" title="Chime on new messages (off)" aria-label="chime on new messages" aria-pressed="false">🔕</button>
     <button class="tool" id="share" title="Copy a read-only public link" aria-label="copy public link">⇗</button>
     <span class="public-badge" title="Read-only public view">public view</span>
   </div>
@@ -70,6 +70,7 @@
   </div>
 </section>
 <div class="glass sos-banner" id="sos-banner" hidden role="alert"><span class="sos-pulse"></span><span class="sos-banner-text" id="sos-banner-text">🆘 SOS active</span><button class="link-btn op-only" id="sos-stop">Stop</button><button class="close" id="sos-dismiss" aria-label="dismiss" hidden>×</button></div>
+<div class="glass offline-bar" id="offline" hidden role="status"><span class="hb-dot"></span><span>Connection to the Den lost — reconnecting…</span></div>
 <div class="glass health-bar" id="health-bar" hidden><span class="hb-dot"></span><span id="health-bar-text"></span><a href="#/health" class="link-btn">details</a></div>
 
 <section class="glass compose" id="compose" hidden aria-label="compose a message">

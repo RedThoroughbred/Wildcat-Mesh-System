@@ -127,3 +127,17 @@ def test_ui_scales_from_one_root_font_size():
     assert len(re.findall(r"font-size: \d+(?:\.\d+)?px", CSS)) <= 3     # type is rem-based so the whole UI scales together
     assert "function miniMap" in APP and 'id="minimap"' in APP and "minimap-empty" in APP
     assert "Open in classic v1" not in APP                                 # v2 never links out to v1
+
+
+# --- polish pass -----------------------------------------------------------------
+
+def test_polish_accessibility_and_phone_guards():
+    assert 'aria-label="chime on new messages"' in HTML and 'aria-label="mesh health alerts"' in HTML
+    assert HTML.count('<div class="stat" title=') == 5                     # every topbar stat explains itself
+    assert 'id="offline"' in HTML and 'sock.on("connect", () => { $("offline").hidden = true; })' in APP
+    assert 'el.tabIndex = 0; el.setAttribute("role", "button")' in APP       # feed cards reachable by keyboard
+    assert "prefers-reduced-motion: reduce" in CSS and ":focus-visible { outline: 2px solid var(--terracotta)" in CSS
+    assert 'id="view-retry"' in APP                                           # a failed view offers a retry
+    assert re.search(r"@media \(max-width: 760px\) \{[^@]*\.sidebar a\[data-view=\"replay\"\] \{ display: none; \}", CSS)
+    assert 'window.innerWidth <= 760) { toast("Replay needs a wider screen' in APP
+    assert "internet-only node — it has never been heard on your radio" in APP

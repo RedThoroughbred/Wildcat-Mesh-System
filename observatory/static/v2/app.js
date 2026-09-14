@@ -158,7 +158,7 @@
   const list = $("feed-list");
   let addPacket = function (p, fresh) {
     const el = document.createElement("div");
-    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : "") + (p.sos ? " sos" : ""); el.dataset.kind = p.kind; if (p.via_mqtt === true) el.dataset.via = "mqtt"; else if (p.via_mqtt === false) el.dataset.via = "rf"; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
+    el.className = "pkt" + (fresh ? " fresh" : "") + (p.sent ? " sent" : "") + (p.sos ? " sos" : ""); el.dataset.kind = p.kind; el.tabIndex = 0; el.setAttribute("role", "button"); if (p.via_mqtt === true) el.dataset.via = "mqtt"; else if (p.via_mqtt === false) el.dataset.via = "rf"; if (p.tx_id) el.dataset.tx = p.tx_id; el._pkt = p; el.title = "open " + (p.sent ? (p.to_name || p.to || "") : (p.from_name || p.from));
     const to = p.broadcast ? '<span class="to">→ all</span>' : p.to ? `<span class="to">→ ${escape(p.to_name || p.to.slice(-4))}</span>` : "";
     const snr = p.snr != null ? `<span class="snr ${snrClass(p.snr)}">${p.snr.toFixed(1)} dB</span>` : "";
     const rssi = p.rssi != null ? `<span>${p.rssi} dBm</span>` : "";
@@ -173,6 +173,7 @@
     while (list.children.length > 150) list.lastChild.remove();
   };
   // tapping a feed card opens that node (map card if it has a fix, else its page)
+  list.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("pkt")) { e.preventDefault(); e.target.click(); } });
   list.addEventListener("click", (e) => {
     const el = e.target.closest(".pkt"); if (!el || e.target.closest(".state")) return;
     const p = el._pkt; if (!p || !p.from) return;
@@ -437,14 +438,15 @@
   sock.on("tx", applyTx);
   sock.on("roster", (r) => { S.myId = r.my_id || S.myId; for (const id in r.roster) upsertNode(r.roster[id]); refreshLinks(); refreshStats(); fitOnce(); });
   sock.on("status", (s) => { S.myId = s.my_id || S.myId; setStatus(s.bus, s.meshd); });
-  sock.on("disconnect", () => setStatus(false, null));
+  sock.on("disconnect", () => { setStatus(false, null); $("offline").hidden = false; });
+  sock.on("connect", () => { $("offline").hidden = true; });
   setInterval(() => { refreshAges(); refreshLinks(); refreshTimes(); refreshStats(); if (S.selected) showCard(S.selected); }, 15000);
 
   // ---------------------------------------------------------------- public view + share
   const PUBLIC = document.body.dataset.public === "yes";
   // writes answer 401 when an operator token is configured and this device hasn't presented it
   (() => { const raw = window.fetch; let told = 0; window.fetch = async function (u, o) { const r = await raw.apply(this, arguments); try { if (r.status === 401 && o && /post|patch|delete/i.test(o.method || "") && Date.now() - told > 8000) { told = Date.now(); toast("Operator token required — open /v2/?token=… once on this device", "err"); } } catch (e) {} return r; }; })();
-  function toast(msg, kind) { const t = document.createElement("div"); t.className = "toast" + (kind ? " " + kind : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), kind === "err" ? 4200 : 2600); }
+  function toast(msg, kind) { const t = document.createElement("div"); t.className = "toast" + (kind ? " " + kind : ""); t.setAttribute("role", "status"); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), kind === "err" ? 4200 : kind === "long" ? 7000 : 2600); }
   async function sharePublic() {
     const url = API ? API + "/v2/public" : new URL("public", location.href).href;
     try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
@@ -472,6 +474,7 @@
   function setTo(id) {
     const n = S.roster[id] || { id, short_name: id.slice(-4) }; C.to = id;
     $("to-name").textContent = name(n); $("to-id").textContent = id; $("to-chip").querySelector(".nd").className = "nd " + ageClass(n);
+
     $("to-chip").hidden = false; toIn.parentElement.hidden = true; toList.hidden = true; setMode("dm"); validate();
   }
   function clearTo() { C.to = null; $("to-chip").hidden = true; toIn.parentElement.hidden = false; toIn.value = ""; validate(); toIn.focus(); }
@@ -493,7 +496,9 @@
   function validate() {
     const b = bytes(cText.value), ok = b > 0 && b <= 200 && (C.mode === "bc" || !!C.to);
     $("compose-count").textContent = `${b} / 200`; $("compose-count").classList.toggle("over", b > 200);
-    $("compose-path").textContent = C.mode === "bc" ? "via meshd · broadcast · no ACK" : "via meshd · paced · ACK requested";
+    const mq = C.mode !== "bc" && C.to && (S.roster[C.to] || {}).transport === "mqtt";
+    $("compose-path").textContent = mq ? "☁ internet-only node — it has never been heard on your radio, so a DM over the air probably won't reach it" : C.mode === "bc" ? "via meshd · broadcast · no ACK" : "via meshd · paced · ACK requested";
+    $("compose-path").classList.toggle("warn", !!mq);
     cSend.disabled = !ok;
   }
   cText.addEventListener("input", validate);
@@ -841,7 +846,7 @@
   palList.addEventListener("click", (e) => { const el = e.target.closest(".pal"); if (el) palGo(+el.dataset.i); });
   pal.addEventListener("click", (e) => { if (e.target === pal) palClose(); });
   $("palette-btn").addEventListener("click", palOpen);
-  document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape") { if (!pal.hidden) palClose(); else if (document.body.classList.contains("viewing")) location.hash = "#/"; else if (!$("card").hidden) $("card-close").click(); } });
+  document.addEventListener("keydown", (e) => { const typing = /input|textarea|select/i.test((e.target.tagName || "")); if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); toast("Keyboard\n⌘K or /  find a node\nc  compose a message\nEsc  close · back to the map\n?  this list", "long"); return; } if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.hidden ? palOpen() : palClose(); } else if (e.key === "/" && !typing) { e.preventDefault(); palOpen(); } else if (e.key === "Escape") { if (!pal.hidden) palClose(); else if (document.body.classList.contains("viewing")) location.hash = "#/"; else if (!$("card").hidden) $("card-close").click(); } });
   document.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr.row")) { e.preventDefault(); e.target.click(); } });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "?" || /input|textarea|select/i.test(e.target.tagName || "")) return;
@@ -1537,7 +1542,7 @@
     viewTitle.textContent = v.title; viewTools.replaceChildren();
     viewBody.innerHTML = '<div class="skel"><div class="row"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div><div class="k tall"></div><div class="row"><div class="k tall"></div><div class="k tall"></div></div></div>';
     viewBody.scrollTop = 0;
-    try { await v.render(arg); if (v.seq === S.viewSeq) countUp(); } catch (e) { if (v.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="empty">could not load this view<br><span style="font-size:11px">${escape(e.message || e)}</span></div>`; toast("Couldn't load " + v.title, "err"); }
+    try { await v.render(arg); if (v.seq === S.viewSeq) countUp(); } catch (e) { if (v.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="view-error"><b>Couldn't load ${escape(v.title)}</b><span>${escape(e.message || e)}</span><span>The Den may be restarting, or the browser lost the network.</span><button class="link-btn" id="view-retry">Try again</button></div>`; const rb = $("view-retry"); if (rb) rb.onclick = () => route(); toast("Couldn't load " + v.title, "err"); }
   }
   function closeView() { if (S.mini) { try { S.mini.remove(); } catch (e) {} S.mini = null; } document.body.classList.remove("viewing"); viewEl.hidden = true; setNav("home"); setTimeout(() => { map.invalidateSize(); pollHealth(); }, 50); }
   // Some sidebar entries are ACTIONS on the Home map, not places. They run, then the URL
@@ -1548,7 +1553,7 @@
     const name = m ? m[1] : "home", arg = m && m[2] ? decodeURIComponent(m[2]) : null;
     if (name === "home" || h === "#/" || h === "#") { closeView(); return; }
     if (name === "coverage") { closeView(); if (!$("cov-on").checked) { $("cov-on").checked = true; setCoverage(true); } toast("Coverage layer on"); actionDone(); return; }
-    if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast("Replay isn't available in the public view"); return; } if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
+    if (name === "replay") { closeView(); actionDone(); if (PUBLIC) { toast("Replay isn't available in the public view"); return; } if (window.innerWidth <= 760) { toast("Replay needs a wider screen — the timeline lives below the map on tablets and desktops"); return; } if (!document.body.classList.contains("replaying")) { if (TL.events.length) tlEnterReplay(0); else { TL.autoplay = true; tlLoad(); } } return; }
     if (name === "cat") { closeView(); actionDone(); document.querySelector('.ftab[data-tab="cat"]').click(); return; }
     if (!VIEWS[name]) { toast("No such page: " + name, "err"); location.replace(location.pathname + location.search + "#/"); return; }
     showView(name, arg);
