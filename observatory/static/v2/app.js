@@ -402,11 +402,13 @@
   // ---------------------------------------------------------------- public view + share
   const PUBLIC = document.body.dataset.public === "yes";
   function toast(msg, kind) { const t = document.createElement("div"); t.className = "toast" + (kind ? " " + kind : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), kind === "err" ? 4200 : 2600); }
-  $("share").addEventListener("click", async () => {
+  async function sharePublic() {
     const url = API ? API + "/v2/public" : new URL("public", location.href).href;
     try { await navigator.clipboard.writeText(url); toast("Public link copied: " + url); }
     catch (e) { prompt("Read-only public link:", url); }
-  });
+  }
+  $("share").addEventListener("click", sharePublic);
+  $("sb-share").addEventListener("click", () => { sharePublic(); if (typeof openDrawer === "function") openDrawer(false); });
 
   // ---------------------------------------------------------------- operator console: compose & send
   const C = { mode: "dm", to: null, sends: new Map(), open: false };
@@ -653,8 +655,9 @@
     try {
       const h = await (await fetch("api/health-report")).json();
       const n = h.counts.alerts, btn = $("alerts"), bar = $("health-bar");
-      btn.hidden = !n; $("alerts-n").textContent = n; btn.classList.toggle("crit", h.level === "crit"); btn.onclick = () => { location.hash = "#/health"; };
-      const nb = $("nav-alerts"); nb.hidden = !n; nb.textContent = n;
+      const label = n > 9 ? "9+" : String(n);
+      btn.hidden = !n; $("alerts-n").textContent = label; btn.title = `${n} alert${n === 1 ? "" : "s"} — mesh health`; btn.classList.toggle("crit", h.level === "crit"); btn.onclick = () => { location.hash = "#/health"; };
+      const nb = $("nav-alerts"); nb.hidden = !n; nb.textContent = label;
       const g = h.gauges || {};
       if (n && !document.body.classList.contains("viewing") && !PUBLIC && window.innerWidth > 760) {
         bar.hidden = false; bar.classList.toggle("crit", h.level === "crit");

@@ -60,3 +60,23 @@ def test_brand_is_a_home_link_and_nav_entries_have_titles():
     assert 'class="brand-link"' in HTML and 'href="#/"' in HTML
     for view in ("nodes", "channels", "messages", "propagation", "topology", "health", "admin", "api", "dashboard"):
         assert re.search(rf'data-view="{view}"[^>]*title="', HTML), view
+
+# --- QA finding 10: phone header -------------------------------------------
+
+def test_phone_header_badge_sizes_to_its_count():
+    # the mobile `.tool { width: 30px }` rule must not clamp the alert badge
+    assert re.search(r"\.tool\.alert-btn\s*\{[^}]*width:\s*auto", CSS)
+    assert re.search(r"\.alert-btn\s*\{[^}]*white-space:\s*nowrap", CSS)
+    # the count is capped so the badge never grows past two glyphs
+    assert 'n > 9 ? "9+" : String(n)' in APP
+
+
+def test_phone_header_is_one_row_with_share_in_the_drawer():
+    mobile = CSS[CSS.index("@media (max-width: 760px)"):]
+    assert re.search(r"\.tools\s*\{[^}]*margin-left:\s*auto", mobile)
+    assert re.search(r"\.tools #share\s*\{\s*display:\s*none", mobile)
+    assert 'id="sb-share"' in HTML
+    assert 'on($("sb-share"), "click", sharePublic)' in APP or '$("sb-share")' in APP
+    # the drawer button is hidden on desktop and in the public view
+    assert re.search(r"^\.sb-share\s*\{\s*display:\s*none", CSS, re.M)
+    assert re.search(r"body\.public \.sb-share\s*\{\s*display:\s*none", CSS)

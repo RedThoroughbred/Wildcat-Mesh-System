@@ -602,3 +602,28 @@ body.following .follow-flag { display: block; }
 .an-form .send { padding: 7px 14px; }
 .an-hints { display: flex; gap: 4px; flex-wrap: wrap; }
 .an-hints .chip { font-size: 11px; }
+
+
+/* =====================================================================================
+   QA finding 10 — phone header: one balanced row, alert badge sized to its number
+   ===================================================================================== */
+.alert-btn { width: auto; min-width: 36px; padding: 0 9px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.alert-btn::before { content: "⚠"; margin: 0; }
+.sb-share { display: none; }
+@media (max-width: 760px) {
+  /* Row 1: ☰ · mark · name · dot ……… tools (no wrap, no dead space); Row 2: the stat strip */
+  .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 8px; }
+  .brand { flex: 1 1 auto; min-width: 0; gap: 8px; }
+  .brand .brand-link { gap: 8px; }
+  .brand .title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { order: 0; flex: none; margin-left: -2px; }
+  .tools { order: 0; flex: none; margin-left: auto; gap: 4px; }
+  .tool { width: 30px; height: 30px; font-size: 13px; }
+  .tool.alert-btn { width: auto; min-width: 32px; padding: 0 7px; font-size: 11px; }
+  .tools #share { display: none; }                         /* lives in the drawer on phones */
+  .install { order: 1; }
+  .stats { order: 3; }
+  .sb-share { display: flex; align-items: center; gap: 10px; padding: 12px; margin-top: 4px; border-top: 1px solid var(--line); color: var(--muted); font-weight: 600; font-size: 14px; background: none; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; text-align: left; cursor: pointer; }
+  body.public .sb-share { display: none; }
+}
+@media (max-width: 400px) { .brand .title { font-size: 13px; } .tool { width: 28px; height: 28px; } .menu-btn { width: 30px; height: 30px; } .mark { width: 22px; height: 22px; } }
