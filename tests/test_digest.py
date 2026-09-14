@@ -59,6 +59,15 @@ def test_gather_is_deterministic_and_complete(tmp_path):
         assert needle in text, needle
 
 
+def test_new_voices_need_history_older_than_the_window(tmp_path):
+    now = time.time()
+    d = db(tmp_path, now)
+    c = sqlite3.connect(d); c.execute("DELETE FROM message_logs WHERE timestamp < ?", (now - 86400,)); c.commit(); c.close()
+    f = D.gather(d, state(now), None, now=now)
+    assert f["history_predates_window"] is False and f["new_nodes"] == []      # a day-old database: nobody is 'new'
+    assert "New voices" not in D.facts_text(f)
+
+
 def test_gather_survives_a_missing_database(tmp_path):
     now = time.time()
     f = D.gather(str(tmp_path / "nope.db"), state(now), None, now=now)

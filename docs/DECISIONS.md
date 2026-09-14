@@ -336,3 +336,32 @@ restarts mid-SOS the repeats stop (the retained `wildcat/alert/sos` records what
 was last sent). Moving the repeater into meshd is the obvious hardening if the
 Den ever runs the Observatory on a different box than the radio.
 
+## D-026 · 2026-09-14 · The digest is prose over a fact sheet, and scheduled posts are a table, not a cron
+
+**Decision.** The daily digest is built in two visibly separate steps: a
+deterministic **fact sheet** (messages, senders, channels, new voices, went
+quiet, low battery, distress calls, bulletins, Bobcat questions, mesh health)
+and one tool-less `claude` CLI call that turns it into ~150 words. The facts are
+stored beside the prose and shown under it ("the facts it was written from"), so
+a reader can check any claim; when the CLI is unavailable the digest *is* the
+fact sheet, never an error. "New voices" is only computed once the database
+remembers a time before the window — a day-old Den would otherwise call every
+node new (it did, on the first live run).
+
+Scheduled posts (the daily digest → a board, fixed bulletins, one-packet
+broadcasts) are rows in a `schedules` table with a local `HH:MM` and optional
+weekdays, ticked every 30 s by the bridge's existing timer thread. Each run
+records `last_run`/`last_result` and computes the next slot strictly after now,
+so a missed slot (the Den was off) runs once at the next tick and never piles
+up; a job can never fire twice in one slot. Broadcast jobs are one packet at
+most once a day by construction — airtime discipline is in the schema.
+
+**Why not cron/systemd timers.** They would need shell access on the Pi, would
+not know the mesh state (health, roster) the digest needs, and would put the
+operator's schedule outside the dashboard where it is visible and editable.
+
+**Where bulletins go.** A digest or scheduled bulletin is inserted into the BBS's
+own `bulletins` table (same columns), so `[B]ulletins` on the mesh serves it;
+the BBS's node-to-node bulletin sync runs inside the BBS process and is not
+triggered from here — the post is read from THIS Den. The v1 BBS is untouched.
+

@@ -19,6 +19,7 @@ from typing import Any, Deque, Dict, List, Optional
 
 from ..config import WildcatConfig
 from .coverage import CoverageStore, coverage_point
+from .scheduler import Scheduler
 from .sos import SosController, is_distress
 
 log = logging.getLogger("wildcat.observatory")
@@ -471,6 +472,10 @@ class Bridge:
         self.bus: Any = None
         self.sos = SosController(sender=lambda msg, ch: self.send("^all", msg, ch, priority=0, sos=True),
                                  publish=self._on_sos, name_fn=self._my_name, position_fn=self._my_position)
+        self.health_fn: Any = None            # web.py sets this: () -> the health report dict (no Flask context needed)
+        self.scheduler = Scheduler(str(cfg.database.path), {
+            "digest_bulletin": self._job_digest_bulletin, "bulletin": self._job_bulletin, "broadcast": self._job_broadcast})
+        self._next_sched = 0.0
         self.started_at = time.time()
         self.coverage = CoverageStore(str(self.cfg.database.path))
 
@@ -593,12 +598,44 @@ class Bridge:
         self._emit("sos", st)
 
     def _sos_loop(self) -> None:
+        """The bridge's one timer thread: SOS repeats every second, scheduled posts every 30 s."""
         while True:
             time.sleep(1.0)
             try:
                 self.sos.tick()
             except Exception as e:
                 log.error("SOS repeat failed: %s", e)
+            now = time.time()
+            if now >= self._next_sched:
+                self._next_sched = now + 30
+                try:
+                    for r in self.scheduler.tick(now):
+                        log.info("scheduled %s: %s", r.get("name"), "ok" if r.get("ok") else r.get("error"))
+                        self._emit("schedule", r)
+                except Exception:
+                    log.exception("scheduler tick failed")
+
+    # ---- scheduled jobs ----------------------------------------------------------------
+    def _health(self) -> Optional[Dict[str, Any]]:
+        try:
+            return self.health_fn() if self.health_fn else None
+        except Exception:
+            return None
+
+    def _job_digest_bulletin(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        from ..brain import digest as DG
+        rec = DG.write(str(self.cfg.database.path), self.state, self.cfg.brain.cli_model, self.cfg.brain.cli_timeout,
+                       hours=int(p.get("hours") or 24), health=self._health(), source="schedule")
+        out = DG.post_bulletin(str(self.cfg.database.path), rec["id"], p.get("board") or "General", self._my_name())
+        return {"digest_id": rec["id"], "fallback": rec.get("fallback"), "cost_usd": rec.get("cost_usd"), **out}
+
+    def _job_bulletin(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        from ..brain import digest as DG
+        return DG.bbs_post(str(self.cfg.database.path), p.get("board") or "General", p.get("subject") or "", p.get("content") or "", self._my_name())
+
+    def _job_broadcast(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        rec = self.send("^all", p["text"], int(p.get("channel") or 0))
+        return {"tx_id": rec["id"]}
 
     def _record_outgoing(self, now: float, to_id: Optional[str], text: str, channel: int) -> None:
         """Mirror what the BBS does for its replies: log our outgoing text so the Messages

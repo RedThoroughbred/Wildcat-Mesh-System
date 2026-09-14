@@ -331,8 +331,8 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return jsonify({"bus": s.bus_connected, "meshd": s.meshd, "my_id": s.my_id, "uptime": _t.time() - bridge.started_at,
                         "packets_seen": s.total, "mqtt_enabled": bridge.cfg.mqtt.enabled, "units": units, "systemd": bool(units)})
 
-    @bp.route("/api/health-report")
-    def api_health_report():
+    def health_report():
+        """The mesh-health report as a dict (no request context needed — the scheduler uses it too)."""
         import time as _t
         from . import health as Hm
         from .bridge import history
@@ -342,9 +342,13 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             roster = {k: dict(v) for k, v in bridge.state.roster.items()}
             meshd, bus, my = dict(bridge.state.meshd), bridge.state.bus_connected, bridge.state.my_id
             last_ts = bridge.state.packets[-1]["ts"] if bridge.state.packets else None
-        rep = Hm.compute(now, my, roster, meshd, bus, Hm.rate_buckets([e["ts"] for e in events], now),
-                         Q.low_battery(_db()), Hm.regular_counts(events, now), last_ts)
-        return jsonify(rep)
+        return Hm.compute(now, my, roster, meshd, bus, Hm.rate_buckets([e["ts"] for e in events], now),
+                          Q.low_battery(_db()), Hm.regular_counts(events, now), last_ts)
+    bridge.health_fn = health_report
+
+    @bp.route("/api/health-report")
+    def api_health_report():
+        return jsonify(health_report())
 
     # ---- v2-native exports (no links out to v1) ----------------------------------------
     def _csv(rows, cols, filename):
@@ -506,17 +510,15 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             hours = max(1, min(168, int(body.get("hours", 24))))
         except (TypeError, ValueError):
             hours = 24
-        now = time.time()
         try:
-            rep = api_health_report().get_json()
+            rep = health_report()
         except Exception:
             rep = None
-        facts = DG.gather(_db(), bridge.state, rep, hours=hours, now=now)
-        rec = DG.summarize(facts, bridge.cfg.brain.cli_model, bridge.cfg.brain.cli_timeout)
         try:
-            rec["id"] = DG.save(_db(), rec, source=str(body.get("source") or "operator"))
+            rec = DG.write(_db(), bridge.state, bridge.cfg.brain.cli_model, bridge.cfg.brain.cli_timeout, hours=hours, health=rep,
+                           source=str(body.get("source") or "operator"))
         except Exception as e:
-            return jsonify({"error": f"digest written but not stored: {e}", **{k: v for k, v in rec.items() if k != "facts"}}), 500
+            return jsonify({"error": f"could not write the digest: {e}"}), 500
         return jsonify({"ok": True, **rec})
 
     @bp.route("/api/digest/<int:digest_id>/bulletin", methods=["POST"])
@@ -534,6 +536,63 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, **out})
+
+    # ---- scheduled posts (bulletins, broadcasts, the daily digest) ------------------------
+    @bp.route("/api/schedules")
+    def api_schedules():
+        from .scheduler import KINDS
+        try:
+            return jsonify({"schedules": bridge.scheduler.list(), "kinds": list(KINDS), "now": time.time(),
+                            "tz": time.strftime("%Z"), "public": False})
+        except Exception as e:
+            return jsonify({"error": str(e), "schedules": []}), 500
+
+    @bp.route("/api/schedules", methods=["POST"])
+    def api_schedules_add():
+        from flask import request
+        b = request.get_json(silent=True) or {}
+        try:
+            hh, mm = _hhmm(b.get("time"), b.get("hour"), b.get("minute"))
+            job = bridge.scheduler.add(str(b.get("kind") or ""), str(b.get("name") or ""), hh, mm, b.get("payload") or {},
+                                       days=b.get("days"), enabled=bool(b.get("enabled", True)))
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, **job})
+
+    @bp.route("/api/schedules/<int:sid>", methods=["PATCH"])
+    def api_schedules_edit(sid: int):
+        from flask import request
+        b = request.get_json(silent=True) or {}
+        fields = {k: b[k] for k in ("name", "enabled", "days", "payload") if k in b}
+        try:
+            if "time" in b or "hour" in b:
+                fields["hour"], fields["minute"] = _hhmm(b.get("time"), b.get("hour"), b.get("minute"))
+            job = bridge.scheduler.update(sid, **fields)
+        except KeyError:
+            return jsonify({"error": "no such schedule"}), 404
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, **job})
+
+    @bp.route("/api/schedules/<int:sid>", methods=["DELETE"])
+    def api_schedules_delete(sid: int):
+        return (jsonify({"ok": True}) if bridge.scheduler.remove(sid) else (jsonify({"error": "no such schedule"}), 404))
+
+    @bp.route("/api/schedules/<int:sid>/run", methods=["POST"])
+    def api_schedules_run(sid: int):
+        try:
+            res = bridge.scheduler.run(sid, manual=True)
+        except KeyError:
+            return jsonify({"error": "no such schedule"}), 404
+        return jsonify({"ok": bool(res.get("ok")), **res}), (200 if res.get("ok") else 500)
+
+    def _hhmm(t, h, m):
+        if isinstance(t, str) and ":" in t:
+            hh, mm = t.split(":", 1)
+            return int(hh), int(mm)
+        if h is None:
+            raise ValueError("time must be HH:MM")
+        return int(h), int(m or 0)
 
     @bp.route("/api/brain/status")
     def api_brain_status():

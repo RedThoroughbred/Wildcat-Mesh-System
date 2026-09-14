@@ -213,6 +213,14 @@ and flips it: the file is written first, then the running service. `?help` and
 `?status` are answered without a model (free). Design record: D-024.
 Run it: `wildcat brain` (systemd: `wildcat-brain.service`, part of `wildcat.target`).
 
+## 5d. Resilience & routine (built 2026-09-14)
+
+| Feature | Where | Notes |
+|---|---|---|
+| **Emergency / SOS broadcast** | red 🆘 in the topbar (operator) | `🆘 SOS from <Den>: … @ lat,lon [n/N]`, TX priority 0, optional repeats until stopped; two-tap arm/confirm; pulsing ACTIVE banner (public sees it, can't stop it); incoming SOS/MAYDAY/EMERGENCY glows red + alarm tone. D-025 |
+| **AI daily digest** | `#/digest` | Bobcat writes ~150 words from a stored fact sheet (one CLI call); post it to a BBS board; read-only in public. D-026 |
+| **Scheduled posts** | Digest page (daily digest → board) · Admin → Scheduled posts | daily `HH:MM` + weekdays: digest → board, fixed bulletins, one-packet broadcasts; pause / run now / delete. D-026 |
+
 ## 6. Roadmap (a) — Mobile: PWA now, native later
 
 **Now (shipped in this branch): an installable PWA.** `/v2` carries a web-app

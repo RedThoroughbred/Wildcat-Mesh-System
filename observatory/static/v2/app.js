@@ -1184,6 +1184,21 @@
             ${PUBLIC ? "" : `<div class="vcard"><h2>📢 Send to the mesh <span class="sel"><button class="link-btn" id="open-console">open the console ✎</button></span></h2><p style="margin:0 0 8px;color:var(--muted);font-size:12px">Goes out through meshd on <code style="font:12px var(--mono)">wildcat/tx</code>. Broadcasts reach everyone — keep it short and rare; every packet costs airtime.</p>
               <div style="display:flex;gap:6px;flex-wrap:wrap"><select class="vsearch" id="tx-to" style="min-width:120px"><option value="^all">Broadcast (all)</option>${Object.values(S.roster).filter(n => n.id !== S.myId && (now() - (n.last_heard || 0)) < 86400).sort((a, b) => (b.last_heard || 0) - (a.last_heard || 0)).slice(0, 40).map(n => `<option value="${escape(n.id)}">DM ${escape(name(n))}</option>`).join("")}</select>
               <input class="vsearch" id="tx-text" maxlength="200" placeholder="message (≤200 chars)" style="flex:1"><button class="link-btn" id="tx-send">Send</button></div><div id="tx-result" style="margin-top:6px;font-size:12px;color:var(--muted)"></div></div>`}
+            ${PUBLIC ? "" : `<div class="vcard" id="sched-card"><h2>🕖 Scheduled posts <span class="sel dim" id="sched-tz" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h2>
+              <div id="sched-list" class="dim" style="font-size:12px">loading…</div>
+              <details style="margin-top:8px"><summary class="dim" style="cursor:pointer;font-size:12px">Add a scheduled post</summary>
+                <div class="sched-form">
+                  <select class="vsearch" id="sc-kind" style="width:auto"><option value="bulletin">BBS bulletin</option><option value="broadcast">Radio broadcast (1 packet)</option><option value="digest_bulletin">Daily digest → board</option></select>
+                  <input class="vsearch" id="sc-name" placeholder="name" maxlength="60" style="width:140px">
+                  <label class="dim">at <input class="vsearch" id="sc-time" type="time" value="08:00" style="width:auto"></label>
+                  <span class="sc-days" id="sc-days">${["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d, i) => `<label><input type="checkbox" value="${i}" checked> ${d}</label>`).join("")}</span>
+                  <input class="vsearch" id="sc-board" placeholder="board (General)" maxlength="40" style="width:120px">
+                  <input class="vsearch" id="sc-subject" placeholder="subject" maxlength="80" style="width:160px">
+                  <input class="vsearch" id="sc-content" placeholder="content / broadcast text" maxlength="2000" style="flex:1;min-width:200px">
+                  <button class="link-btn" id="sc-add">Add</button><span class="dim" id="sc-status" style="font-size:12px"></span>
+                </div>
+                <p class="dim" style="margin:6px 0 0;font-size:11.5px;line-height:1.45">Bulletins land on this Den's BBS board (no radio traffic). Broadcasts go out over the air at that time, once — every packet costs everyone airtime, so keep them rare. Times are the Den's clock.</p>
+              </details></div>`}
             <div class="vcard"><h2>📥 Exports</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="link-btn" href="${A("api/export/nodes.csv")}">nodes.csv</a><a class="link-btn" href="${A("api/export/messages.csv")}">messages.csv (last 1000)</a><a class="link-btn" href="${A("api/export/coverage.csv")}">coverage.csv</a><a class="link-btn" href="${A("api/state")}" target="_blank">state.json</a></div></div>
             <div class="vcard"><h2>🔧 Services</h2>${sv.systemd ? `<table class="vt"><tbody>${Object.entries(sv.units).map(([u, st]) => unitRow(u, st)).join("")}</tbody></table>` : `<div style="font-size:13px;color:var(--muted)">No systemd on this host (dev Mac) — processes are run by hand; see <code style="font:12px var(--mono)">logs/</code>. On the Pi this lists wildcat-meshd / bbs / telemetry / observatory / mosquitto with restart buttons.</div>`}</div>
             <div class="vcard wide"><h2>📜 Live logs <span class="sel" id="log-types"></span></h2><div class="twrap" id="log-table" style="max-height:340px"></div></div>
@@ -1201,6 +1216,36 @@
             <div class="vcard"><h2>✏️ BBS content <span class="sel" id="content-tabs"></span></h2><textarea id="content-text" class="vsearch" style="width:100%;min-height:240px;font:12px var(--mono);resize:vertical" ${PUBLIC ? "readonly" : ""}></textarea><div style="display:flex;gap:8px;align-items:center;margin-top:6px">${PUBLIC ? "" : '<button class="link-btn" id="content-save">Save (keeps a .bak)</button>'}<span id="content-status" style="color:var(--muted);font-size:12px"></span></div></div>
           </div>`;
         const oc = $("open-console"); if (oc) oc.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(), 60); };
+        if ($("sched-card")) {
+          const paintSched = async () => {
+            let sc; try { sc = await (await fetch("api/schedules")).json(); } catch (e) { sc = { schedules: [], error: "unreachable" }; }
+            if (self.seq !== S.viewSeq && this.seq !== S.viewSeq) return;
+            const el = $("sched-list"); if (!el) return;
+            $("sched-tz").textContent = sc.tz ? `Den clock: ${sc.tz}` : "";
+            const kindLabel = { bulletin: "bulletin", broadcast: "broadcast", digest_bulletin: "daily digest" };
+            const dayNames = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+            el.innerHTML = (sc.schedules || []).length ? `<table class="vt"><thead><tr><th>job</th><th>when</th><th>what</th><th>last</th><th></th></tr></thead><tbody>${sc.schedules.map(j => `<tr class="${j.enabled ? "" : "off"}">
+              <td><b>${escape(j.name)}</b><br><span class="dim">${kindLabel[j.kind] || escape(j.kind)}</span></td>
+              <td>${String(j.hour).padStart(2, "0")}:${String(j.minute).padStart(2, "0")} ${j.days ? j.days.map(d => dayNames[d]).join("") : "daily"}<br><span class="dim">${j.enabled ? "next " + new Date(j.next_run * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}</span></td>
+              <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escape(JSON.stringify(j.payload))}">${j.kind === "broadcast" ? "ch" + j.payload.channel + " · " + escape(j.payload.text) : "[" + escape(j.payload.board) + "] " + escape(j.payload.subject || (j.kind === "digest_bulletin" ? "last " + j.payload.hours + " h" : ""))}</td>
+              <td class="dim">${j.last_run ? ago(j.last_run) + (j.last_result && j.last_result.ok === false ? ' <span style="color:#ff8a8a">failed</span>' : "") : "—"}</td>
+              <td style="white-space:nowrap"><button class="link-btn sc-toggle" data-id="${j.id}" data-on="${j.enabled ? 0 : 1}">${j.enabled ? "pause" : "resume"}</button> <button class="link-btn sc-run" data-id="${j.id}">run now</button> <button class="link-btn sc-del" data-id="${j.id}">delete</button></td></tr>`).join("")}</tbody></table>`
+              : "nothing scheduled";
+            el.querySelectorAll(".sc-toggle").forEach(b => b.onclick = async () => { await fetch(`api/schedules/${b.dataset.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: b.dataset.on === "1" }) }); paintSched(); });
+            el.querySelectorAll(".sc-del").forEach(b => b.onclick = async () => { if (!confirm("Delete this scheduled post?")) return; await fetch(`api/schedules/${b.dataset.id}`, { method: "DELETE" }); paintSched(); });
+            el.querySelectorAll(".sc-run").forEach(b => b.onclick = async () => { if (!confirm("Run this job now?")) return; b.disabled = true; const r = await fetch(`api/schedules/${b.dataset.id}/run`, { method: "POST" }); const j = await r.json(); toast(j.ok ? "ran" : (j.error || "failed"), j.ok ? "ok" : "err"); paintSched(); });
+          };
+          paintSched();
+          const kindSel = $("sc-kind"); const syncForm = () => { const k = kindSel.value; $("sc-subject").hidden = k !== "bulletin"; $("sc-board").hidden = k === "broadcast"; $("sc-content").placeholder = k === "broadcast" ? "broadcast text (≤ 200 bytes)" : k === "bulletin" ? "bulletin content" : "(the digest is written automatically)"; $("sc-content").hidden = k === "digest_bulletin"; };
+          kindSel.onchange = syncForm; syncForm();
+          $("sc-add").onclick = async () => {
+            const k = kindSel.value, days = [...$("sc-days").querySelectorAll("input:checked")].map(i => +i.value);
+            const payload = k === "broadcast" ? { text: $("sc-content").value, channel: 0 } : k === "bulletin" ? { board: $("sc-board").value || "General", subject: $("sc-subject").value, content: $("sc-content").value } : { board: $("sc-board").value || "Digest", hours: 24 };
+            const body = { kind: k, name: $("sc-name").value, time: $("sc-time").value, days: days.length === 7 ? null : days, payload };
+            const r = await fetch("api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json();
+            $("sc-status").textContent = r.ok ? "added" : (j.error || "failed"); if (r.ok) { $("sc-content").value = ""; $("sc-subject").value = ""; paintSched(); }
+          };
+        }
         // send
         const send = $("tx-send"); if (send) send.onclick = async () => { const text = $("tx-text").value.trim(); if (!text) return; send.disabled = true;
           try { const r = await fetch("api/tx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: $("tx-to").value, text }) }); const j = await r.json();
@@ -1267,6 +1312,11 @@
           ["GET", "api/health-report", "mesh health: gauges, packets/min buckets, alerts, quiet nodes, low battery"],
           ["GET", "api/export/nodes.csv", "CSV exports: nodes · messages · coverage"],
           ["POST", "api/tx", '{"to": "^all" | "!nodeid", "text": "…"} → queued on wildcat/tx'],
+          ["GET/POST/DELETE", "api/sos", 'the emergency broadcast: status · start {"text", "repeat", "interval", "channel"} · stop'],
+          ["GET/POST", "api/digest", "stored digests · write one now {\"hours\"} (claude CLI; facts-only fallback)"],
+          ["POST", "api/digest/<id>/bulletin", '{"board"} → post a digest to the BBS bulletins'],
+          ["GET/POST/PATCH/DELETE", "api/schedules", "scheduled posts: daily digest → board, bulletins, broadcasts (+ /<id>/run)"],
+          ["GET/POST", "api/brain/status · api/brain/responder", "Bobcat: CLI + responder status · the on-air switch {\"enabled\"}"],
           ["POST", "api/content/fortunes", '{"text": "…"} → writes the BBS content file (keeps .bak)'],
           ["POST", "api/restart", '{"unit": "wildcat-bbs"} → systemd restart (Pi only)'],
         ];
@@ -1315,8 +1365,47 @@
         if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           ${PUBLIC ? "" : `<div class="vcard" style="margin-bottom:12px"><h2>Write the digest <span class="sel"><label class="dim" style="text-transform:none;letter-spacing:0;font-weight:500">window <select class="vsearch" id="dg-hours" style="width:auto;padding:3px 6px"><option value="24">24 h</option><option value="48">48 h</option><option value="168">7 days</option></select></label><button class="send" id="dg-make"${d.enabled === false ? " disabled" : ""}>Write it now</button></span></h2>
             <p style="margin:0;color:var(--muted);font-size:12px;line-height:1.45">Bobcat gathers the facts (messages, who was new or quiet, battery, distress calls, bulletins, health) and writes ~150 words through the local claude CLI — <b>one call, a couple of cents, ~15 s</b>. The facts are stored with the prose so anyone can check it. Without the CLI you get the facts as plain text. ${d.enabled === false ? "<b>Disabled: [brain].analyst_enabled = false.</b>" : ""}<span id="dg-status" class="dim"></span></p></div>`}
+          ${PUBLIC ? "" : `<div class="vcard" id="dg-auto" style="margin-bottom:12px"><h2>Automatic daily digest <span class="sel dim" id="dg-auto-state" style="text-transform:none;letter-spacing:0;font-weight:500">loading…</span></h2>
+            <div class="sched-row"><label class="switch" title="post the digest every day"><input type="checkbox" id="dg-auto-on"><span class="knob"></span></label>
+              <label class="dim">at <input class="vsearch" id="dg-auto-time" type="time" value="07:00" style="width:auto"></label>
+              <label class="dim">to board <input class="vsearch" id="dg-auto-board" value="Digest" maxlength="40" style="width:110px"></label>
+              <label class="dim">window <select class="vsearch" id="dg-auto-hours" style="width:auto;padding:3px 6px"><option value="24">24 h</option><option value="48">48 h</option><option value="168">7 days</option></select></label>
+              <button class="link-btn" id="dg-auto-save">Save</button><button class="link-btn" id="dg-auto-run" hidden>Run now</button></div>
+            <p class="dim" style="margin:6px 0 0;font-size:12px;line-height:1.45">Every day at that time (the Den's clock) Bobcat writes the digest and posts it to the BBS board, where anyone on the mesh can read it. One claude CLI call a day (cents). Other scheduled posts live in <a href="#/admin">Admin → Scheduled posts</a>.</p></div>`}
           <div id="dg-list">${items.length ? items.map((x, i) => card(x, i === 0)).join("") : `<div class="vcard"><h2>No digest yet</h2><p class="dim" style="margin:0">${PUBLIC ? "The operator hasn't written one yet." : "Write the first one above — it takes about fifteen seconds."}</p></div>`}</div>`;
         if (PUBLIC) return;
+        // the automatic-digest card = the (single) digest_bulletin schedule
+        (async () => {
+          let sc; try { sc = await (await fetch("api/schedules")).json(); } catch (e) { sc = { schedules: [] }; }
+          if (seq !== S.viewSeq || !$("dg-auto")) return;
+          const job = (sc.schedules || []).find(j => j.kind === "digest_bulletin");
+          const st = $("dg-auto-state"), on = $("dg-auto-on"), tm = $("dg-auto-time"), bd = $("dg-auto-board"), hr = $("dg-auto-hours"), run = $("dg-auto-run");
+          const paint = (j) => {
+            if (!j) { st.textContent = "off — nothing scheduled"; on.checked = false; run.hidden = true; return; }
+            on.checked = j.enabled; tm.value = `${String(j.hour).padStart(2, "0")}:${String(j.minute).padStart(2, "0")}`; bd.value = j.payload.board || "Digest"; hr.value = String(j.payload.hours || 24); run.hidden = false;
+            const last = j.last_run ? `last ran ${ago(j.last_run)}${j.last_result && j.last_result.ok === false ? " (failed: " + j.last_result.error + ")" : ""}` : "never run yet";
+            st.textContent = (j.enabled ? `on · next ${new Date(j.next_run * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : "paused") + " · " + last;
+          };
+          paint(job);
+          let cur = job;
+          const save = async (enabledOverride) => {
+            const body = { kind: "digest_bulletin", name: "Daily digest", time: tm.value || "07:00", enabled: enabledOverride == null ? on.checked : enabledOverride, payload: { board: bd.value || "Digest", hours: +hr.value } };
+            try {
+              const r = await fetch(cur ? `api/schedules/${cur.id}` : "api/schedules", { method: cur ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+              const j = await r.json(); if (!r.ok) { toast(j.error || "could not save", "err"); return; }
+              cur = j; paint(cur); toast(cur.enabled ? `Daily digest on · ${tm.value} → ${cur.payload.board}` : "Daily digest paused", "ok");
+            } catch (e) { toast("could not save the schedule", "err"); }
+          };
+          $("dg-auto-save").addEventListener("click", () => save());
+          on.addEventListener("change", () => save(on.checked));
+          run.addEventListener("click", async () => {
+            if (!cur || !confirm(`Write the digest now and post it to "${cur.payload.board}"? (one claude CLI call)`)) return;
+            run.disabled = true; st.textContent = "running…";
+            try { const r = await fetch(`api/schedules/${cur.id}/run`, { method: "POST" }); const j = await r.json(); toast(j.ok ? `Posted to ${j.board}` : (j.error || "failed"), j.ok ? "ok" : "err"); }
+            catch (e) { toast("failed", "err"); }
+            if (seq === S.viewSeq) VIEWS.digest.render.call({ seq });
+          });
+        })();
         const mk = $("dg-make");
         if (mk) mk.addEventListener("click", async () => {
           mk.disabled = true; $("dg-status").textContent = " Gathering the facts and asking the model…";

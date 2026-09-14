@@ -64,8 +64,12 @@ def gather(db_path: str, state: Any, health: Optional[Dict[str, Any]] = None, ho
         f["top_senders"] = [{"name": r["short_name"], "id": r["id"], "n": r["message_count"]} for r in Q.top_senders(db_path, hours, 5)]
         f["channels"] = [{"channel": r["channel"], "n": r["count"]} for r in Q.channel_activity(db_path, hours)]
         stats = Q.node_stats(db_path)
+        # "new" only means something once the database remembers a time before the window;
+        # a day-old Den would otherwise call everyone a new voice. Never the Den itself.
+        oldest = (Q._one(db_path, "SELECT MIN(timestamp) t FROM message_logs") or {}).get("t")
+        f["history_predates_window"] = bool(oldest and oldest < since)
         f["new_nodes"] = [{"name": s.get("short_name") or nid[-4:], "id": nid, "first": _fmt_t(s.get("first_seen"))}
-                          for nid, s in stats.items() if (s.get("first_seen") or 0) >= since][:8]
+                          for nid, s in stats.items() if (s.get("first_seen") or 0) >= since and nid != my][:8] if f["history_predates_window"] else []
         f["low_battery"] = [{"id": r["id"], "name": roster.get(r["id"], {}).get("short_name") or str(r["id"])[-4:], "battery": r["battery"]}
                             for r in Q.low_battery(db_path, 25, 6)]
         f["distress"] = [{"from": r["sender_short_name"], "text": (r["message"] or "")[:120], "at": _fmt_t(r["timestamp"])} for r in
@@ -204,15 +208,12 @@ def get(db_path: str, digest_id: int) -> Optional[Dict[str, Any]]:
         return _row(r) if r else None
 
 
-def post_bulletin(db_path: str, digest_id: int, board: str, sender: str, subject: Optional[str] = None) -> Dict[str, Any]:
-    """Post a stored digest to the BBS's bulletins table (what `[B]ulletins` on the mesh
-    serves). No radio traffic: the BBS's node-to-node bulletin sync runs inside the BBS
-    process; a digest posted here is read from THIS Den."""
-    d = get(db_path, digest_id)
-    if not d:
-        raise KeyError("no such digest")
+def bbs_post(db_path: str, board: str, subject: str, content: str, sender: str, digest_id: Optional[int] = None) -> Dict[str, Any]:
+    """Insert a bulletin the way the BBS does (same table, same columns), so `[B]ulletins`
+    on the mesh serves it. No radio traffic: the BBS's node-to-node bulletin sync runs
+    inside the BBS process; a bulletin posted here is read from THIS Den."""
     board = (board or "General").strip()[:40] or "General"
-    subject = (subject or f"Mesh digest {time.strftime('%Y-%m-%d', time.localtime(d['generated_at']))}").strip()[:80]
+    subject = (subject or "").strip()[:80] or "(no subject)"
     uid = str(uuid.uuid4())
     conn = sqlite3.connect(db_path, timeout=3)
     try:
@@ -220,8 +221,9 @@ def post_bulletin(db_path: str, digest_id: int, board: str, sender: str, subject
         conn.execute("""CREATE TABLE IF NOT EXISTS bulletins (id INTEGER PRIMARY KEY AUTOINCREMENT, board TEXT NOT NULL,
                         sender_short_name TEXT NOT NULL, date TEXT NOT NULL, subject TEXT NOT NULL, content TEXT NOT NULL, unique_id TEXT NOT NULL)""")
         conn.execute("INSERT INTO bulletins (board, sender_short_name, date, subject, content, unique_id) VALUES (?,?,?,?,?,?)",
-                     (board, sender[:20] or "Den", time.strftime("%Y-%m-%d %H:%M"), subject, d["text"], uid))
-        conn.execute("UPDATE digests SET bulletin_id = ? WHERE id = ?", (uid, digest_id))
+                     (board, (sender or "Den")[:20], time.strftime("%Y-%m-%d %H:%M"), subject, content, uid))
+        if digest_id is not None:
+            conn.execute("UPDATE digests SET bulletin_id = ? WHERE id = ?", (uid, digest_id))
         conn.commit()
     except sqlite3.Error:
         conn.rollback()
@@ -229,3 +231,21 @@ def post_bulletin(db_path: str, digest_id: int, board: str, sender: str, subject
     finally:
         conn.close()
     return {"unique_id": uid, "board": board, "subject": subject, "digest_id": digest_id}
+
+
+def post_bulletin(db_path: str, digest_id: int, board: str, sender: str, subject: Optional[str] = None) -> Dict[str, Any]:
+    """Post a stored digest to the BBS bulletins (see bbs_post)."""
+    d = get(db_path, digest_id)
+    if not d:
+        raise KeyError("no such digest")
+    subject = (subject or f"Mesh digest {time.strftime('%Y-%m-%d', time.localtime(d['generated_at']))}").strip()[:80]
+    return bbs_post(db_path, board, subject, d["text"], sender, digest_id=digest_id)
+
+
+def write(db_path: str, state: Any, model: str, timeout: int, hours: int = 24, health: Optional[Dict[str, Any]] = None,
+          source: str = "operator", runner: Optional[Callable[..., Iterator[Dict[str, Any]]]] = None) -> Dict[str, Any]:
+    """gather → summarize → save, in one call (the route and the scheduler both use it)."""
+    facts = gather(db_path, state, health, hours=hours)
+    rec = summarize(facts, model, timeout, runner=runner)
+    rec["id"] = save(db_path, rec, source=source)
+    return rec

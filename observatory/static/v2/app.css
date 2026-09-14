@@ -697,3 +697,13 @@ body.following .follow-flag { display: block; }
 .digest-foot details { flex-basis: 100%; }
 .digest-foot summary { cursor: pointer; }
 .digest-facts { white-space: pre-wrap; font: 11.5px var(--mono); color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+
+/* ---- 🕖 scheduled posts ---- */
+.sched-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12px; }
+.sched-row .switch { margin-left: 0; }
+.sched-row input[type="time"] { padding: 4px 6px; font-size: 12px; }
+.sched-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; }
+.sched-form input[type="time"] { padding: 4px 6px; font-size: 12px; }
+.sc-days { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.sc-days label { display: inline-flex; align-items: center; gap: 2px; }
+.vt tr.off td { opacity: .55; }

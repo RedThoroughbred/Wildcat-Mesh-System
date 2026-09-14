@@ -230,3 +230,54 @@ def test_digest_routes_generate_store_and_post_as_bulletin(tmp_path, monkeypatch
     monkeypatch.setattr(bcli, "stream", dead_stream)
     j = cl.post("/v2/api/digest", json={}).get_json()
     assert j["fallback"] is True and j["text"].startswith("Window: last 24 h") and j["model"] is None
+
+
+def test_schedule_routes(tmp_path, monkeypatch):
+    import sqlite3
+    from wildcat.bus import MemoryBus
+    from wildcat.brain import cli as bcli
+    (tmp_path / "content").mkdir()
+    dbp = tmp_path / "b.db"
+    c = sqlite3.connect(dbp)
+    c.execute("CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, sender_short_name TEXT, to_id INTEGER, channel_index INTEGER, message TEXT, snr REAL, rssi INTEGER, hop_limit INTEGER)")
+    c.commit(); c.close()
+    cfg = build({"radio": {"type": "serial"}, "mqtt": {"enabled": True}, "bbs": {"source": "bus", "content_dir": str(tmp_path / "content")},
+                 "telemetry": {"source": "bus"}, "database": {"path": str(dbp)}})
+    app = flask.Flask("obs-test6", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    bridge.state.apply_roster({"my_id": "!9e766b18", "roster": {"!9e766b18": {"id": "!9e766b18", "short_name": "6b18"}}})
+    app.register_blueprint(create_blueprint(bridge, sio))
+    bus = MemoryBus(); bridge.bus = bus; bridge.wire(bus)
+    cl = app.test_client()
+    g = cl.get("/v2/api/schedules").get_json()
+    assert g["schedules"] == [] and "digest_bulletin" in g["kinds"]
+    assert cl.post("/v2/api/schedules", json={"kind": "broadcast", "time": "20:00", "payload": {"text": ""}}).status_code == 400
+    assert cl.post("/v2/api/schedules", json={"kind": "bulletin", "time": "7:00", "payload": {"board": "Net", "subject": "s", "content": "c"}}).status_code == 200
+    r = cl.post("/v2/api/schedules", json={"kind": "digest_bulletin", "name": "Morning digest", "time": "07:00", "payload": {"board": "Digest"}})
+    assert r.status_code == 200 and r.get_json()["payload"] == {"board": "Digest", "hours": 24}
+    did = r.get_json()["id"]
+    r = cl.post("/v2/api/schedules", json={"kind": "broadcast", "name": "Net call", "time": "19:55", "days": [1], "payload": {"text": "Net in 5 on ch0", "channel": 0}})
+    assert r.status_code == 200
+    bid = r.get_json()["id"]
+    assert len(cl.get("/v2/api/schedules").get_json()["schedules"]) == 3
+    r = cl.patch(f"/v2/api/schedules/{did}", json={"enabled": False, "time": "06:30"})
+    assert r.status_code == 200 and r.get_json()["enabled"] is False and r.get_json()["hour"] == 6 and r.get_json()["minute"] == 30
+    assert cl.patch("/v2/api/schedules/99", json={"enabled": True}).status_code == 404
+    # run now: the digest job writes + posts (CLI swapped for a script), the broadcast job sends on the bus
+    def fake_stream(prompt, system, model, timeout=120, max_budget_usd=0.5, binary=None):
+        yield {"type": "done", "text": "All quiet.", "cost_usd": 0.01, "ms": 1, "model": model, "is_error": False}
+    monkeypatch.setattr(bcli, "stream", fake_stream)
+    r = cl.post(f"/v2/api/schedules/{did}/run")
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json(); assert j["ok"] and j["manual"] and j["board"] == "Digest" and j["digest_id"] == 1
+    row = sqlite3.connect(dbp).execute("SELECT board, content, sender_short_name FROM bulletins").fetchone()
+    assert row == ("Digest", "All quiet.", "6b18")
+    assert cl.get("/v2/api/digest").get_json()["digests"][0]["source"] == "schedule"
+    r = cl.post(f"/v2/api/schedules/{bid}/run")
+    assert r.status_code == 200 and r.get_json()["tx_id"].startswith("obs-")
+    tx = [p for t, p in bus.published if t == "wildcat/tx"][-1]
+    assert tx["text"] == "Net in 5 on ch0" and tx["to"] == "^all"
+    job = next(s for s in cl.get("/v2/api/schedules").get_json()["schedules"] if s["id"] == bid)
+    assert job["last_result"]["ok"] is True and job["last_run"]
+    assert cl.delete(f"/v2/api/schedules/{bid}").status_code == 200 and cl.delete(f"/v2/api/schedules/{bid}").status_code == 404
