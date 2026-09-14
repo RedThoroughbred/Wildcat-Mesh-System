@@ -21,6 +21,7 @@ from ..config import WildcatConfig
 from .coverage import CoverageStore, coverage_point
 from .scheduler import Scheduler
 from .sos import SosController, is_distress
+from .transport import TransportStore, annotate as annotate_transport
 
 log = logging.getLogger("wildcat.observatory")
 
@@ -68,6 +69,15 @@ def summarize(env: Dict[str, Any]) -> str:
     return env.get("portnum") or k or "packet"
 
 
+_EVIDENCE_DEFAULTS = {"rf_count": 0, "mqtt_count": 0, "last_rf": None, "last_mqtt": None, "transport": None, "rf_heard": False}
+
+
+def _with_evidence_defaults(node: Dict[str, Any]) -> Dict[str, Any]:
+    for k, v in _EVIDENCE_DEFAULTS.items():
+        node.setdefault(k, v)
+    return node
+
+
 class State:
     def __init__(self, ring: int = 200, link_ttl: float = 6 * 3600) -> None:
         self.my_id: Optional[str] = None
@@ -103,7 +113,7 @@ class State:
                 merged = {**cur, **{k: v for k, v in entry.items() if v is not None}}
                 if entry.get("position") is None and cur.get("position"):
                     merged["position"] = cur["position"]
-                self.roster[nid] = merged
+                self.roster[nid] = annotate_transport(_with_evidence_defaults(merged))
 
     def apply_status(self, payload: Dict[str, Any]) -> None:
         with self.lock:
@@ -115,9 +125,31 @@ class State:
         n = self.roster.get(nid)
         if n is None:
             n = {"id": nid, "proto": None, "short_name": nid[-4:], "long_name": None, "hw": None, "role": None,
-                 "position": None, "hops_away": None, "snr": None, "battery": None, "voltage": None}
+                 "position": None, "hops_away": None, "snr": None, "battery": None, "voltage": None,
+                 "rf_count": 0, "mqtt_count": 0, "last_rf": None, "last_mqtt": None, "transport": None, "rf_heard": False}
             self.roster[nid] = n
         n["last_heard"] = now
+        return n
+
+    def apply_transport(self, rows: List[Dict[str, Any]]) -> int:
+        """Fold persisted RF/MQTT evidence (node_transport rows) into the roster at startup."""
+        n = 0
+        with self.lock:
+            for r in rows:
+                nid = r.get("node_id")
+                if not nid:
+                    continue
+                node = self.roster.get(nid)
+                if node is None:
+                    node = self._touch_node(nid, 0)
+                    node["last_heard"] = max(r.get("last_rf") or 0, r.get("last_mqtt") or 0) or None
+                node["rf_count"] = (node.get("rf_count") or 0) + (r.get("rf_count") or 0)
+                node["mqtt_count"] = (node.get("mqtt_count") or 0) + (r.get("mqtt_count") or 0)
+                for k in ("last_rf", "last_mqtt"):
+                    if r.get(k):
+                        node[k] = max(node.get(k) or 0, r[k])
+                annotate_transport(node)
+                n += 1
         return n
 
     def _link(self, a: str, b: str, snr: Optional[float], kind: str, now: float) -> Dict[str, Any]:
@@ -148,6 +180,16 @@ class State:
             node = self._touch_node(frm, now)
             if env.get("proto"):
                 node["proto"] = env["proto"]
+            via = rx.get("via_mqtt") if isinstance(rx.get("via_mqtt"), bool) else None
+            if via is True:
+                node["mqtt_count"] = (node.get("mqtt_count") or 0) + 1; node["last_mqtt"] = now
+            elif via is False:
+                node["rf_count"] = (node.get("rf_count") or 0) + 1; node["last_rf"] = now
+            annotate_transport(node)
+            if via is True:
+                # an internet-bridged packet says nothing about the radio path: no SNR sample,
+                # no hops, no inferred direct link — only that the node exists
+                rx = {k: v for k, v in rx.items() if k in ("time", "via_mqtt")}
             if rx.get("snr") is not None or rx.get("rssi") is not None:
                 ring = self.signal.get(frm)
                 if ring is None:
@@ -185,7 +227,7 @@ class State:
                 "from": frm, "from_name": node.get("short_name") or frm[-4:],
                 "to": to, "to_name": (self.roster.get(to, {}).get("short_name") if to else None),
                 "broadcast": bool(env.get("broadcast")), "channel": env.get("channel"),
-                "snr": rx.get("snr"), "rssi": rx.get("rssi"), "hops": rx.get("hops"),
+                "snr": rx.get("snr"), "rssi": rx.get("rssi"), "hops": rx.get("hops"), "via_mqtt": via,
                 "summary": summarize(env),
             }
             if kind == "text":
@@ -455,7 +497,7 @@ def seed_from_db(state: State, db_path: str) -> int:
             node = state.roster.setdefault(nid, {"id": nid, "proto": None, "short_name": r["short_name"] or nid[-4:],
                                                  "long_name": r["long_name"], "hw": r["hw_model"], "role": r["role"],
                                                  "hops_away": None, "snr": None, "battery": None, "voltage": None,
-                                                 "last_heard": r["timestamp"]})
+                                                 "last_heard": r["timestamp"], **_EVIDENCE_DEFAULTS})
             if not node.get("position"):
                 node["position"] = {"lat": r["latitude"], "lon": r["longitude"], "alt": r["altitude"]}
                 n += 1
@@ -472,6 +514,8 @@ class Bridge:
         self.bus: Any = None
         self.sos = SosController(sender=lambda msg, ch: self.send("^all", msg, ch, priority=0, sos=True),
                                  publish=self._on_sos, name_fn=self._my_name, position_fn=self._my_position)
+        self.transport = TransportStore(str(cfg.database.path))
+        self._next_flush = 0.0
         self.health_fn: Any = None            # web.py sets this: () -> the health report dict (no Flask context needed)
         self.scheduler = Scheduler(str(cfg.database.path), {
             "digest_bulletin": self._job_digest_bulletin, "bulletin": self._job_bulletin, "broadcast": self._job_broadcast})
@@ -488,6 +532,11 @@ class Bridge:
             log.info("observatory v2: coverage table ready, %d rx points backfilled from message/position history", n)
         except Exception:
             log.exception("coverage store init failed")
+        try:
+            n = self.state.apply_transport(self.transport.load())
+            log.info("observatory v2: RF/MQTT evidence restored for %d nodes", n)
+        except Exception:
+            log.exception("transport store init failed")
         threading.Thread(target=self._sos_loop, name="v2-sos", daemon=True).start()
         if not self.cfg.mqtt.enabled:
             log.warning("observatory v2: [mqtt].enabled = false — live view is off, rendering from the database only")
@@ -606,6 +655,12 @@ class Bridge:
             except Exception as e:
                 log.error("SOS repeat failed: %s", e)
             now = time.time()
+            if now >= self._next_flush:
+                self._next_flush = now + 15
+                try:
+                    self.transport.flush(now)
+                except Exception as e:
+                    log.warning("could not persist RF/MQTT evidence: %s", e)
             if now >= self._next_sched:
                 self._next_sched = now + 30
                 try:
@@ -671,6 +726,8 @@ class Bridge:
                 self._emit("tx", ack)
         ev = self.state.apply_packet(env, now)
         if ev:
+            if isinstance(ev["packet"].get("via_mqtt"), bool):
+                self.transport.note(ev["packet"]["from"], ev["packet"]["via_mqtt"], now)
             ev["per_min"] = self.state.rate_per_min(now)
             self._emit("packet", ev)
             pt = coverage_point(env, ev.get("node"), now, self.state.my_id)

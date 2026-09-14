@@ -162,3 +162,52 @@ def test_history_unions_the_logged_tables(tmp_path):
     assert ev[0]["summary"] == "80% · 3.90 V · util 2.0%" and ev[4]["summary"] == "hears 2 neighbours"
     assert ev[1]["position"] == {"lat": 38.9, "lon": -84.6}
     assert history(str(tmp_path / "missing.db"), 0) == []
+
+
+# ---------------------------------------------------------------------------- RF vs MQTT
+def test_mqtt_packets_count_as_evidence_but_never_as_radio_truth():
+    s = fresh()
+    mq = env("text", "!a0388880", text="hi", rx={"time": 1000, "snr": 4.0, "rssi": -70, "hops": 0, "via_mqtt": True})
+    ev = s.apply_packet(mq, now=2000)
+    n = s.roster["!a0388880"]
+    assert n["mqtt_count"] == 1 and n["rf_count"] == 0 and n["last_mqtt"] == 2000 and n["last_rf"] is None
+    assert n["transport"] == "mqtt" and n["rf_heard"] is False
+    assert ev["packet"]["via_mqtt"] is True and ev["packet"]["snr"] is None and ev["packet"]["hops"] is None
+    assert ev["links"] == [] and s.links == {} and "!a0388880" not in s.signal      # no direct link, no SNR sample
+    assert n.get("snr") is None and n.get("hops_away") is None
+    rf = env("text", "!a0388880", text="hi", rx={"time": 1000, "snr": 6.0, "rssi": -80, "hops": 0, "via_mqtt": False})
+    ev = s.apply_packet(rf, now=2500)
+    assert n["rf_count"] == 1 and n["last_rf"] == 2500 and n["transport"] == "both" and n["rf_heard"] is True
+    assert ev["packet"]["via_mqtt"] is False and len(ev["links"]) == 1 and n["snr"] == 6.0
+
+
+def test_unknown_transport_when_the_producer_omits_the_flag():
+    s = fresh()
+    ev = s.apply_packet(env("text", "!a0388880", text="hi"), now=2000)       # v1-style rx block, no via_mqtt
+    n = s.roster["!a0388880"]
+    assert ev["packet"]["via_mqtt"] is None and n["rf_count"] == 0 and n["mqtt_count"] == 0
+    assert n["transport"] is None and n["rf_heard"] is False
+    assert len(ev["links"]) == 1                                              # hops 0 still infers the link (pre-v2 behaviour)
+
+
+def test_roster_prior_from_the_radios_node_db_until_live_evidence_arrives():
+    s = fresh()
+    s.apply_roster({"my_id": BASE, "roster": {"!0000000a": {"id": "!0000000a", "short_name": "A", "via_mqtt": True, "last_heard": 900},
+                                               "!0000000b": {"id": "!0000000b", "short_name": "B", "via_mqtt": False, "last_heard": 900},
+                                               "!0000000c": {"id": "!0000000c", "short_name": "C", "via_mqtt": False}}})
+    a, b, c = s.roster["!0000000a"], s.roster["!0000000b"], s.roster["!0000000c"]
+    assert a["transport"] == "mqtt" and a["rf_heard"] is False
+    assert b["transport"] == "rf" and b["rf_heard"] is True
+    assert c["transport"] is None                                              # never heard at all
+    s.apply_packet(env("position", "!0000000a", position={"lat": 1, "lon": 2}, rx={"time": 1, "snr": 5, "rssi": -80, "hops": 1, "via_mqtt": False}), now=3000)
+    assert a["transport"] == "rf" and a["rf_heard"] is True                    # live evidence outranks the prior
+
+
+def test_persisted_evidence_is_folded_in_at_startup():
+    s = fresh()
+    n = s.apply_transport([{"node_id": "!a0388880", "rf_count": 12, "mqtt_count": 0, "last_rf": 800, "last_mqtt": None},
+                           {"node_id": "!0000000d", "rf_count": 0, "mqtt_count": 5, "last_rf": None, "last_mqtt": 700}])
+    assert n == 2
+    stay, d = s.roster["!a0388880"], s.roster["!0000000d"]
+    assert stay["transport"] == "rf" and stay["rf_count"] == 12 and stay["last_rf"] == 800
+    assert d["transport"] == "mqtt" and d["last_heard"] == 700 and d["short_name"] == "000d"

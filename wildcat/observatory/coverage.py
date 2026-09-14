@@ -58,6 +58,8 @@ def coverage_point(env: Dict[str, Any], node: Optional[Dict[str, Any]], now: flo
     if not frm or frm == my_id:
         return None
     rx = env.get("rx") if isinstance(env.get("rx"), dict) else {}
+    if rx.get("via_mqtt") is True:
+        return None                          # came over the internet: not a radio measurement
     if rx.get("snr") is None and rx.get("rssi") is None:
         return None
     lat = lon = alt = None
