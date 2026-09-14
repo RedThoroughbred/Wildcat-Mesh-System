@@ -613,8 +613,9 @@ body.following .follow-flag { display: block; }
 @media (max-width: 760px) {
   /* Row 1: ☰ · mark · name · dot ……… tools (no wrap, no dead space); Row 2: the stat strip */
   .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 8px; }
-  .brand { flex: 1 1 auto; min-width: 0; gap: 8px; }
-  .brand .brand-link { gap: 8px; }
+  .brand { flex: 1 1 0; min-width: 0; gap: 8px; }      /* basis 0: the row never wraps because of the brand — it shrinks (title ellipsizes) instead */
+  .brand .brand-link { gap: 8px; min-width: 0; flex: 1 1 auto; }
+  .brand .brand-link > div { min-width: 0; }      /* the title wrapper: without this the title can't ellipsize */
   .brand .title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status { order: 0; flex: none; margin-left: -2px; }
   .tools { order: 0; flex: none; margin-left: auto; gap: 4px; }
@@ -687,3 +688,12 @@ body.following .follow-flag { display: block; }
   .sos-banner { top: calc(var(--topbar-h, 110px) + 8px); left: 8px; right: 8px; transform: none; max-width: none; font-size: 12px; }
   .tool.sos-btn { font-size: 13px; }
 }
+
+/* ---- 📰 digest ---- */
+.vcard.digest { margin-bottom: 12px; }
+.vcard.digest.latest { border-color: rgba(224,112,75,.35); }
+.digest-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; color: var(--text); margin: 4px 0 10px; }
+.digest-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
+.digest-foot details { flex-basis: 100%; }
+.digest-foot summary { cursor: pointer; }
+.digest-facts { white-space: pre-wrap; font: 11.5px var(--mono); color: var(--muted); margin: 6px 0 0; line-height: 1.5; }

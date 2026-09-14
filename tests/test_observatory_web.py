@@ -186,3 +186,47 @@ def test_sos_routes_broadcast_at_top_priority_and_stop(tmp_path):
     assert snap["tx"][-1]["sos"] is True and snap["tx"][-1]["id"] == j["last_tx_id"]
     r = c.delete("/v2/api/sos")
     assert r.status_code == 200 and r.get_json()["ended"] == "stopped" and bus.last("alert/sos")["active"] is False
+
+
+def test_digest_routes_generate_store_and_post_as_bulletin(tmp_path, monkeypatch):
+    import sqlite3
+    from wildcat.brain import cli as bcli
+    (tmp_path / "content").mkdir()
+    dbp = tmp_path / "b.db"
+    c = sqlite3.connect(dbp)
+    c.execute("CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, sender_short_name TEXT, to_id INTEGER, channel_index INTEGER, message TEXT, snr REAL, rssi INTEGER, hop_limit INTEGER)")
+    c.execute("INSERT INTO message_logs (timestamp,sender_id,sender_short_name,to_id,channel_index,message,snr,rssi) VALUES (strftime('%s','now')-100,'!716c668c','GO',4294967295,0,'hi',5.0,-80)")
+    c.commit(); c.close()
+    cfg = build({"radio": {"type": "serial"}, "database": {"path": str(dbp)}, "bbs": {"content_dir": str(tmp_path / "content")}})
+    app = flask.Flask("obs-test5", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    bridge.state.apply_roster({"my_id": "!9e766b18", "roster": {"!9e766b18": {"id": "!9e766b18", "short_name": "6b18"}, "!716c668c": {"id": "!716c668c", "short_name": "GO"}}})
+    app.register_blueprint(create_blueprint(bridge, sio))
+    cl = app.test_client()
+    assert cl.get("/v2/api/digest").get_json()["digests"] == []
+    seen = {}
+    def fake_stream(prompt, system, model, timeout=120, max_budget_usd=0.5, binary=None):
+        seen["prompt"] = prompt
+        yield {"type": "delta", "text": "GO said hi. Quiet otherwise."}
+        yield {"type": "done", "text": "GO said hi. Quiet otherwise.", "cost_usd": 0.011, "ms": 9, "model": model, "is_error": False}
+    monkeypatch.setattr(bcli, "stream", fake_stream)
+    r = cl.post("/v2/api/digest", json={"hours": 24})
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json()
+    assert j["text"] == "GO said hi. Quiet otherwise." and j["id"] == 1 and j["fallback"] is False and j["cost_usd"] == 0.011
+    assert "Most active: GO (1)" in seen["prompt"] and j["facts"]["messages"] == 1
+    lst = cl.get("/v2/api/digest").get_json()["digests"]
+    assert len(lst) == 1 and lst[0]["id"] == 1 and lst[0]["source"] == "operator"
+    assert cl.post("/v2/api/digest/99/bulletin", json={"board": "General"}).status_code == 404
+    r = cl.post("/v2/api/digest/1/bulletin", json={"board": "General"})
+    assert r.status_code == 200, r.get_json()
+    row = sqlite3.connect(dbp).execute("SELECT board, sender_short_name, subject, content FROM bulletins").fetchone()
+    assert row[0] == "General" and row[1] == "6b18" and row[2].startswith("Mesh digest ") and row[3] == "GO said hi. Quiet otherwise."
+    assert cl.get("/v2/api/digest").get_json()["digests"][0]["bulletin_id"]
+    # the CLI going away yields the fact sheet, not an error
+    def dead_stream(*a, **k):
+        yield {"type": "error", "text": "claude CLI not found"}
+    monkeypatch.setattr(bcli, "stream", dead_stream)
+    j = cl.post("/v2/api/digest", json={}).get_json()
+    assert j["fallback"] is True and j["text"].startswith("Window: last 24 h") and j["model"] is None

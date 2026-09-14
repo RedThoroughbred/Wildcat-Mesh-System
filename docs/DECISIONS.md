@@ -311,3 +311,28 @@ it would mean editing the v1 BBS; the `?` prefix covers the use case. Live proof
 2026-09-14: switch on → synthetic question from GO → claude CLI 6.7 s / $0.006 →
 one packet to GO → exchange in the panel → switch off, file back to `false`.
 
+## D-025 · 2026-09-14 · SOS is text, top priority, two taps, and never silent about failure
+
+**Decision.** The emergency broadcast is an ordinary text send — `🆘 SOS from <Den>:
+<message> @ lat,lon [n/N]` — at TX priority 0 (meshd's most urgent), always one
+packet (the message is trimmed to fit with the marker, the Den's position and the
+repeat counter), optionally repeated every 1–60 min for N sends or until stopped.
+Incoming distress is recognised by the same marker (or a leading SOS / MAYDAY /
+EMERGENCY): flagged in the envelope-derived feed record, styled red, and alarmed.
+
+**Why text.** Every radio, every app and every human sees an SOS as what it is with
+no new packet type, no protocol coupling (MeshCore later would carry the same
+text), and no dependence on the receiver running our software.
+
+**Why two taps.** A distress broadcast to every node in range must never be a
+misclick: the button arms ("Tap again to broadcast now") and disarms itself after
+6 s or on any edit. The public view sees the ACTIVE banner (people should know)
+but has no button and no stop.
+
+**Failure is visible.** If the bus is off or meshd refuses, the SOS ends in state
+`failed` with the error in the banner — an emergency button that silently does
+nothing is worse than none. Repeats live in the Observatory process: if it
+restarts mid-SOS the repeats stop (the retained `wildcat/alert/sos` records what
+was last sent). Moving the repeater into meshd is the obvious hardening if the
+Den ever runs the Observatory on a different box than the radio.
+

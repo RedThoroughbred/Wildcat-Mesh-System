@@ -1297,6 +1297,48 @@
         viewBody.querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { location.hash = "#/node/" + encodeURIComponent(tr.dataset.id); });
       }
     },
+    digest: {
+      title: "Digest",
+      async render() {
+        const seq = this.seq;
+        let d; try { d = await (await fetch("api/digest?limit=15")).json(); } catch (e) { d = { digests: [], error: "unreachable" }; }
+        if (this.seq !== S.viewSeq) return;
+        const items = d.digests || [];
+        const when = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const card = (x, latest) => `<div class="vcard digest${latest ? " latest" : ""}" data-id="${x.id}">
+            <h2>${latest ? "📰 Latest digest" : "📰 " + when(x.generated_at)} <span class="sel dim" style="text-transform:none;letter-spacing:0;font-weight:500">${latest ? when(x.generated_at) + " · " : ""}last ${x.hours} h · ${x.fallback ? "facts only (no model)" : escape(x.model || "")}${x.cost_usd ? " · $" + Number(x.cost_usd).toFixed(3) : ""}${x.source && x.source !== "operator" ? " · " + escape(x.source) : ""}</span></h2>
+            <div class="digest-text">${escape(x.text)}</div>
+            <div class="digest-foot">${x.bulletin_id ? `<span class="dim">posted to the BBS as a bulletin</span>` : PUBLIC ? "" : `<label class="dim">board <input class="vsearch dg-board" value="General" maxlength="40" style="width:120px"></label><button class="link-btn dg-post" data-id="${x.id}">Post to the BBS as a bulletin</button>`}
+              ${x.facts && x.facts.messages != null ? `<details class="dim"><summary>the facts it was written from</summary><pre class="digest-facts">${escape(x.facts_text || factsText(x.facts))}</pre></details>` : ""}</div>
+          </div>`;
+        const factsText = (f) => `${f.messages} messages from ${f.senders} senders · ${f.heard_in_window}/${f.nodes_known} nodes heard` + (f.top_senders && f.top_senders.length ? ` · most active ${f.top_senders.map(t => t.name + " (" + t.n + ")").join(", ")}` : "") + (f.new_nodes && f.new_nodes.length ? ` · new: ${f.new_nodes.map(n => n.name).join(", ")}` : "") + (f.went_quiet && f.went_quiet.length ? ` · quiet: ${f.went_quiet.map(n => n.name).join(", ")}` : "") + (f.low_battery && f.low_battery.length ? ` · low battery: ${f.low_battery.map(b => b.name + " " + b.battery + "%").join(", ")}` : "") + (f.distress && f.distress.length ? ` · DISTRESS: ${f.distress.length}` : "");
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
+          ${PUBLIC ? "" : `<div class="vcard" style="margin-bottom:12px"><h2>Write the digest <span class="sel"><label class="dim" style="text-transform:none;letter-spacing:0;font-weight:500">window <select class="vsearch" id="dg-hours" style="width:auto;padding:3px 6px"><option value="24">24 h</option><option value="48">48 h</option><option value="168">7 days</option></select></label><button class="send" id="dg-make"${d.enabled === false ? " disabled" : ""}>Write it now</button></span></h2>
+            <p style="margin:0;color:var(--muted);font-size:12px;line-height:1.45">Bobcat gathers the facts (messages, who was new or quiet, battery, distress calls, bulletins, health) and writes ~150 words through the local claude CLI — <b>one call, a couple of cents, ~15 s</b>. The facts are stored with the prose so anyone can check it. Without the CLI you get the facts as plain text. ${d.enabled === false ? "<b>Disabled: [brain].analyst_enabled = false.</b>" : ""}<span id="dg-status" class="dim"></span></p></div>`}
+          <div id="dg-list">${items.length ? items.map((x, i) => card(x, i === 0)).join("") : `<div class="vcard"><h2>No digest yet</h2><p class="dim" style="margin:0">${PUBLIC ? "The operator hasn't written one yet." : "Write the first one above — it takes about fifteen seconds."}</p></div>`}</div>`;
+        if (PUBLIC) return;
+        const mk = $("dg-make");
+        if (mk) mk.addEventListener("click", async () => {
+          mk.disabled = true; $("dg-status").textContent = " Gathering the facts and asking the model…";
+          try {
+            const r = await fetch("api/digest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hours: +$("dg-hours").value }) });
+            const j = await r.json();
+            if (!r.ok) { toast(j.error || "digest failed", "err"); $("dg-status").textContent = " " + (j.error || "failed"); mk.disabled = false; return; }
+            toast(j.fallback ? "Digest written from the facts (no model)" : `Digest written · $${Number(j.cost_usd || 0).toFixed(3)}`, "ok");
+            if (seq === S.viewSeq) VIEWS.digest.render.call({ seq });
+          } catch (e) { toast("digest failed — is the Den reachable?", "err"); mk.disabled = false; }
+        });
+        viewBody.querySelectorAll(".dg-post").forEach(b => b.addEventListener("click", async () => {
+          const id = b.dataset.id, board = (b.parentElement.querySelector(".dg-board") || {}).value || "General";
+          if (!confirm(`Post this digest to the BBS bulletin board "${board}"? Everyone who reads the board on the mesh will see it.`)) return;
+          b.disabled = true;
+          try { const r = await fetch(`api/digest/${id}/bulletin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ board }) }); const j = await r.json();
+            if (!r.ok) { toast(j.error || "could not post", "err"); b.disabled = false; return; }
+            toast(`Posted to ${j.board}: ${j.subject}`, "ok"); if (seq === S.viewSeq) VIEWS.digest.render.call({ seq });
+          } catch (e) { toast("could not post", "err"); b.disabled = false; }
+        }));
+      },
+    },
     dashboard: {
       title: "Dashboard",
       async render() {

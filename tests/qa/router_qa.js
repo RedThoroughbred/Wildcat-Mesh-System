@@ -18,7 +18,7 @@
   s = await go("#/"); check("home closes view", !s.view && !s.viewing && s.nav === "home", s);
   location.hash = "#/nodes"; await wait(20); location.hash = "#/channels"; await wait(2500); s = st();
   check("race nodes→channels shows channels", s.title === "Channels" && s.body.startsWith("64") || s.body.includes("MESSAGES"), s);
-  for (const [h, name] of [["#/dashboard", "Dashboard"], ["#/messages", "Messages"], ["#/propagation", "Propagation"], ["#/topology", "Topology"], ["#/health", "Mesh health"], ["#/admin", "Admin"], ["#/api", "API"]]) {
+  for (const [h, name] of [["#/dashboard", "Dashboard"], ["#/messages", "Messages"], ["#/propagation", "Propagation"], ["#/topology", "Topology"], ["#/health", "Mesh health"], ["#/digest", "Digest"], ["#/admin", "Admin"], ["#/api", "API"]]) {
     s = await go(h); check(`${name} view`, s.view && s.title === name && s.nav === h.slice(2), s);
   }
   s = await go("#/coverage"); check("coverage action rewrites URL to #/", s.hash === "#/" && !s.view && $("cov-on").checked, s);

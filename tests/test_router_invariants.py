@@ -58,7 +58,7 @@ def test_unknown_route_recovers():
 
 def test_brand_is_a_home_link_and_nav_entries_have_titles():
     assert 'class="brand-link"' in HTML and 'href="#/"' in HTML
-    for view in ("nodes", "channels", "messages", "propagation", "topology", "health", "admin", "api", "dashboard"):
+    for view in ("nodes", "channels", "messages", "propagation", "topology", "health", "digest", "admin", "api", "dashboard"):
         assert re.search(rf'data-view="{view}"[^>]*title="', HTML), view
 
 # --- QA finding 10: phone header -------------------------------------------
@@ -75,6 +75,8 @@ def test_phone_header_is_one_row_with_share_in_the_drawer():
     mobile = CSS[CSS.index("@media (max-width: 760px)"):]
     assert re.search(r"\.tools\s*\{[^}]*margin-left:\s*auto", mobile)
     assert re.search(r"\.tools #share\s*\{\s*display:\s*none", mobile)
+    # every link in the brand chain can shrink, so the title ellipsizes instead of pushing the tools to a second row
+    assert re.search(r"\.brand \.brand-link > div\s*\{\s*min-width:\s*0", mobile)
     assert 'id="sb-share"' in HTML
     assert 'on($("sb-share"), "click", sharePublic)' in APP or '$("sb-share")' in APP
     # the drawer button is hidden on desktop and in the public view

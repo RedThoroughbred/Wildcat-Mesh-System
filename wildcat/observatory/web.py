@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from flask import Blueprint, jsonify, render_template, send_from_directory
 
@@ -475,6 +476,64 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return jsonify({"ok": True, "enabled": want, "path": str(cfg.source),
                         "note": "on the air now" if want else "Bobcat is off — questions are recorded, nothing is sent",
                         "responder": _responder_status()})
+
+    # ---- the daily digest (Bobcat writes it from a deterministic fact sheet) ----------------
+    @bp.route("/api/digest")
+    def api_digest_list():
+        from ..brain import digest as DG
+        from flask import request
+        try:
+            limit = max(1, min(50, int(request.args.get("limit", 10))))
+        except ValueError:
+            limit = 10
+        try:
+            items = DG.latest(_db(), limit)
+        except Exception as e:
+            return jsonify({"error": str(e), "digests": []}), 500
+        return jsonify({"digests": items, "model": bridge.cfg.brain.cli_model,
+                        "enabled": bridge.cfg.brain.analyst_enabled, "public": False})
+
+    @bp.route("/api/digest", methods=["POST"])
+    def api_digest_make():
+        """Operator: write the digest now (one claude CLI call, a few cents). Body: {"hours"?: 24}.
+        Falls back to the plain fact sheet when the CLI is unavailable — never nothing."""
+        from flask import request
+        from ..brain import digest as DG
+        if not bridge.cfg.brain.analyst_enabled:
+            return jsonify({"error": "Bobcat's operator features are disabled ([brain].analyst_enabled = false)"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            hours = max(1, min(168, int(body.get("hours", 24))))
+        except (TypeError, ValueError):
+            hours = 24
+        now = time.time()
+        try:
+            rep = api_health_report().get_json()
+        except Exception:
+            rep = None
+        facts = DG.gather(_db(), bridge.state, rep, hours=hours, now=now)
+        rec = DG.summarize(facts, bridge.cfg.brain.cli_model, bridge.cfg.brain.cli_timeout)
+        try:
+            rec["id"] = DG.save(_db(), rec, source=str(body.get("source") or "operator"))
+        except Exception as e:
+            return jsonify({"error": f"digest written but not stored: {e}", **{k: v for k, v in rec.items() if k != "facts"}}), 500
+        return jsonify({"ok": True, **rec})
+
+    @bp.route("/api/digest/<int:digest_id>/bulletin", methods=["POST"])
+    def api_digest_bulletin(digest_id: int):
+        """Operator: post a stored digest to the BBS bulletins (this Den's board; no radio traffic)."""
+        from flask import request
+        from ..brain import digest as DG
+        body = request.get_json(silent=True) or {}
+        my = bridge.state.my_id
+        sender = (bridge.state.roster.get(my or "", {}).get("short_name") if my else None) or bridge.cfg.bbs.name[:20] or "Den"
+        try:
+            out = DG.post_bulletin(_db(), digest_id, str(body.get("board") or "General"), sender, body.get("subject"))
+        except KeyError:
+            return jsonify({"error": "no such digest"}), 404
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True, **out})
 
     @bp.route("/api/brain/status")
     def api_brain_status():
