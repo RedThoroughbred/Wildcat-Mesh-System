@@ -76,8 +76,8 @@ max_recent_messages = 20
 active_node_threshold = 3600
 bbs_node_id = "!9e766b18"  # the BBS radio's node id, for the "BBS conversations" view
 
-[brain]                    # Ask the Cat — Phase 2. Validated now so the file format is settled.
-enabled = false
+[brain]                    # Bobcat — the Den's AI (docs/OBSERVATORY_V2.md §5c, D-024)
+enabled = false            # the mesh responder (`wildcat brain`). OFF = nothing spent, nothing sent. The dashboard switch flips this.
 trigger_prefix = "?"
 persona = "Bobcat"
 max_reply_chars = 320      # ≈ 2 LoRa packets

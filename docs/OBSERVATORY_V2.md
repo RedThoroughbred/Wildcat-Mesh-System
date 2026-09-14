@@ -165,7 +165,7 @@ observatory/static/v2/app.js + app.css   — vanilla JS, vendored Leaflet + Sock
 | 3 | **Node cards done properly**: signal ring, battery + SNR/RSSI sparklines from `telemetry_logs`, last-heard pulse, hops-away; a nodes drawer with search. | `/v2` |
 | 4 | **Mesh health strip + alerts**: channel util / air-time TX gauges from the base's telemetry, packets/min history, low-battery + gone-quiet alerts. | `/v2` |
 | 5 | **PWA** (manifest + service worker + offline shell + tile cache) and the **mobile pass** — shipped; **cache-a-box** for tiles and a **replay adapter** follow. | everywhere |
-| 6 | **AI conversation view** when `brain` lands (Phase 2). | `/v2/brain` |
+| 6 | **AI conversation view** — Ask the Cat: the analyst (Part A) and Bobcat on the air (Part B) with the operator switch. ✅ | `/v2` → Ask the Cat |
 
 v1 pages stay exactly as they are until v2 covers them; then `/` redirects.
 
@@ -197,6 +197,21 @@ ported and tested; v1 itself untouched at `/`).
 
 v2 links nowhere else: no "open in v1" anywhere. v1 stays served at `/` only
 until Seth retires it.
+
+## 5c. Bobcat — the Den's AI (built)
+
+Two halves, one `[brain]` table, both on the local `claude` CLI (Claude Code):
+
+| | Who talks to it | Where | Guardrails |
+|---|---|---|---|
+| **Analyst (Part A)** | the operator, in the dashboard | Ask the Cat → Analyst | read-only SQL hard-gated to SELECT (no mail table), ≤ 3 query rounds, hidden from `/v2/public` |
+| **Responder (Part B)** | anyone on the mesh, by DM `?question` to the Den | `wildcat brain` service; exchanges live in Ask the Cat | **off by default**; airtime brake; per-node + global rate limits; ≤ `max_chunks` packets; provider cascade claude → Ollama → canned; every exchange published on `wildcat/brain/exchange` |
+
+The dashboard's **"Bobcat on the air"** switch (operator-only) shows the live
+state — running/enabled, brains in order, limits, the brake, counts, cost note —
+and flips it: the file is written first, then the running service. `?help` and
+`?status` are answered without a model (free). Design record: D-024.
+Run it: `wildcat brain` (systemd: `wildcat-brain.service`, part of `wildcat.target`).
 
 ## 6. Roadmap (a) — Mobile: PWA now, native later
 

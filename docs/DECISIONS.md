@@ -275,3 +275,39 @@ last hop's signal and render dimmer/dashed. Hex bins (150 m) appear only where
 measured, how many direct, and from which nodes — and says outright that
 nothing between dots is inferred. History backfill joins the BBS's
 `message_logs` SNR to `position_logs` fixes within 10 min (hops unknown).
+
+## D-024 · 2026-09-14 · Bobcat on the air: off by default, guarded in a fixed order, and the BBS hand-off lives in the adapter
+
+**Decision.** The mesh-facing responder (`wildcat brain`, `wildcat/brain/responder.py`)
+ships with `[brain].enabled = false` and stays off until the operator flips it — in
+the file or with the dashboard switch, which writes the file first (`.bak` kept) and
+then publishes a retained `wildcat/brain/control` so the running service changes
+at once and a restart agrees. Off means nothing is spent and nothing transmitted;
+questions are still recorded as `status: "off"` exchanges so demand is visible.
+Every `?`-DM runs the same fixed pipeline: dedup by packet id → the switch → the
+airtime brake (the Den's own channel utilization above `max_channel_util_pct`;
+`admin_nodes` bypass) → rate limits (per node per hour/day, global per hour; the
+first over-limit question in an hour gets one notice packet, the rest are silent)
+→ free built-ins (`?help`, `?status`) → the provider cascade (`claude` CLI with a
+per-question budget cap → Ollama if configured → a canned line) → plain-text cap at
+`max_reply_chars` → at most `max_chunks` numbered packets on `wildcat/tx`.
+
+**Why this order.** The brake comes before the limits because a "busy" reply
+would add to the airtime we are protecting — braked questions get no packet at
+all. Limits come before the model so a flood costs nothing. The canned line
+is a real provider so the cascade always ends with an answer the asker can act on.
+
+**The BBS hand-off.** A `?`-DM is also a DM to the BBS, which would answer it with
+the menu (double airtime, confusing). The filter lives in `BusInterface`
+(v2 code), keyed on the responder's retained `wildcat/brain/status`: while Bobcat
+reports `enabled` and `running`, `?`-DMs are not handed to the BBS handlers; the
+moment the service stops or is switched off, the BBS sees them again. The v1 BBS
+code is untouched, and a dead responder can never leave questions unanswered.
+
+**Consequences.** Both halves of every exchange are logged to `message_logs`
+(commit-or-rollback-and-close, D-022), so Messages threads and exports show the
+conversation. The `[A]sk the Cat` BBS menu item from the design doc is NOT built —
+it would mean editing the v1 BBS; the `?` prefix covers the use case. Live proof
+2026-09-14: switch on → synthetic question from GO → claude CLI 6.7 s / $0.006 →
+one packet to GO → exchange in the panel → switch off, file back to `false`.
+

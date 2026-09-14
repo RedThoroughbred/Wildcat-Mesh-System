@@ -227,6 +227,7 @@ class Responder:
         self._stop = threading.Event()
         self._worker: Optional[threading.Thread] = None
         self._cli = cli.status()
+        self._announced: Optional[str] = None
 
     # ---- lifecycle ----------------------------------------------------------------------
     @property
@@ -282,9 +283,18 @@ class Responder:
         me = self.state.roster.get(self.my_id or "") if self.my_id else None
         if me and me.get("channel_util") is not None:
             self.channel_util = float(me["channel_util"])
+        self._announce_node()
 
     def _on_status(self, topic: str, payload: Dict[str, Any]) -> None:
         self.state.apply_status(payload)
+        self._announce_node()
+
+    def _announce_node(self) -> None:
+        """The retained roster/status arrive asynchronously after subscribe; re-publish our
+        status the moment we learn which node we are (the panel shows it)."""
+        if self.my_id and self.my_id != self._announced:
+            self._announced = self.my_id
+            self.publish_status()
 
     def _on_control(self, topic: str, payload: Dict[str, Any]) -> None:
         want = payload.get("enabled") if isinstance(payload, dict) else None

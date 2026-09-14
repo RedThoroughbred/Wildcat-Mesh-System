@@ -78,7 +78,16 @@ def test_off_by_default_never_transmits_or_calls_a_provider():
     x = exchanges(bus)
     assert len(x) == 1 and x[0]["status"] == "off" and x[0]["prompt"] == "what's up" and x[0]["chunks"] == 0
     st = bus.last("brain/status")
-    assert st["enabled"] is False and st["running"] is True
+    assert st["enabled"] is False and st["running"] is True and st["node"] == BASE
+
+
+def test_status_is_republished_when_the_node_id_arrives_late():
+    bus = MemoryBus()                                   # no retained snapshots yet
+    p, calls = fake()
+    r = Responder(cfg(), bus, providers=[("fake", p)], db_path="", sync=True); r.wire()
+    assert bus.last("brain/status")["node"] is None
+    seed(bus)
+    assert bus.last("brain/status")["node"] == BASE and r.my_id == BASE
 
 
 def test_operator_control_message_toggles_at_runtime():

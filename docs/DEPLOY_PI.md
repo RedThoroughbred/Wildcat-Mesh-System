@@ -66,7 +66,7 @@ socket" — that's what the systemd check is for.
 
 ```bash
 ./deploy/install.sh              # renders units, DISABLES the legacy three, enables wildcat.target
-systemctl list-units 'wildcat*'  # meshd: inactive (exited 0 — mqtt disabled), bbs/telemetry/observatory: active
+systemctl list-units 'wildcat*'  # meshd: inactive (exited 0 — mqtt disabled), brain: inactive (exited 0 — needs the bus), bbs/telemetry/observatory: active
 journalctl -u wildcat-bbs -n 30  # "Config: …wildcat.toml [toml]", "TC²-BBS is running on tcp interface"
 ./venv/bin/wildcat doctor        # systemd: wildcat-* ✔, no legacy ✖
 ```
@@ -97,6 +97,7 @@ Edit `config/wildcat.toml`: `[mqtt] enabled = true`, `[bbs] source = "bus"`,
 sudo systemctl restart wildcat.target
 journalctl -u wildcat-meshd -f          # "MQTT connected", "connecting to node over tcp", status connected
 mosquitto_sub -v -t 'wildcat/#'         # retained status + nodes appear immediately; rx/* as the mesh talks
+journalctl -u wildcat-brain -n 5        # "Bobcat responder off (prefix '?' …)" — it stays off until you flip it in the dashboard
 ```
 
 What to prove, in order:
