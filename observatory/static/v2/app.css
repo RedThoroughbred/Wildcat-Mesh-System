@@ -827,3 +827,4 @@ body.rail-collapsed { --rail: 52px; }
   .chat-pane { min-height: calc(100vh - var(--topbar-h, 110px) - 150px); }
   .bub { max-width: 88%; }
 }
+.thread.unread .who b::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--terracotta); margin-left: 6px; vertical-align: middle; box-shadow: 0 0 8px var(--terracotta); }

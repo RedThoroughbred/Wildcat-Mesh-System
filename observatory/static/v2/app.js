@@ -338,7 +338,7 @@
     for (const l of ev.links || []) upsertLink(l);
     if (typeof TL !== "undefined" && document.body.classList.contains("replaying")) { TL.queuedLive.push(ev.packet); if (TL.events.length) TL.events.push(ev.packet); refreshStats(); return; }
     addPacket(ev.packet, true);
-    if (S.chatLive) { try { S.chatLive(ev.packet); } catch (e) {} }
+    if (S.chatLive) { try { S.chatLive(ev.packet); } catch (e) { console.error("chat live update failed", e); } }
     if (ev.packet.sent) { maybeExchange(ev.packet); refreshStats(); return; }
     if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
     if (ev.packet.sos && typeof sosIncoming === "function") sosIncoming(ev.packet);
@@ -523,7 +523,7 @@
     $("sends").innerHTML = arr.map(x => `<div class="snd ${x.state}"><div class="t"><b>${x.broadcast ? "→ all" + (x.channel ? " · ch " + x.channel : "") : "→ " + escape(x.to_name || x.to)}</b>${escape(x.text)}</div><div class="st">${stateChip(x.state)}<span>${ago(x.ts)}${x.state === "delivered" ? " · acked by " + escape(x.to_name || x.to) : x.state === "relayed" ? " · heard on the mesh, not yet confirmed" : ""}${x.error ? " · " + escape(x.error) : ""}</span></div></div>`).join("");
   }
   function applyTx(rec) {
-    C.sends.set(rec.id, rec); if (C.open) renderSends(); if (S.chatTx) { try { S.chatTx(rec); } catch (e) {} }
+    C.sends.set(rec.id, rec); if (C.open) renderSends(); if (S.chatTx) { try { S.chatTx(rec); } catch (e) { console.error("chat tx update failed", e); } }
     const el = list.querySelector(`.pkt[data-tx="${rec.id}"]`); if (el) { const st = el.querySelector(".state"); if (st) { st.className = "state " + rec.state; st.textContent = rec.state; } }
     if (rec.state === "delivered") toast(`Delivered — ${rec.to_name || rec.to} acknowledged`, "ok"); else if (rec.state === "failed") toast(`Send failed: ${rec.error || "unknown"}`, "err");
   }
@@ -1184,11 +1184,21 @@
           const seqNow = this.seq;
           // live: a text packet for this thread lands in the log without a refetch
           S.chatLive = (p) => {
-            if (seqNow !== S.viewSeq || !cur || p.kind !== "text" || !log) return;
+            if (seqNow !== S.viewSeq || p.kind !== "text") return;
             const k = p.broadcast ? "ch:" + (p.channel || 0) : "dm:" + (p.sent || p.from === me ? p.to : p.from);
-            if (k !== cur || (p.sent && p.tx_id && log.querySelector(`[data-tx="${p.tx_id}"]`))) return;
+            if (!k || k.endsWith(":null")) return;
+            const mine = p.sent || p.from === me, text = p.text || p.summary || "";
+            // the thread list: bump (or create) the row, newest first, unread dot when it isn't the open thread
+            const listEl = viewBody.querySelector(".chat-list"); if (listEl) {
+              let row = [...listEl.querySelectorAll(".thread")].find(a => decodeURIComponent(a.getAttribute("href").split("/messages/")[1] || "") === k);
+              if (!row) { const nm = k.startsWith("ch:") ? chName(+k.slice(3)) : name(S.roster[k.slice(3)] || { id: k.slice(3), short_name: p.from_name }); listEl.insertAdjacentHTML("afterbegin", `<a class="thread" href="#/messages/${encodeURIComponent(k)}"><span class="who">${k.startsWith("ch:") ? "📢" : dot(S.roster[k.slice(3)] || {})}<b>${escape(nm)}</b><span class="when"></span></span><span class="prev"></span></a>`); row = listEl.firstElementChild; const em = listEl.querySelector(".empty"); if (em) em.remove(); }
+              row.querySelector(".prev").textContent = (mine ? "you: " : "") + text; const w = row.querySelector(".when"); w.dataset.ts = p.ts; w.textContent = ago(p.ts);
+              if (k !== cur && !mine) row.classList.add("unread");
+              if (listEl.firstElementChild !== row) listEl.prepend(row);
+            }
+            if (k !== cur || !log || (p.sent && p.tx_id && log.querySelector(`[data-tx="${p.tx_id}"]`))) return;
             if (log.querySelector(".empty")) log.innerHTML = "";
-            log.insertAdjacentHTML("beforeend", bubble({ ts: p.ts, sender_id: p.from, short_name: p.from_name, text: p.text || p.summary, snr: p.snr, mine: p.sent || p.from === me, state: p.state, tx_id: p.tx_id }));
+            log.insertAdjacentHTML("beforeend", bubble({ ts: p.ts, sender_id: p.from, short_name: p.from_name, text, snr: p.snr, mine, state: p.state, tx_id: p.tx_id }));
             log.scrollTop = log.scrollHeight;
           };
           S.chatTx = (rec) => { const el = log && log.querySelector(`[data-tx="${rec.id}"]`); if (el) { el.className = "bub me " + rec.state; const st = el.querySelector(".st"); if (st) st.textContent = rec.state; } };
