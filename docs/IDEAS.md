@@ -143,7 +143,35 @@ how often`), and a live map layer. Build the engine once.
   verifies the hop chain from the packets it hears. **S** on the engine, and a
   lovely demonstration of what a mesh is.
 
-**Simplest to prototype first: the fox hunt.** A genuinely playable weekend
+- **Treasure hunt (BBS-run)** — the BBS is the game master: a player DMs the Den
+  to join and gets clue #1; solve it, DM the answer, the next clue unlocks;
+  `HINT` on request (with an optional score penalty); the Den keeps per-player
+  progress and a leaderboard for furthest and fastest. **Every clue works as plain
+  text over the mesh** — the game plays fully off-grid — and each clue may carry
+  a short link as a graceful upgrade: the web side (a Den page over Tailscale, or
+  the public view) holds the rich payload — a map pin, a photo, an interactive
+  page — for players who happen to have data. Physical checkpoints reuse the
+  shared backbone: hide nodes as caches, and reaching one (in RF range, or reading
+  a code posted at the spot and DMing it back) auto-advances the player.
+  Doubles as **community onboarding**: a town-wide hunt is the best reason yet
+  for someone to install Meshtastic and DM the BBS. **S–M.** *(the BBS menu
+  system, the web-link path, and node check-ins already exist; the new parts are
+  a `hunts`/`progress` table, one BBS command family, a clue-authoring page in
+  Admin, and a leaderboard card)*
+
+**Shortest path to a playable prototype: the treasure hunt.** It needs no
+real-time game loop and no new packet types — a hunt is a list of clues, a
+player's progress is one row, and every move is a DM the BBS already knows how
+to receive and answer. That makes it a weekend: a `hunts` table with ordered
+clues (text ≤ 180 bytes, optional link, optional cache-node id, optional answer),
+a `JOIN <hunt>` / answer / `HINT` / `PROGRESS` command family on the BBS side
+(via the bus adapter, so the v1 BBS code stays untouched), auto-advance when a
+cache node hears the player (the RF-check-in rule from the fox hunt), an Admin
+page to author clues, and a public leaderboard card. Run it once around town and
+you have both a game and a recruiting drive. The fox hunt is the best
+*second* prototype — it proves the signal-strength mechanics zap-CTF needs.
+
+**Fox hunt, if you'd rather start with the radio game.** A genuinely playable weekend
 build: (1) mark one node as the fox in a tiny `games` table, (2) a "Hunt" page
 that shows, for the hunter's node, its SNR/RSSI to the fox over time with a
 warmer/colder trend (the Den already receives both nodes' packets and keeps
