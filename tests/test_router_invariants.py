@@ -151,3 +151,11 @@ def test_node_card_gauge_and_name_link_to_the_full_page():
     assert 'class="card-name card-who" id="card-long" href="#"' in HTML
     assert 'a.href = "#/node/" + encodeURIComponent(n.id)' in APP
     assert ".card-who:hover .gauge" in CSS and ".card-name.card-who::after" in CSS       # visible affordance
+
+
+def test_replay_card_sits_above_the_legend_row():
+    # both live at the bottom of the map; the timeline is lifted by the legend's height + gap at every desktop width
+    assert re.search(r"^\.timeline \{[^}]*bottom: calc\(24px \+ 2\.4rem\)", CSS, re.M)
+    assert re.search(r"\.timeline \{ left: calc\(12px \+ var\(--rail\) \+ 12px\); right: auto; margin: 0; width: 360px; bottom: calc\(24px \+ 2\.4rem\); \}", CSS)
+    assert "right: calc(var(--feed-w) + 24px); width: auto; max-width: 560px; margin: 0 auto;" in CSS   # anchored in the free strip, not centred over the card
+    assert re.search(r"^\.legend \{[^}]*bottom: 12px", CSS, re.M)
