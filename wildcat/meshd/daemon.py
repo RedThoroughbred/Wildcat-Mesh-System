@@ -12,6 +12,7 @@ a fake radio. ``wildcat meshd`` (cli) wires the real ones.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import Any, Callable, Dict, Optional
@@ -44,6 +45,7 @@ class MeshDaemon:
                              default_channel=cfg.radio.channel_index)
         self._stop = threading.Event()
         self._lost = threading.Event()
+        self._next_port_check = 0.0
         self._next_nodes_at = 0.0
         self._backoff = cfg.meshd.reconnect_min_seconds
         self.rx_count = 0
@@ -159,6 +161,15 @@ class MeshDaemon:
         """One scheduler tick: reconnect if lost, send one paced chunk, snapshot nodes
         when due. Returns how long the loop may sleep."""
         now = self.clock() if now is None else now
+        # Serial watchdog: an unplugged USB node makes its device path vanish long before the
+        # library notices (if it ever does). Check every 2 s; the reconnect loop then waits
+        # for the path to come back and re-opens it.
+        if (self.interface is not None and not self._lost.is_set() and self.cfg.radio.type == "serial" and self.cfg.radio.port
+                and now >= self._next_port_check):
+            self._next_port_check = now + 2
+            if not os.path.exists(self.cfg.radio.port):
+                log.warning("serial device %s disappeared — treating the radio as lost", self.cfg.radio.port)
+                self._on_lost()
         if self._lost.is_set() and not self._stop.is_set():
             try:
                 self.interface.close()

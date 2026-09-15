@@ -45,6 +45,7 @@ name = "Wildcat TC² BBS — Northern Kentucky Mesh"
 source = "radio"           # "radio" = owns the node connection (v1); "bus" = talks to meshd over MQTT
 sync_nodes = []            # other TC²-BBS nodes to sync mail/bulletins with, e.g. ["!17d7e4b7"]
 allowed_nodes = []         # nodes allowed to post to the Urgent board; [] = anyone
+# quiet_nodes = ["!716c668c"]   # your own nodes: DMs to the Den are conversation (logged, shown in the dashboard), never answered with the menu
 # content_dir = "bbs"      # where messages.json / fortunes.txt / trivia.txt live
 # weather_api_key = ""     # OpenWeatherMap key for [W]eather; blank = built-in legacy key
 

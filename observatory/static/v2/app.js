@@ -1335,6 +1335,7 @@
                 <label>BBS name<input class="vsearch" id="cfg-name" style="width:100%"></label>
                 <label>Sync with other BBS nodes <span style="color:var(--muted)">(ids, comma-separated)</span><input class="vsearch" id="cfg-sync" style="width:100%" placeholder="!17d7e4b7, !18e9f5a3"></label>
                 <label>Urgent-board posters <span style="color:var(--muted)">(ids; blank = anyone)</span><input class="vsearch" id="cfg-allow" style="width:100%"></label>
+                <label>Quiet nodes <span style="color:var(--muted)">(ids; their DMs are conversation — logged and shown here, never answered with the menu)</span><input class="vsearch" id="cfg-quiet" style="width:100%" placeholder="!716c668c, !a0388880"></label>
                 <label>Main menu letters<input class="vsearch" id="cfg-main" style="width:100%" placeholder="W, N, R, Q, G, B, U, X"></label>
                 <label>BBS menu letters<input class="vsearch" id="cfg-bbs" style="width:100%"></label>
                 <label>Utilities menu letters<input class="vsearch" id="cfg-util" style="width:100%"></label>
@@ -1392,14 +1393,14 @@
         fetch("api/config").then(r => r.json()).then(c => {
           $("cfg-toml").textContent = c.toml; $("cfg-src").textContent = `${c.source} [${c.kind}]`;
           const b = c.bbs || {}, m = b.menu || {};
-          $("cfg-name").value = b.name || ""; $("cfg-sync").value = (b.sync_nodes || []).join(", "); $("cfg-allow").value = (b.allowed_nodes || []).join(", ");
+          $("cfg-name").value = b.name || ""; $("cfg-sync").value = (b.sync_nodes || []).join(", "); $("cfg-allow").value = (b.allowed_nodes || []).join(", "); $("cfg-quiet").value = (b.quiet_nodes || []).join(", ");
           $("cfg-main").value = (m.main || []).join(", "); $("cfg-bbs").value = (m.bbs || []).join(", "); $("cfg-util").value = (m.utilities || []).join(", ");
           if (!c.editable) { $("cfg-status").textContent = "not editable: the Den is running from the legacy INI — run `wildcat config migrate --write`"; for (const i of $("cfg-form").querySelectorAll("input,button")) i.disabled = true; }
         });
         const csv = (v) => v.split(",").map(x => x.trim()).filter(Boolean);
         const cfgSave = $("cfg-save"); if (cfgSave) cfgSave.onclick = async () => {
           cfgSave.disabled = true; $("cfg-status").textContent = "validating…";
-          const body = { name: $("cfg-name").value, sync_nodes: csv($("cfg-sync").value), allowed_nodes: csv($("cfg-allow").value),
+          const body = { name: $("cfg-name").value, sync_nodes: csv($("cfg-sync").value), allowed_nodes: csv($("cfg-allow").value), quiet_nodes: csv($("cfg-quiet").value),
             menu: { main: csv($("cfg-main").value), bbs: csv($("cfg-bbs").value), utilities: csv($("cfg-util").value) } };
           try { const r = await fetch("api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json();
             $("cfg-status").textContent = r.ok ? `saved to ${j.path} — ${j.note}` + (j.warnings.length ? ` · ${j.warnings.length} warning(s)` : "") : "rejected: " + j.error;

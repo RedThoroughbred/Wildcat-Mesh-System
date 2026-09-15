@@ -138,3 +138,29 @@ def test_send_failure_does_not_spin():
 def test_stop_closes_radio_and_publishes():
     d, bus, pub, clock, radios, _ = make(); d.start(); d.stop()
     assert radios[0].closed and bus.last("meshd/status")["state"] == "stopped"
+
+
+def test_serial_watchdog_notices_an_unplugged_node(tmp_path):
+    port = tmp_path / "cu.usbserial-0001"; port.write_text("")
+    cfg = build({"radio": {"type": "serial", "port": str(port)}, "mqtt": {"enabled": True}, "bbs": {"source": "bus"}, "telemetry": {"source": "bus"},
+                 "meshd": {"reconnect_min_seconds": 1, "reconnect_max_seconds": 4, "tx_pacing_seconds": 2.0, "nodes_publish_interval": 60}})
+    bus, pub, clock = MemoryBus(), FakePub(), Clock()
+    radios = []
+    def open_interface():
+        if not port.exists():
+            raise RadioError(f"serial {port}: no such device")
+        r = FakeRadio(); radios.append(r); return r
+    d = MeshDaemon(cfg, bus, open_interface, pub, clock=clock.now, sleep=clock.sleep)
+    d.start(); assert len(radios) == 1 and bus.last("meshd/status")["state"] == "connected"
+    d.pump_once(); assert not d._lost.is_set()                         # plugged in: nothing happens
+    port.unlink()                                                      # yank the cable
+    # the reconnect loop blocks until the device is back: simulate the cable returning after one failed attempt
+    real_sleep = clock.sleep
+    def sleep_and_replug(secs):
+        real_sleep(secs); port.write_text("")
+    d.sleep = sleep_and_replug
+    clock.t += 3; d.pump_once()
+    states = [p["state"] for t, p in bus.published if t == "wildcat/meshd/status"]
+    assert "disconnected" in states[-3:] and radios[0].closed
+    assert len(radios) == 2 and d.interface is radios[1] and bus.last("meshd/status")["state"] == "connected"
+    assert clock.sleeps[-1] == 1                                       # one backoff step, then it was back

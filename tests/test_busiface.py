@@ -146,3 +146,20 @@ def test_brain_questions_bypass_the_bbs_only_while_bobcat_reports_on():
     bus.publish("brain/status", {"enabled": True, "running": False}, retain=True)   # process died → BBS takes over
     bus.publish("rx/text", _text_dm("?dead"))
     assert got[-1] == "?dead"
+
+
+def test_quiet_nodes_are_logged_but_never_answered(tmp_path):
+    import sqlite3
+    db = tmp_path / "q.db"; c = sqlite3.connect(db)
+    c.execute("CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, sender_short_name TEXT, to_id INTEGER, channel_index INTEGER, message TEXT, snr REAL, rssi INTEGER, hop_limit INTEGER)")
+    c.commit(); c.close()
+    bus = MemoryBus(); _snapshot(bus)
+    iface = BusInterface(bus, build({**CFG, "bbs": {"source": "bus", "quiet_nodes": ["!0000006f"]}, "database": {"path": str(db)}}))
+    got = []
+    iface.start(lambda packet, i: got.append(packet["decoded"]["text"]))
+    bus.publish("rx/text", _text_dm("hey den, it's me"))                 # quiet node → not handed to the BBS
+    bus.publish("rx/text", _text_dm("M", frm="!00000070"))                # anyone else → BBS as usual
+    bus.publish("rx/text", {**_text_dm("all hear this"), "to": None, "broadcast": True})   # broadcasts untouched
+    assert got == ["M", "all hear this"]
+    rows = sqlite3.connect(db).execute("SELECT sender_id, to_id, message, snr FROM message_logs").fetchall()
+    assert rows == [("!0000006f", 222, "hey den, it's me", 6.0)]

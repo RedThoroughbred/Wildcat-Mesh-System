@@ -89,6 +89,43 @@ class BusInterface:
         text = env.get("text")
         return isinstance(text, str) and text.startswith(self.cfg.brain.trigger_prefix)
 
+    def is_quiet_conversation(self, env: Dict[str, Any]) -> bool:
+        """A text DM to us from a [bbs].quiet_nodes node: the operator talks to these from the
+        dashboard, so the BBS must not answer them with its menu."""
+        if not self.cfg.bbs.quiet_nodes or env.get("kind") != "text" or env.get("broadcast"):
+            return False
+        my = self.myInfo.my_node_num
+        me = f"!{my:08x}" if isinstance(my, int) else None
+        return bool(me) and env.get("to") == me and env.get("from") in self.cfg.bbs.quiet_nodes
+
+    def _log_text(self, env: Dict[str, Any]) -> None:
+        """What the BBS would have logged for this DM (message_logs), so the conversation
+        still shows in the dashboard. Commit or rollback-and-close (D-022)."""
+        import os
+        import sqlite3
+        db = str(self.cfg.database.path)
+        if not os.path.exists(db):
+            return
+        rx = env.get("rx") if isinstance(env.get("rx"), dict) else {}
+        frm = env.get("from") or ""
+        name = (self.nodes.get(frm, {}).get("user") or {}).get("shortName") if isinstance(self.nodes.get(frm), dict) else None
+        try:
+            conn = sqlite3.connect(db, timeout=3)
+            try:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                conn.execute("INSERT INTO message_logs (timestamp, sender_id, sender_short_name, to_id, channel_index, message, snr, rssi, hop_limit)"
+                             " VALUES (?,?,?,?,?,?,?,?,?)",
+                             (int(rx.get("time") or env.get("received_at") or time.time()), frm, name or frm[-4:], self.myInfo.my_node_num,
+                              env.get("channel", 0), env.get("text") or "", rx.get("snr"), rx.get("rssi"), env.get("hopLimit")))
+                conn.commit()
+            except sqlite3.Error:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            log.warning("could not log quiet DM: %s", e)
+
     def _check_ready(self) -> None:
         if self.meshd_state == "connected" and self.myInfo.my_node_num is not None:
             self._ready.set()
@@ -128,6 +165,10 @@ class BusInterface:
             return
         if self.is_brain_question(env):
             log.info("DM from %s is a Bobcat question — left to wildcat brain", env.get("from"))
+            return
+        if self.is_quiet_conversation(env):
+            log.info("DM from quiet node %s — logged, no menu", env.get("from"))
+            self._log_text(env)
             return
         try:
             packet = packets.packet_from_envelope(env)

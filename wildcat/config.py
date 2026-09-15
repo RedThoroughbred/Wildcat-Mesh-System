@@ -144,6 +144,7 @@ class BBSConfig:
     source: str = "radio"                 # "radio" (owns the connection, v1) | "bus" (via meshd)
     sync_nodes: List[str] = field(default_factory=list)      # was [sync] bbs_nodes
     allowed_nodes: List[str] = field(default_factory=list)   # was [allow_list] allowed_nodes (Urgent board)
+    quiet_nodes: List[str] = field(default_factory=list)     # DMs from these nodes are conversation, not commands: logged, no menu reply
     content_dir: Path = field(default_factory=lambda: paths.repo_root() / "bbs")  # messages.json, fortunes.txt, trivia.txt
     weather_api_key: str = ""          # OpenWeatherMap; "" keeps the legacy built-in key for now
     menu: MenuConfig = field(default_factory=MenuConfig)
@@ -442,7 +443,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
 
     # [bbs]
     b = _table(ctx, data, "bbs", "[bbs]")
-    _warn_unknown(ctx, b, "[bbs]", ("name", "source", "sync_nodes", "allowed_nodes", "content_dir",
+    _warn_unknown(ctx, b, "[bbs]", ("name", "source", "sync_nodes", "allowed_nodes", "quiet_nodes", "content_dir",
                                    "weather_api_key", "menu", "js8call"))
     menu_t = _table(ctx, b, "menu", "[bbs.menu]")
     _warn_unknown(ctx, menu_t, "[bbs.menu]", ("main", "bbs", "utilities"))
@@ -473,6 +474,7 @@ def build(data: Dict[str, Any], *, label: str = "config", base_dir: Optional[Pat
         source=_take_str(ctx, b, "source", "[bbs]", "radio", choices=SOURCES),
         sync_nodes=_node_ids(ctx, b, "sync_nodes", "[bbs]"),
         allowed_nodes=_node_ids(ctx, b, "allowed_nodes", "[bbs]"),
+        quiet_nodes=_node_ids(ctx, b, "quiet_nodes", "[bbs]"),
         content_dir=_take_path(ctx, b, "content_dir", "[bbs]", base_dir / "bbs"),
         weather_api_key=_take_str(ctx, b, "weather_api_key", "[bbs]", ""),
         menu=menu,

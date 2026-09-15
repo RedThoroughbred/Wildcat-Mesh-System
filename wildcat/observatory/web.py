@@ -256,7 +256,7 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         c = bridge.cfg
         return jsonify({"source": str(c.source), "kind": c.source_kind, "editable": c.source_kind == "toml",
                         "toml": to_toml(c, redact=True), "warnings": c.warnings,
-                        "bbs": {"name": c.bbs.name, "sync_nodes": c.bbs.sync_nodes, "allowed_nodes": c.bbs.allowed_nodes,
+                        "bbs": {"name": c.bbs.name, "sync_nodes": c.bbs.sync_nodes, "allowed_nodes": c.bbs.allowed_nodes, "quiet_nodes": c.bbs.quiet_nodes,
                                 "weather_api_key": "***" if c.bbs.weather_api_key else "",
                                 "menu": {"main": c.bbs.menu.main, "bbs": c.bbs.menu.bbs, "utilities": c.bbs.menu.utilities}},
                         "radio": {"type": c.radio.type, "host": c.radio.host, "port": c.radio.port}})
@@ -451,7 +451,7 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         return _csv(rows, ["ts", "node_id", "proto", "lat", "lon", "alt", "snr", "rssi", "hops", "pos_age", "kind", "source"], "wildcat-coverage.csv")
 
     # ---- config editor: the safe, BBS-facing subset, written back as TOML --------------
-    EDITABLE = ("name", "sync_nodes", "allowed_nodes", "weather_api_key")
+    EDITABLE = ("name", "sync_nodes", "allowed_nodes", "quiet_nodes", "weather_api_key")
 
     @bp.route("/api/config", methods=["POST"])
     def api_config_save():
@@ -486,7 +486,7 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
             return jsonify({"error": str(e)}), 500
         set_config(new); bridge.cfg = new
         return jsonify({"ok": True, "path": str(cfg.source), "bbs": {"name": new.bbs.name, "sync_nodes": new.bbs.sync_nodes,
-                        "allowed_nodes": new.bbs.allowed_nodes, "weather_api_key": "***" if new.bbs.weather_api_key else "",
+                        "allowed_nodes": new.bbs.allowed_nodes, "quiet_nodes": new.bbs.quiet_nodes, "weather_api_key": "***" if new.bbs.weather_api_key else "",
                         "menu": {"main": new.bbs.menu.main, "bbs": new.bbs.menu.bbs, "utilities": new.bbs.menu.utilities}},
                         "warnings": new.warnings, "note": "restart the BBS to apply"})
 
