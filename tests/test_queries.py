@@ -104,3 +104,23 @@ def test_bulletins_and_mail_privacy(db):
 def test_direct_links_from_rx_points(db):
     d = Q.direct_links(db)
     assert len(d) == 1 and d[0]["id"] == STAY and d[0]["count"] == 2 and d[0]["snr"] == 8.0
+
+
+def test_chat_messages_shape(tmp_path):
+    import sqlite3, time
+    from wildcat.observatory.queries import chat_messages
+    db = tmp_path / "c.db"; c = sqlite3.connect(db)
+    c.execute("CREATE TABLE message_logs (id INTEGER PRIMARY KEY, timestamp INTEGER, sender_id TEXT, sender_short_name TEXT, to_id INTEGER, channel_index INTEGER, message TEXT, snr REAL, rssi INTEGER, hop_limit INTEGER)")
+    now = int(time.time())
+    c.executemany("INSERT INTO message_logs (timestamp,sender_id,sender_short_name,to_id,channel_index,message,snr,rssi) VALUES (?,?,?,?,?,?,?,?)", [
+        (now - 10, "!716c668c", "GO", 4294967295, 0, "hello all", 5.0, -80),
+        (now - 20, "!716c668c", "GO", int("9e766b18", 16), 0, "hi den", 6.0, -79),
+        (now - 30, "!9e766b18", "6b18", int("716c668c", 16), 0, "hi GO", None, None),
+        (now - 40, "!8880aaaa", "STAY", 4294967295, 1, "ch1 chatter", 2.0, -90)])
+    c.commit(); c.close()
+    ms = chat_messages(str(db), "!9e766b18", 24)
+    assert [m["text"] for m in ms] == ["hello all", "hi den", "hi GO", "ch1 chatter"]
+    assert ms[0]["broadcast"] is True and ms[0]["to"] is None and ms[0]["channel"] == 0 and ms[0]["mine"] is False
+    assert ms[1]["broadcast"] is False and ms[1]["to"] == "!9e766b18"
+    assert ms[2]["mine"] is True and ms[2]["to"] == "!716c668c"
+    assert ms[3]["channel"] == 1

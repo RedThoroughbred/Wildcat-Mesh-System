@@ -138,6 +138,22 @@ def channel_messages(db_path: str, channel: int, hours: int = 24, limit: int = 5
         ORDER BY timestamp DESC LIMIT ?""", (channel, since, BROADCAST, str(BROADCAST), limit))
 
 
+def chat_messages(db_path: str, my_id: Optional[str], hours: int = 168, limit: int = 1500) -> List[Dict[str, Any]]:
+    """Every text message in the window — DMs both ways and channel broadcasts — shaped for
+    the conversations view: {ts, sender_id, short_name, text, snr, rssi, to, channel, broadcast, mine}."""
+    since = int(time.time() - hours * 3600)
+    rows = _rows(db_path, """
+        SELECT timestamp ts, sender_id, sender_short_name short_name, message text, snr, rssi, to_id, channel_index channel
+        FROM message_logs WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?""", (since, limit))
+    for r in rows:
+        to = r.pop("to_id")
+        r["broadcast"] = to in (BROADCAST, str(BROADCAST), None)
+        r["to"] = None if r["broadcast"] else (f"!{int(to):08x}" if isinstance(to, int) else str(to))
+        r["mine"] = bool(my_id) and r["sender_id"] == my_id
+        r["channel"] = r["channel"] if isinstance(r["channel"], int) else 0
+    return rows
+
+
 def bbs_messages(db_path: str, bbs_node_id: Optional[str], hours: int = 168, limit: int = 500) -> List[Dict[str, Any]]:
     """Direct messages (not broadcasts) — the conversations with the Den."""
     since = int(time.time() - hours * 3600)

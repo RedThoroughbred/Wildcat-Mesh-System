@@ -338,6 +338,7 @@
     for (const l of ev.links || []) upsertLink(l);
     if (typeof TL !== "undefined" && document.body.classList.contains("replaying")) { TL.queuedLive.push(ev.packet); if (TL.events.length) TL.events.push(ev.packet); refreshStats(); return; }
     addPacket(ev.packet, true);
+    if (S.chatLive) { try { S.chatLive(ev.packet); } catch (e) {} }
     if (ev.packet.sent) { maybeExchange(ev.packet); refreshStats(); return; }
     if (typeof pingMessage === "function") { pingMessage(ev.packet); maybeExchange(ev.packet); }
     if (ev.packet.sos && typeof sosIncoming === "function") sosIncoming(ev.packet);
@@ -522,7 +523,7 @@
     $("sends").innerHTML = arr.map(x => `<div class="snd ${x.state}"><div class="t"><b>${x.broadcast ? "→ all" + (x.channel ? " · ch " + x.channel : "") : "→ " + escape(x.to_name || x.to)}</b>${escape(x.text)}</div><div class="st">${stateChip(x.state)}<span>${ago(x.ts)}${x.state === "delivered" ? " · acked by " + escape(x.to_name || x.to) : x.state === "relayed" ? " · heard on the mesh, not yet confirmed" : ""}${x.error ? " · " + escape(x.error) : ""}</span></div></div>`).join("");
   }
   function applyTx(rec) {
-    C.sends.set(rec.id, rec); if (C.open) renderSends();
+    C.sends.set(rec.id, rec); if (C.open) renderSends(); if (S.chatTx) { try { S.chatTx(rec); } catch (e) {} }
     const el = list.querySelector(`.pkt[data-tx="${rec.id}"]`); if (el) { const st = el.querySelector(".state"); if (st) { st.className = "state " + rec.state; st.textContent = rec.state; } }
     if (rec.state === "delivered") toast(`Delivered — ${rec.to_name || rec.to} acknowledged`, "ok"); else if (rec.state === "failed") toast(`Send failed: ${rec.error || "unknown"}`, "err");
   }
@@ -1077,7 +1078,7 @@
         const d = await r.json(), n = d.node, st = d.stats || {}, rel = d.reliability || {};
         viewTitle.innerHTML = `${dot(n)}${escape(n.short_name || id.slice(-4))} <span style="color:var(--muted);font-weight:500">${escape(n.long_name || "")}</span>`;
         const center = document.createElement("button"); center.className = "link-btn"; center.textContent = "⌖ on map"; center.onclick = () => { location.hash = "#/"; setTimeout(() => { const p = pos(S.roster[id]); if (p) { map.flyTo(p, 14); showCard(id); } }, 50); };
-        const msg = document.createElement("button"); msg.className = "link-btn op-only"; msg.textContent = "✎ message"; msg.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(id), 60); };
+        const msg = document.createElement("button"); msg.className = "link-btn op-only"; msg.textContent = "✎ message"; msg.onclick = () => { location.hash = "#/messages/" + encodeURIComponent("dm:" + id); };
         viewTools.replaceChildren(msg, center);
         const sig = d.signal || [], tel = d.telemetry || [];
         const lastSig = sig.length ? sig[sig.length - 1] : {};
@@ -1152,7 +1153,8 @@
     },
     messages: {
       title: "Messages", hours: 168, tab: "conversations", board: null,
-      async render() {
+      async render(arg) {
+        if (arg) VIEWS.messages.tab = "conversations";
         const self = VIEWS.messages, h = self.hours;
         const tabs = document.createElement("div"); tabs.className = "sel";
         for (const [k, label] of [["conversations", "Conversations"], ["bulletins", "Bulletins"], ["mail", "Mail"]]) {
@@ -1161,16 +1163,52 @@
         viewTools.replaceChildren(tabs);
         if (self.tab === "conversations") {
           viewTools.appendChild(hoursSel(h, H24, v => { self.hours = v; route(); }));
-          const d = await (await fetch("api/messages?hours=" + h)).json();
-          const me = d.my_id, threads = new Map();
-          for (const m of d.messages) { const other = m.from_bbs ? m.to : m.sender_id; if (!other) continue; (threads.get(other) || threads.set(other, []).get(other)).push(m); }
-          const rows = [...threads.entries()].sort((a, b) => b[1][0].ts - a[1][0].ts);
-          if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="kpis"><div class="kpi"><b>${d.messages.length}</b><span>direct messages · ${h}h</span></div><div class="kpi"><b>${threads.size}</b><span>nodes in conversation</span></div><div class="kpi"><b>${d.messages.filter(m => m.from_bbs).length}</b><span>replies from the Den</span></div></div>`
-            + (rows.length ? rows.map(([nid, ms]) => { const nm = (S.roster[nid] && S.roster[nid].short_name) || (ms.find(m => !m.from_bbs) || {}).short_name || nid.slice(-4);
-              return `<div class="vcard" style="margin-bottom:12px"><h2><span class="nd ${S.roster[nid] ? ageClass(S.roster[nid]) : ""}"></span>${escape(nm)} <span style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500">${escape(nid)} · ${ms.length} messages · last ${ago(ms[0].ts)}</span><span class="sel">${PUBLIC ? "" : `<button class="link-btn reply" data-id="${escape(nid)}">✎ reply</button>`}<a class="link-btn" href="#/node/${encodeURIComponent(nid)}">node →</a></span></h2>${
-                ms.slice().reverse().map(m => `<div class="msgrow${m.from_bbs ? " den" : ""}"><div class="m"><b>${m.from_bbs ? "Den" : escape(m.short_name || nm)}</b>${escape(m.text)}</div><div class="r">${ago(m.ts)}${m.snr != null ? "<br>" + snrSpan(m.snr) : ""}</div></div>`).join("")}</div>`; }).join("")
-              : '<div class="empty">no direct messages in this window — DM the Den from any node to start one</div>');
-          viewBody.querySelectorAll(".reply").forEach(b => b.onclick = () => { location.hash = "#/"; setTimeout(() => composeOpen(b.dataset.id), 60); });
+          const d = await (await fetch("api/chat?hours=" + h)).json();
+          const me = d.my_id || S.myId, threads = new Map();
+          const keyOf = (m) => m.broadcast ? "ch:" + (m.channel || 0) : "dm:" + (m.mine ? m.to : m.sender_id);
+          for (const m of d.messages) { const k = keyOf(m); if (!k.endsWith(":null")) (threads.get(k) || threads.set(k, []).get(k)).push(m); }
+          const tname = (k) => k.startsWith("ch:") ? chName(+k.slice(3)) : name(S.roster[k.slice(3)] || { id: k.slice(3), short_name: ((threads.get(k) || []).find(m => !m.mine) || {}).short_name });
+          const order = [...threads.keys()].sort((x, y) => threads.get(y)[0].ts - threads.get(x)[0].ts);
+          if (arg && !threads.has(arg) && arg.startsWith("dm:")) { threads.set(arg, []); order.unshift(arg); }   // a new conversation from a node page
+          const cur = arg && threads.has(arg) ? arg : (window.innerWidth <= 760 ? null : order[0] || null);
+          self.thread = cur;
+          const ms = cur ? threads.get(cur).slice().reverse() : [];
+          const bubble = (m) => `<div class="bub${m.mine ? " me" : ""}${m.state ? " " + m.state : ""}" data-tx="${m.tx_id || ""}">${m.mine || cur.startsWith("dm:") ? "" : `<b>${escape(m.short_name || (m.sender_id || "").slice(-4))}</b>`}<span class="t">${escape(m.text)}</span><span class="meta"><span data-ts="${m.ts}">${ago(m.ts)}</span>${m.snr != null ? snrSpan(m.snr) : ""}${m.mine ? `<i class="st">${escape(m.state || "")}</i>` : ""}</span></div>`;
+          if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<div class="chat${cur ? " open" : ""}">
+            <div class="chat-list">${order.length ? order.map(k => { const last = threads.get(k)[0] || {}; return `<a class="thread${k === cur ? " on" : ""}" href="#/messages/${encodeURIComponent(k)}"><span class="who">${k.startsWith("ch:") ? "📢" : dot(S.roster[k.slice(3)] || {})}<b>${escape(tname(k))}</b><span class="when" data-ts="${last.ts || 0}">${last.ts ? ago(last.ts) : ""}</span></span><span class="prev">${escape(last.mine ? "you: " : "")}${escape(last.text || "no messages yet")}</span></a>`; }).join("") : `<div class="empty">no messages in this window — DM the Den from any node, or say something on a channel</div>`}</div>
+            <div class="chat-pane">${cur ? `<div class="chat-head"><a class="link-btn chat-back" href="#/messages">‹</a><b>${escape(tname(cur))}</b><span class="dim">${cur.startsWith("ch:") ? "channel broadcast · everyone hears this" : escape(cur.slice(3)) + (S.roster[cur.slice(3)] && S.roster[cur.slice(3)].transport === "mqtt" ? " · ☁ internet-only" : "")}</span>${cur.startsWith("dm:") ? `<a class="link-btn" href="#/node/${encodeURIComponent(cur.slice(3))}">node ›</a>` : ""}</div>
+              <div class="chat-log" id="chat-log">${ms.length ? ms.map(bubble).join("") : '<div class="empty">nothing here yet</div>'}</div>
+              ${PUBLIC ? "" : `<form class="chat-compose" id="chat-form"><input class="vsearch" id="chat-text" maxlength="200" placeholder="${cur.startsWith("ch:") ? "Say something to the channel…" : "Message " + escape(tname(cur)) + "…"}" autocomplete="off"><span class="dim" id="chat-count">0 / 200</span><button class="send" type="submit" id="chat-send" disabled>Send ↗</button></form>`}` : `<div class="empty chat-pick">pick a conversation</div>`}</div>
+          </div>`;
+          const log = $("chat-log"); if (log) log.scrollTop = log.scrollHeight;
+          const seqNow = this.seq;
+          // live: a text packet for this thread lands in the log without a refetch
+          S.chatLive = (p) => {
+            if (seqNow !== S.viewSeq || !cur || p.kind !== "text" || !log) return;
+            const k = p.broadcast ? "ch:" + (p.channel || 0) : "dm:" + (p.sent || p.from === me ? p.to : p.from);
+            if (k !== cur || (p.sent && p.tx_id && log.querySelector(`[data-tx="${p.tx_id}"]`))) return;
+            if (log.querySelector(".empty")) log.innerHTML = "";
+            log.insertAdjacentHTML("beforeend", bubble({ ts: p.ts, sender_id: p.from, short_name: p.from_name, text: p.text || p.summary, snr: p.snr, mine: p.sent || p.from === me, state: p.state, tx_id: p.tx_id }));
+            log.scrollTop = log.scrollHeight;
+          };
+          S.chatTx = (rec) => { const el = log && log.querySelector(`[data-tx="${rec.id}"]`); if (el) { el.className = "bub me " + rec.state; const st = el.querySelector(".st"); if (st) st.textContent = rec.state; } };
+          const f = $("chat-form");
+          if (f) {
+            const inp = $("chat-text"), cnt = $("chat-count"), btn = $("chat-send");
+            const bytes = () => new TextEncoder().encode(inp.value).length;
+            inp.addEventListener("input", () => { const b = bytes(); cnt.textContent = `${b} / 200`; cnt.classList.toggle("over", b > 200); btn.disabled = !inp.value.trim() || b > 200; });
+            setTimeout(() => inp.focus(), 60);
+            f.addEventListener("submit", async (e) => {
+              e.preventDefault(); const text = inp.value.trim(); if (!text) return; btn.disabled = true;
+              const body = cur.startsWith("ch:") ? { to: "^all", text, channel: +cur.slice(3) } : { to: cur.slice(3), text };
+              try {
+                const r = await fetch("api/tx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json();
+                if (!r.ok) { toast(j.error || "send failed", "err"); btn.disabled = false; return; }
+                inp.value = ""; cnt.textContent = "0 / 200";
+                if (!log.querySelector(`[data-tx="${j.id}"]`)) { if (log.querySelector(".empty")) log.innerHTML = ""; log.insertAdjacentHTML("beforeend", bubble({ ts: j.ts, text, mine: true, state: j.state || "queued", tx_id: j.id })); log.scrollTop = log.scrollHeight; }
+              } catch (err) { toast("send failed — is the Den reachable?", "err"); btn.disabled = false; }
+            });
+          }
         } else if (self.tab === "bulletins") {
           const d = await (await fetch("api/bulletins" + (self.board ? "?board=" + encodeURIComponent(self.board) : ""))).json();
           const boards = document.createElement("div"); boards.className = "sel";
@@ -1553,6 +1591,7 @@
     const v = VIEWS[name]; if (!v) return;
     v.seq = S.viewSeq = (S.viewSeq || 0) + 1;                     // stale renders (fast nav) must not paint
     if (S.mini) { try { S.mini.remove(); } catch (e) {} S.mini = null; }
+    S.chatLive = null; S.chatTx = null;
     if (document.body.classList.contains("replaying")) tlExitReplay();   // replay is a Home-only mode
     if (!$("card").hidden) { $("card").hidden = true; S.selected = null; }
     if (!viewEl.hidden) { viewEl.classList.remove("swap"); void viewEl.offsetWidth; viewEl.classList.add("swap"); }

@@ -226,6 +226,16 @@ Run it: `wildcat brain` (systemd: `wildcat-brain.service`, part of `wildcat.targ
 
 ## 6. Roadmap (a) — Mobile: PWA now, native later
 
+> **Live since 2026-09-14:** the Den is served over HTTPS on the tailnet at
+> `https://seths-mac-mini-1.tailc521cf.ts.net/` (Tailscale Serve → `127.0.0.1:5050`).
+> That is a secure context, so the service worker, home-screen install and (later)
+> web push work from any phone on the tailnet. Set up with
+> `tailscale serve --bg 5050` on the mini after enabling Serve for the tailnet once
+> in the admin console (the CLI prints the link if it isn't). On the Mac use the
+> app's own CLI, `/Applications/Tailscale.app/Contents/MacOS/Tailscale`; the
+> Homebrew `tailscale` binary is a different version and can't reach the app's
+> daemon. Turn it off with `tailscale serve --https=443 off`.
+
 **Now (shipped in this branch): an installable PWA.** `/v2` carries a web-app
 manifest (`/v2/manifest.webmanifest`, standalone display, Wildcat icons incl. a
 maskable one), a service worker (`/v2/sw.js`, scope `/v2/`) and iOS/Android

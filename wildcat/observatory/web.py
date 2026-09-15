@@ -215,6 +215,12 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         h = _hours(168)
         return jsonify({"hours": h, "my_id": bridge.state.my_id, "messages": Q.bbs_messages(_db(), bridge.state.my_id, h)})
 
+    @bp.route("/api/chat")
+    def api_chat():
+        """Conversations: every text in the window (DMs + channel broadcasts), newest first."""
+        h = _hours(168)
+        return jsonify({"hours": h, "my_id": bridge.state.my_id, "messages": Q.chat_messages(_db(), bridge.state.my_id, h)})
+
     @bp.route("/api/bulletins")
     def api_bulletins():
         from flask import request
