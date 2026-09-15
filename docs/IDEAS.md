@@ -74,6 +74,86 @@ by size. Things already built are noted so we don't re-imagine them.*
     what MeshCore's companion protocol exposes, how ids and channels map, whether
     a Den can be a node on both without two radios. **L, after a week of research.**
 
+## Field use — the nodes out and about (hiking, camping, off-grid)
+
+The Den already stores every position report (`position_logs`), replays the last
+hours, keeps coverage points, and flags regulars that go quiet. Most of this
+section is about turning those into things a person on a trail would use.
+
+- **Live breadcrumbs** — a node's position history drawn as a trail on the map,
+  solo ("where did I go") and group ("where's everyone", one colour per node,
+  fading with age); tap a breadcrumb for the time and signal there. The data is
+  already in the database; this is a map layer + a per-node track query. **S.**
+- **Off-grid group chat + drop-a-waypoint** — a channel thread that understands a
+  waypoint message (Meshtastic has a native waypoint packet; MeshCore doesn't, so
+  the neutral form is a text convention like `📍 Water 38.8796,-84.6169 "spring
+  on the left"`): pins on the map, a list with distance and bearing from your
+  node, "navigate to" that opens the phone's maps app. Conversations exist; the
+  waypoint kind and the pin layer are the new parts. **M.**
+- **Store-and-forward mailbox** — a DM to a node that's out of range waits at the
+  Den and goes out when that node is heard again (with "you have 2 waiting").
+  The BBS mail table holds messages today; the missing half is *delivery on
+  reappearance* and a queue view. The single most useful thing for part-time and
+  hiking nodes. **M.** *(also in the top ten — it belongs here too)*
+- **"I'm OK" beacon and the quiet-node alarm** — a node (or the phone app) sends a
+  one-packet check-in on a timer; the operator sets an expected interval per
+  node ("GO checks in every 30 min on trail days"); the Den flags a missed
+  check-in on the health strip, in the feed, and by push — with last known
+  position and breadcrumb. The health "went quiet" rule exists for regulars;
+  this is a per-node opt-in with a real deadline and a louder alarm. **S–M.**
+- **Coverage mapping as a byproduct** — every hike logs where the Den (or, later,
+  any Den-linked node) heard you; the hex map grows on its own. Exists for the
+  Den's own reception today; the *over time* view ("new ground this month") and
+  the multi-listener version (the companion app uploading what its radio heard)
+  are the two extensions. **M** (time view), **L** (multi-listener, needs the fork).
+
+## Games — the map is the real world, RF range is the board
+
+LoRa is slow and the channel is shared, so the games that work are about
+**location and strategy**, not reflexes: a move is a packet, a turn is minutes,
+and the airtime budget is a rule of the game, not a bug. The Den is the referee
+and the scoreboard; the phones are the players' instruments; the dashboard is
+the spectator view. All of them share one engine: a game record (players, teams,
+objectives, score, cooldowns), packet rules (`what counts as a move, from whom,
+how often`), and a live map layer. Build the engine once.
+
+- **Fox hunt** — hide a "fox" node that beacons on a schedule; players use their
+  own node's SNR/RSSI to the fox (the app shows a live signal gauge and a
+  "warmer/colder" trend) to physically track it down; the first DM to the fox from
+  within range wins; the Den logs every player's signal trail and draws the hunt
+  afterwards. It's the ham-radio classic, it rewards antenna and VNA skills, and
+  it needs almost no new packet logic — the Den already keeps per-node signal
+  samples. **S–M** (M with the trail replay and multiple foxes).
+- **Capture the flag / zap the node** — objective nodes are placed in the field;
+  to capture one you get physically within RF range and DM it a capture packet
+  (`ZAP <code>`); the objective's node (or the Den, hearing both) rules on it by
+  hops-away / SNR; captured objectives flip colour on a live map; **the duty-cycle
+  cooldown is the mechanic** (one zap per node per N minutes — spam can't win);
+  teams, a scoreboard, a match clock, and end-of-match replay. **M** for the
+  engine + map + scoreboard, once the fox hunt has proved the hop/SNR ruling.
+- **King of the hill** — same engine: hold an objective by being the *strongest*
+  signal at it for the longest; the Den tallies "possession minutes" per team
+  from the objective node's neighbour reports. **S** on top of CTF.
+- **Geocaching / node hunt** — hidden nodes with names; find one and DM it a
+  check-in; the Den keeps a found-list per player and a leaderboard; caches can
+  give a clue to the next. Family-friendly, no teams, runs for weeks. **S** on
+  top of the engine.
+- **Relay race** — a message must travel from A to B through at least three
+  different player nodes with no internet; fastest honest path wins; the Den
+  verifies the hop chain from the packets it hears. **S** on the engine, and a
+  lovely demonstration of what a mesh is.
+
+**Simplest to prototype first: the fox hunt.** A genuinely playable weekend
+build: (1) mark one node as the fox in a tiny `games` table, (2) a "Hunt" page
+that shows, for the hunter's node, its SNR/RSSI to the fox over time with a
+warmer/colder trend (the Den already receives both nodes' packets and keeps
+signal samples), (3) the fox's periodic beacon is just the node's own position/
+telemetry cadence, (4) the win rule is "first DM containing FOUND to the fox that
+the Den hears with hops 0 from the fox's side", (5) a scoreboard card and the
+replay afterwards. No new packet types, no radio changes, no scoring disputes
+that a log can't settle. Zap-CTF is the same engine plus objectives, cooldowns
+and teams — the second weekend, not the first.
+
 ## Worth doing, smaller
 
 - **Field-day mode** — a full-screen kiosk view for a tent or a club meeting: big
