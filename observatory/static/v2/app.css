@@ -20,6 +20,8 @@
   --cold: #5b6b80;
   --link: #6fc3ff;
   --link-soft: rgba(111, 195, 255, 0.22);
+  --net: #b58cff;             /* "internet-only" — violet, used by nothing else on the map (green=fresh, amber=warm, slate=old, terracotta=this node) */
+  --net-soft: rgba(181, 140, 255, 0.28);
   --kind-text: #58e39c; --kind-position: #6fc3ff; --kind-telemetry: #f2c04e;
   --kind-neighbors: #c78bff; --kind-nodeinfo: #ff9ac6; --kind-other: #8a97a8;
   --radius: 16px;
@@ -724,25 +726,31 @@ body.following .follow-flag { display: block; }
 .sc-days label { display: inline-flex; align-items: center; gap: 2px; }
 .vt tr.off td { opacity: .55; }
 
-/* ---- RF vs MQTT (internet-bridged) ---- */
-.node.mqtt-only { opacity: .78; }
-.node.mqtt-only .core { background: transparent !important; box-shadow: 0 0 0 2px rgba(0,0,0,.35), inset 0 0 0 2px var(--muted) !important; }
+/* ---- RF vs MQTT (internet-bridged) ----
+   Internet-only nodes must never be confused with OLD radio nodes (a filled slate dot).
+   They are a hollow violet ring with a violet centre dot and a violet label — a
+   different colour AND a different shape, at every age. Age only dims them a little. */
+.node.mqtt-only .core { background: transparent !important; box-shadow: 0 0 0 2px rgba(0,0,0,.45), inset 0 0 0 2.5px var(--net) !important; }
+.node.mqtt-only .core::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--net); }
 .node.mqtt-only::before, .node.mqtt-only::after { display: none !important; }
-.node.mqtt-only .lbl { color: var(--muted); }
+.node.mqtt-only.on .core { box-shadow: 0 0 10px var(--net-soft), 0 0 0 2px rgba(0,0,0,.45), inset 0 0 0 2.5px var(--net) !important; }
+.node.mqtt-only.warm { opacity: .9; } .node.mqtt-only.cold { opacity: .7; }
+.node.mqtt-only .lbl { color: var(--net); }
 .node.mqtt-only .lbl::before { content: "☁ "; }
-.sw.mqtt { background: transparent !important; border: 2px dashed var(--muted); box-sizing: border-box; }
-.pkt .via { border-radius: 999px; padding: 0 6px; font: 600 0.714rem var(--mono); }
-.pkt .via.mqtt { color: #9ec5ff; background: rgba(111,195,255,.12); }
-.pkt[data-via="mqtt"] .bar { background: repeating-linear-gradient(180deg, #6fc3ff 0 3px, transparent 3px 6px) !important; }
-.card-link { font-size: 0.857rem; color: var(--muted); margin-top: 3px; }
-.card-link.mqtt { color: #9ec5ff; }
+.sw.mqtt { background: transparent !important; border: 2.5px solid var(--net); box-sizing: border-box; position: relative; }
+.sw.mqtt::after { content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; border-radius: 50%; background: var(--net); }
+.pkt .via { border-radius: 999px; padding: 0 6px; font: 600 .714rem var(--mono); }
+.pkt .via.mqtt { color: var(--net); background: var(--net-soft); }
+.pkt[data-via="mqtt"] .bar { background: repeating-linear-gradient(180deg, var(--net) 0 3px, transparent 3px 6px) !important; }
+.card-link { font-size: .857rem; color: var(--muted); margin-top: 3px; }
+.card-link.mqtt { color: var(--net); }
 .card-link.rf, .card-link.both { color: #8ff0a4; }
-.reach-flag { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: rgba(111,195,255,.10); border: 1px solid rgba(111,195,255,.4); color: #d6efff; font-size: 0.929rem; line-height: 1.45; }
+.reach-flag { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: rgba(181,140,255,.10); border: 1px solid rgba(181,140,255,.45); color: #ece3ff; font-size: .93rem; line-height: 1.45; }
 .reach-flag b { color: #fff; }
 body.rfonly .pkt[data-via="mqtt"] { display: none !important; }
 .link-chip { display: inline-block; border-radius: 999px; padding: 1px 7px; font: 600 0.75rem var(--mono); background: rgba(255,255,255,.06); color: var(--muted); white-space: nowrap; }
 .link-chip.rf, .link-chip.both { color: #8ff0a4; background: rgba(88,227,156,.12); }
-.link-chip.mqtt { color: #9ec5ff; background: rgba(111,195,255,.12); }
+.link-chip.mqtt { color: var(--net); background: var(--net-soft); }
 
 /* ---- command-center scale: wide displays get bigger type and wider panels, phones are untouched ---- */
 @media (min-width: 1600px) {
@@ -793,7 +801,7 @@ body.rail-collapsed { --rail: 52px; }
 .toast.long { max-width: min(92vw, 520px); white-space: pre-line; line-height: 1.5; text-align: left; }
 .view-error { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 24px; color: var(--muted); }
 .view-error b { color: var(--text); font-size: 1.07rem; }
-.compose-path.warn { color: #9ec5ff; }
+.compose-path.warn { color: var(--net); }
 
 /* ---- public welcome card ---- */
 .about { position: relative; margin: 8px 8px 4px; padding: 12px 34px 10px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(224,112,75,.14), rgba(111,195,255,.08)); border: 1px solid rgba(224,112,75,.35); font-size: .93rem; line-height: 1.45; }
