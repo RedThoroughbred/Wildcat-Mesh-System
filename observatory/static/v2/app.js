@@ -244,6 +244,7 @@
     const opening = S.selected !== id; S.selected = id;
     const cls = ageClass(n);
     $("card-short").textContent = name(n); $("card-long").textContent = n.long_name || name(n);
+    for (const a of document.querySelectorAll(".card-who")) a.href = "#/node/" + encodeURIComponent(n.id);   // gauge + name → the full node page
     $("card-id").textContent = n.id; $("card-proto").textContent = n.proto || "";
     $("card-pulse").className = "pulse-dot " + cls;
     $("c-heard").textContent = n.id === S.myId ? "this node · live" : ago(n.last_heard);

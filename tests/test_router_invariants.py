@@ -142,3 +142,10 @@ def test_polish_accessibility_and_phone_guards():
     assert re.search(r"@media \(max-width: 760px\) \{[^@]*\.sidebar a\[data-view=\"replay\"\] \{ display: none; \}", CSS)
     assert 'window.innerWidth <= 760) { toast("Replay needs a wider screen' in APP
     assert "internet-only node — it has never been heard on your radio" in APP
+
+
+def test_node_card_gauge_and_name_link_to_the_full_page():
+    assert 'class="card-who" id="card-who-gauge" href="#" title="Open this node\'s full page"' in HTML
+    assert 'class="card-name card-who" id="card-long" href="#"' in HTML
+    assert 'a.href = "#/node/" + encodeURIComponent(n.id)' in APP
+    assert ".card-who:hover .gauge" in CSS and ".card-name.card-who::after" in CSS       # visible affordance
