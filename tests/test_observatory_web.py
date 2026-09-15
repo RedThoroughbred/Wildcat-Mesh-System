@@ -319,3 +319,20 @@ def test_about_route_and_public_welcome(client):
     assert a["name"] and a["den"]["id"] == "!9e766b18" and a["counts"]["nodes"] >= 1 and a["bobcat"] is False
     pub = client.get("/v2/public").data.decode()
     assert 'id="about"' in pub and 'id="about"' not in client.get("/v2/").data.decode()
+
+
+def test_channels_route_reports_the_nodes_configured_slots(tmp_path):
+    from wildcat.bus import MemoryBus
+    (tmp_path / "content").mkdir()
+    cfg = build({"radio": {"type": "serial"}, "mqtt": {"enabled": True}, "bbs": {"source": "bus", "content_dir": str(tmp_path / "content")},
+                 "telemetry": {"source": "bus"}, "database": {"path": str(tmp_path / "b.db")}})
+    app = flask.Flask("obs-test8", template_folder=str(ROOT / "observatory" / "templates"), static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio); app.register_blueprint(create_blueprint(bridge, sio))
+    bus = MemoryBus(); bridge.bus = bus; bridge.wire(bus)
+    bus.publish("meshd/channels", {"myNodeNum": 1, "channels": [{"index": 0, "role": "PRIMARY", "name": "", "psk_set": True, "default_psk": True, "uplink": True, "downlink": False},
+                                                                 {"index": 1, "role": "SECONDARY", "name": "NKY Private", "psk_set": True, "default_psk": False, "uplink": False, "downlink": False}]}, retain=True)
+    c = app.test_client()
+    j = c.get("/v2/api/channels").get_json()
+    assert [x["name"] for x in j["configured"]] == ["", "NKY Private"]
+    assert c.get("/v2/api/state").get_json()["channels"][1]["role"] == "SECONDARY"

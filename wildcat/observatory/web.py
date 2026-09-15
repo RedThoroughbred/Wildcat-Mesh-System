@@ -190,9 +190,11 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
     @bp.route("/api/channels")
     def api_channels():
         h = _hours(24)
+        with bridge.state.lock:
+            configured = list(bridge.state.channels)
         return jsonify({"hours": h, "mesh": Q.mesh_stats(_db()), "activity": Q.channel_activity(_db(), h),
                         "details": Q.channel_details(_db(), h), "top_senders": Q.top_senders(_db(), h),
-                        "hourly": Q.hourly_activity(_db(), h)})
+                        "hourly": Q.hourly_activity(_db(), h), "configured": configured})
 
     @bp.route("/api/channel/<int:channel>")
     def api_channel(channel):

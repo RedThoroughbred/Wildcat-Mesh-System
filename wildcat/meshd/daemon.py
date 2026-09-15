@@ -26,6 +26,7 @@ log = logging.getLogger("wildcat.meshd")
 
 STATUS_TOPIC = "meshd/status"
 NODES_TOPIC = "nodes"
+CHANNELS_TOPIC = "meshd/channels"      # retained: the node's channel slots (names, roles, psk set?) — never the keys
 TX_TOPIC = "tx"
 TX_RESULT_TOPIC = "tx/result"
 
@@ -118,6 +119,11 @@ class MeshDaemon:
         self.bus.publish(NODES_TOPIC, {"ts": self.clock(), "myNodeNum": my, "my_id": packets.node_id(my),
                                        "count": len(nodes), "roster": packets.roster(nodes), "nodes": nodes},
                          retain=True)
+        try:
+            table = packets.channel_table(getattr(getattr(self.interface, "localNode", None), "channels", None))
+            self.bus.publish(CHANNELS_TOPIC, {"ts": self.clock(), "myNodeNum": my, "channels": table}, retain=True)
+        except Exception:
+            log.exception("could not publish the channel table")
         self._next_nodes_at = self.clock() + self.cfg.meshd.nodes_publish_interval
         self._publish_status("connected")          # keep rxCount/txSent/txQueued fresh on the retained topic
 

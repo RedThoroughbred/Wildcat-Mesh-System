@@ -1,6 +1,8 @@
 """MeshDaemon with a fake radio, fake pubsub, MemoryBus, and a fake clock."""
 from __future__ import annotations
 
+import json
+
 from types import SimpleNamespace
 
 import pytest
@@ -27,6 +29,10 @@ class FakeRadio:
         self.nodes = {"!000000de": {"num": 222, "user": {"id": "!000000de", "shortName": "BBS"}},
                       "!0000006f": {"num": 111, "user": {"id": "!0000006f", "shortName": "GO"}}}
         self.myInfo = SimpleNamespace(my_node_num=222)
+        self.localNode = SimpleNamespace(channels=[
+            SimpleNamespace(index=0, role=1, settings=SimpleNamespace(name="", psk=b"\x01", uplink_enabled=True, downlink_enabled=False)),
+            SimpleNamespace(index=1, role=2, settings=SimpleNamespace(name="NKY Private", psk=b"\x8a" * 16, uplink_enabled=False, downlink_enabled=False)),
+            SimpleNamespace(index=2, role=0, settings=SimpleNamespace(name="", psk=b"", uplink_enabled=False, downlink_enabled=False))])
         self.sent = []; self.closed = False; self._n = 0
     def sendText(self, **kw):
         self._n += 1; self.sent.append(kw); return SimpleNamespace(id=self._n)
@@ -164,3 +170,14 @@ def test_serial_watchdog_notices_an_unplugged_node(tmp_path):
     assert "disconnected" in states[-3:] and radios[0].closed
     assert len(radios) == 2 and d.interface is radios[1] and bus.last("meshd/status")["state"] == "connected"
     assert clock.sleeps[-1] == 1                                       # one backoff step, then it was back
+
+
+def test_channel_table_is_published_retained_without_keys():
+    d, bus, pub, clock, radios, attempts = make()
+    d.start()
+    t = bus.last("meshd/channels")
+    assert t["myNodeNum"] == 222 and [c["index"] for c in t["channels"]] == [0, 1, 2]
+    assert t["channels"][0] == {"index": 0, "role": "PRIMARY", "name": "", "psk_set": True, "default_psk": True, "uplink": True, "downlink": False}
+    assert t["channels"][1]["name"] == "NKY Private" and t["channels"][1]["psk_set"] and not t["channels"][1]["default_psk"] and t["channels"][1]["role"] == "SECONDARY"
+    assert t["channels"][2]["role"] == "DISABLED" and not t["channels"][2]["psk_set"]
+    assert "8a" not in json.dumps(t) and "\\u008a" not in json.dumps(t)          # the key never leaves the node

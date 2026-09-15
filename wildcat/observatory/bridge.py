@@ -93,6 +93,7 @@ class State:
         self.brain: Deque[Dict[str, Any]] = deque(maxlen=100)     # Ask-the-Cat exchanges (wildcat/brain/exchange)
         self.brain_status: Optional[Dict[str, Any]] = None         # the responder's retained wildcat/brain/status
         self.sos: Dict[str, Any] = {"active": False, "sent": 0, "ended": None}   # the SOS controller's status (mirrored)
+        self.channels: List[Dict[str, Any]] = []                   # the Den node's channel slots (wildcat/meshd/channels)
         self.tx: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()  # operator sends by id: queued → sent → delivered | failed
         self._tx_by_packet: Dict[int, str] = {}                    # radio packet id → our send id (for ACK correlation)
         self._times: Deque[float] = deque(maxlen=5000)
@@ -356,7 +357,7 @@ class State:
             return {
                 "now": now, "my_id": self.my_id, "meshd": self.meshd, "bus": self.bus_connected,
                 "roster": self.roster, "links": list(self.links.values()), "packets": list(self.packets),
-                "brain": list(self.brain), "brain_status": self.brain_status, "sos": dict(self.sos), "tx": list(self.tx.values())[-30:],
+                "brain": list(self.brain), "brain_status": self.brain_status, "sos": dict(self.sos), "channels": list(self.channels), "tx": list(self.tx.values())[-30:],
                 "stats": {"total": self.total, "by_kind": self.by_kind, "per_min": self.rate_per_min(now),
                           "nodes": len(self.roster), "heard_1h": heard_1h, "on_map": on_map},
             }
@@ -565,6 +566,7 @@ class Bridge:
         bus.subscribe("rx/+", self._on_rx)
         bus.subscribe("brain/exchange", self._on_brain)
         bus.subscribe("brain/status", self._on_brain_status)
+        bus.subscribe("meshd/channels", self._on_channels)
         bus.subscribe("tx/result", self._on_tx_result)
 
     def _watch_bus(self) -> None:
@@ -753,6 +755,13 @@ class Bridge:
         rec = self.state.apply_brain(payload, time.time())
         if rec:
             self._emit("brain", rec)
+
+    def _on_channels(self, topic: str, payload: Dict[str, Any]) -> None:
+        chans = payload.get("channels") if isinstance(payload, dict) else None
+        if isinstance(chans, list):
+            with self.state.lock:
+                self.state.channels = [c for c in chans if isinstance(c, dict)]
+            self._emit("channels", {"channels": self.state.channels})
 
     def _on_brain_status(self, topic: str, payload: Dict[str, Any]) -> None:
         st = self.state.apply_brain_status(payload)

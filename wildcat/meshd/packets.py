@@ -10,7 +10,7 @@ packet back byte-for-byte from ``envelope["packet"]``.
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict, Optional, Tuple
+from typing import List, Any, Dict, Optional, Tuple
 
 BROADCAST_NUM = 0xFFFFFFFF
 
@@ -207,3 +207,28 @@ def roster(nodes: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 def packet_from_envelope(env: Dict[str, Any]) -> Dict[str, Any]:
     """The original packet dict, bytes restored — feed it to legacy handlers as-is."""
     return restore(env["packet"])
+
+
+_ROLE_NAMES = {0: "DISABLED", 1: "PRIMARY", 2: "SECONDARY"}
+
+
+def channel_table(channels: Any) -> List[Dict[str, Any]]:
+    """The node's 8 channel slots as plain dicts: index, role, name, whether a PSK is set (and
+    whether it's the default one), uplink/downlink flags. Never the key itself. Empty list when
+    the node hasn't reported its config yet."""
+    out: List[Dict[str, Any]] = []
+    for c in channels or []:
+        try:
+            role = getattr(c, "role", 0)
+            role_name = _ROLE_NAMES.get(int(role), str(role)) if not isinstance(role, str) else role
+            st = getattr(c, "settings", None)
+            psk = getattr(st, "psk", b"") or b""
+            if isinstance(psk, str):
+                psk = psk.encode("latin-1", "ignore")
+            out.append({"index": int(getattr(c, "index", len(out))), "role": role_name,
+                        "name": str(getattr(st, "name", "") or ""), "psk_set": len(psk) > 0,
+                        "default_psk": psk == b"\x01", "uplink": bool(getattr(st, "uplink_enabled", False)),
+                        "downlink": bool(getattr(st, "downlink_enabled", False))})
+        except Exception:
+            continue
+    return out

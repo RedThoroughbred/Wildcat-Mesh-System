@@ -328,6 +328,7 @@
     }
     if (s.brain_status && typeof rsRender === "function") rsRender(s.brain_status);
     if (s.sos && typeof sosRender === "function") sosRender(s.sos);
+    if (Array.isArray(s.channels)) S.channels = s.channels;
     setStatus(s.bus, s.meshd); refreshStats(s.stats); fitOnce();
   }
   function applyPacket(ev) {
@@ -679,6 +680,7 @@
   }
   function sosIncoming(p) { if (p.sent || p.from === S.myId) return; alarm(); toast(`🆘 ${p.from_name || p.from}: ${p.text || p.summary || ""}`.slice(0, 160), "err"); }
   sock.on("sos", sosRender);
+  sock.on("channels", (d) => { if (d && Array.isArray(d.channels)) S.channels = d.channels; });
 
   // ---------------------------------------------------------------- public welcome card
   (async () => {
@@ -1022,7 +1024,12 @@
     for (const r of rows) { s.push(`<div class="lab">${escape(r.label)}</div>`); for (let h = 0; h < 24; h++) { const v = (cells[r.key] || {})[h] || 0; s.push(`<div class="c" data-v="${v}" style="--p:${(v / max).toFixed(2)}" title="${escape(r.label)} · ${h}:00 · ${v} msg"></div>`); } }
     return s.join("") + "</div>";
   }
-  function chName(c) { return c === 0 ? "LongFast (primary)" : c == null ? "?" : "Channel " + c; }
+  function chName(c) {   // the node's configured name when we have the table, else the old fallback
+    if (c == null) return "?";
+    const cf = (S.channels || []).find(x => x.index === c);
+    if (cf && cf.role !== "DISABLED") return (cf.name || (c === 0 ? "LongFast" : "Channel " + c)) + (cf.role === "PRIMARY" ? " (primary)" : "");
+    return c === 0 ? "LongFast (primary)" : "Channel " + c;
+  }
 
   // ---- table helper with sort + search ----
   function table(el, cols, rows, opts) {   // cols: [{key, label, num?, render?}]
@@ -1133,6 +1140,9 @@
         if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `
           <div class="kpis"><div class="kpi"><b>${total}</b><span>messages · ${h}h</span></div><div class="kpi"><b>${chans.length}</b><span>active channels</span></div><div class="kpi"><b>${d.mesh.active_nodes}</b><span>nodes · 1h</span></div><div class="kpi"><b>${fmt1(d.mesh.avg_snr, " dB")}</b><span>avg SNR · 24h</span></div></div>
           <div class="vgrid">
+            <div class="vcard wide"><h2>📡 Channels on the Den's node <span class="sel dim" style="text-transform:none;letter-spacing:0;font-weight:500">${(d.configured || []).length ? "what this radio can hear — anything else on the air shows up as 🔒 encrypted" : "waiting for meshd to report the channel table"}</span></h2>
+              ${(d.configured || []).length ? `<table class="vt"><thead><tr><th>Slot</th><th>Name</th><th>Role</th><th>Key</th><th>MQTT</th><th>Messages · ${h}h</th></tr></thead><tbody>${d.configured.map(cf => { const act = d.activity.find(a => a.channel === cf.index); const off = cf.role === "DISABLED"; return `<tr class="${off ? "off" : "row"}" data-ch="${cf.index}"><td class="num">${cf.index}</td><td><b>${escape(cf.name || (cf.index === 0 && !off ? "LongFast" : off ? "—" : "(unnamed)"))}</b></td><td class="dim">${off ? "disabled" : cf.role.toLowerCase()}</td><td class="dim">${off ? "" : cf.psk_set ? (cf.default_psk ? "default (public)" : "custom PSK") : "none"}</td><td class="dim">${off ? "" : (cf.uplink ? "↑" : "") + (cf.downlink ? "↓" : "") || "—"}</td><td class="num">${off ? "" : act ? act.count : '<span class="dim">none yet</span>'}</td></tr>`; }).join("")}</tbody></table>
+              <p class="dim" style="margin:8px 0 0;font-size:.86rem">A private channel that isn't in one of these slots can't be decrypted by the Den's node, so its traffic never reaches this page — add it to the node with the Meshtastic app, then it appears here. Slots are read from the radio; nothing here changes the node.</p>` : ""}</div>
             <div class="vcard"><h2>Channel activity</h2>${d.activity.length ? barChart(d.activity.map(a => ({ label: chName(a.channel).replace(" (primary)", ""), value: a.count, cls: a.channel === 0 ? "t" : "" }))) : '<div class="empty">no messages in this window</div>'}</div>
             <div class="vcard"><h2>Top senders</h2>${d.top_senders.length ? `<table class="vt"><thead><tr><th>Node</th><th>Msgs</th><th>avg SNR</th></tr></thead><tbody>${d.top_senders.map(t => `<tr class="row" data-id="${escape(t.id)}"><td><b>${escape(t.short_name || t.id.slice(-4))}</b></td><td class="num">${t.message_count}</td><td class="num">${snrSpan(t.avg_snr)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">nobody yet</div>'}</div>
             <div class="vcard wide"><h2>Activity heatmap · hour of day × channel</h2>${chans.length ? heatmap(chans.map(c => ({ key: c, label: chName(c).replace(" (primary)", "") })), cells) : '<div class="empty">no data</div>'}</div>
