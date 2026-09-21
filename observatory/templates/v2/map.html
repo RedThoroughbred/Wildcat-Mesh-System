@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Node map - the Den</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+<style>
+:root{--bg:#0b0f14;--card:rgba(18,25,34,.92);--line:rgba(255,255,255,.14);--text:#e8eef5;--muted:#8a97a8;--acc:#2dd4bf;--ok:#58e39c;--warn:#fbbf24;--old:#8a97a8}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.35 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif}
+a{color:#6fc3ff}
+#map{position:fixed;inset:0;background:var(--bg)}
+.dark-tiles{filter:invert(1) hue-rotate(190deg) brightness(.72) contrast(.9) saturate(.55)}
+.bar{position:fixed;left:0;right:0;z-index:1000;padding:8px 10px;pointer-events:none}
+.bar>*{pointer-events:auto}
+.top{top:0;padding-top:calc(8px + env(safe-area-inset-top));display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bottom{bottom:0;padding-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;justify-content:space-between}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px;color:var(--text);font:inherit;text-decoration:none;backdrop-filter:blur(6px)}
+.chips{display:flex;gap:6px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px;color:var(--muted);font:inherit;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--acc);color:#000;border-color:transparent;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;backdrop-filter:blur(6px)}
+.legend{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted)}
+.legend[hidden]{display:none}
+.legend span{display:flex;align-items:center;gap:6px}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid;flex:none}
+.foot{font-size:.8rem;color:var(--muted);max-width:60vw}
+.right{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.btn{background:var(--acc);color:#000;border:0;border-radius:999px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}
+.live{font-size:.75rem;color:var(--muted)}
+.live b{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:5px}
+.live.stale b{background:#ff7a7a}
+.live.spin b{animation:p 1s infinite}
+@keyframes p{50%{opacity:.25}}
+#msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;max-width:80vw}
+.mk{border-radius:50%;border:2px solid;box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.base{background:var(--acc);border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px var(--acc)}
+.lbl{position:absolute;left:18px;top:-2px;white-space:nowrap;font-size:.75rem;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000}
+.leaflet-popup-content{margin:10px 12px;line-height:1.35;color:#111}
+.leaflet-popup-content b{font-size:1rem}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="bar top">
+  <a class="pill" id="back" href="{{ url_for('v2.index') }}">&larr; Back to Den</a>
+  <div class="chips" role="group" aria-label="Filter nodes">
+    <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+    <button class="chip" type="button" data-f="rf" aria-pressed="false">RF only</button>
+    <button class="chip" type="button" data-f="hour" aria-pressed="false">Last hour</button>
+  </div>
+  <div class="chips" role="group" aria-label="Colour nodes by">
+    <button class="chip" type="button" data-c="age" aria-pressed="true">Colour: age</button>
+    <button class="chip" type="button" data-c="sig" aria-pressed="false">Colour: signal</button>
+  </div>
+  <a class="pill" href="{{ url_for('v2.index') }}#/signal">Signal dashboard</a>
+</div>
+<div id="msg" class="card" hidden></div>
+<div class="bar bottom">
+  <div>
+    <div class="card legend" id="legend-sig" aria-label="Signal legend" hidden>
+      <span><i class="dot" style="border-color:var(--acc);background:var(--acc)"></i>base node</span>
+      <span><i class="dot" style="border-color:#58e39c;background:#58e39c"></i>strong (SNR &ge; 0 dB)</span>
+      <span><i class="dot" style="border-color:#fbbf24;background:#fbbf24"></i>ok (&minus;10 to 0)</span>
+      <span><i class="dot" style="border-color:#ff7a7a;background:#ff7a7a"></i>weak (&lt; &minus;10 dB)</span>
+      <span><i class="dot" style="border-color:var(--muted);background:transparent"></i>internet only / no sample</span>
+    </div>
+    <div class="card legend" id="legend-age" aria-label="Legend">
+      <span><i class="dot" style="border-color:var(--acc);background:var(--acc)"></i>base node</span>
+      <span><i class="dot" style="border-color:var(--ok);background:var(--ok)"></i>heard &lt; 15 min</span>
+      <span><i class="dot" style="border-color:var(--warn);background:var(--warn)"></i>&lt; 1 h</span>
+      <span><i class="dot" style="border-color:var(--old);background:var(--old)"></i>older</span>
+      <span><i class="dot" style="border-color:var(--muted);background:transparent"></i>hollow = internet only</span>
+    </div>
+    <div class="foot card" id="foot" style="margin-top:8px" hidden></div>
+  </div>
+  <div class="right">
+    <div class="live pill" id="live"><b></b><span id="livet">loading...</span></div>
+    <button class="btn" id="recenter" type="button">Recenter</button>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script>
+(function () {
+  "use strict";
+  var URL_ = "{{ url_for('v2.api_nodes_compact') }}?limit=40&pos=1";
+  // arrived from the Signal dashboard? go back there, not to the home map
+  if (/[?&]from=signal/.test(location.search)) { var bk = document.getElementById("back"); bk.href = "{{ url_for('v2.index') }}#/signal"; bk.innerHTML = "&larr; Back to Signal"; }
+  var EVERY = 15000;
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  var map = L.map("map", { zoomControl: true, attributionControl: true }).setView([20, 0], 2);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, className: "dark-tiles",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  var layer = L.layerGroup().addTo(map);
+  // the fixed top bar wraps to 1-3 rows; keep the zoom buttons clear of it
+  function placeZoom() { var t = document.querySelector(".bar.top"), z = document.querySelector(".leaflet-top.leaflet-left"); if (t && z) z.style.marginTop = (t.offsetHeight + 4) + "px"; }
+  placeZoom(); window.addEventListener("resize", placeZoom);
+
+  var data = null, filter = "all", fitted = false, lastOk = 0;
+
+  var colorMode = "age";
+  function colorFor(age) {
+    if (age == null) return "#8a97a8";
+    return age < 900 ? "#58e39c" : (age < 3600 ? "#fbbf24" : "#8a97a8");
+  }
+  // signal mode: only a radio-measured SNR counts (an internet-only node's SNR was measured upstream)
+  function sigColor(n) {
+    if (n.tr === "mqtt" || typeof n.snr !== "number") return "#8a97a8";
+    return n.snr >= 0 ? "#58e39c" : (n.snr >= -10 ? "#fbbf24" : "#ff7a7a");
+  }
+  function nodeColor(n) { return colorMode === "sig" ? sigColor(n) : colorFor(n.age); }
+  function ago(s) {
+    if (s == null) return "unknown";
+    if (s < 90) return s + " s";
+    if (s < 5400) return Math.round(s / 60) + " min";
+    if (s < 172800) return Math.round(s / 3600) + " h";
+    return Math.round(s / 86400) + " d";
+  }
+  function keep(n) {
+    if (filter === "rf") return n.tr === "rf" || n.tr === "both";
+    if (filter === "hour") return n.age != null && n.age < 3600;
+    return true;
+  }
+  function popup(n) {
+    var nm = n.l || n.s || n.id, h = ["<b>" + esc(nm) + "</b>", esc(n.id)];
+    h.push("heard " + (n.age == null ? "at an unknown time" : ago(n.age) + " ago"));
+    var sig = [];
+    if (n.snr != null) sig.push("SNR " + esc(n.snr) + " dB");
+    if (n.rssi != null) sig.push("RSSI " + esc(n.rssi) + " dBm");
+    if (sig.length) h.push(sig.join(", "));
+    if (n.hops != null) h.push("hops " + esc(n.hops));
+    if (n.bat != null) h.push("battery " + esc(n.bat) + "%");
+    if (n.hw) h.push("hw " + esc(n.hw));
+    h.push("transport " + esc(n.tr || "unknown"));
+    return h.join("<br>");
+  }
+
+  function draw() {
+    layer.clearLayers();
+    if (!data) return;
+    var my = data.my || {}, pts = [], shown = 0;
+    var hasBase = typeof my.lat === "number" && typeof my.lon === "number";
+    if (hasBase) {
+      var ic = L.divIcon({ className: "", iconSize: [22, 22], iconAnchor: [11, 11],
+        html: '<div class="base" style="width:22px;height:22px"></div><div class="lbl" style="left:26px">BASE ' + esc(my.s || my.id || "") + '</div>' });
+      L.marker([my.lat, my.lon], { icon: ic, zIndexOffset: 1000, title: "BASE " + (my.s || "") }).addTo(layer);
+      pts.push([my.lat, my.lon]);
+    }
+    (data.n || []).forEach(function (n) {
+      if (typeof n.lat !== "number" || typeof n.lon !== "number" || !keep(n)) return;
+      var c = nodeColor(n), hollow = n.tr === "mqtt" || (colorMode === "sig" && typeof n.snr !== "number");
+      var ic = L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8],
+        html: '<div class="mk" style="width:16px;height:16px;border-color:' + c + ';background:' + (hollow ? "transparent" : c) + '"></div><div class="lbl">' + esc(n.s || n.id) + '</div>' });
+      L.marker([n.lat, n.lon], { icon: ic, title: n.l || n.s || n.id }).bindPopup(popup(n)).addTo(layer);
+      pts.push([n.lat, n.lon]); shown++;
+    });
+    var none = pts.length === 0;
+    $("msg").hidden = !none;
+    if (none) $("msg").textContent = (data.n && data.n.length) ? "no nodes match this filter" : "no node has reported a position yet";
+    return pts;
+  }
+
+  function fit(pts) {
+    if (!pts || !pts.length) return;
+    if (pts.length === 1) map.setView(pts[0], 14);
+    else map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 16 });
+  }
+  function allPts() {
+    var pts = [], my = (data && data.my) || {};
+    if (typeof my.lat === "number" && typeof my.lon === "number") pts.push([my.lat, my.lon]);
+    ((data && data.n) || []).forEach(function (n) { if (typeof n.lat === "number" && keep(n)) pts.push([n.lat, n.lon]); });
+    return pts;
+  }
+
+  function footer() {
+    var f = $("foot");
+    if (!data || typeof data.total !== "number" || typeof data.withpos !== "number") { f.hidden = true; return; }
+    var without = Math.max(0, data.total - 1 - data.withpos);
+    var shownOf = (data.n || []).length;
+    var t = without + (without === 1 ? " node has" : " nodes have") + " no position";
+    if (data.withpos > shownOf) t += " · showing the " + shownOf + " most recent of " + data.withpos + " with one";
+    f.textContent = t; f.hidden = false;
+  }
+
+  function status() {
+    var el = $("live"), t = $("livet");
+    var age = lastOk ? Math.round((Date.now() - lastOk) / 1000) : null;
+    el.className = "live pill" + (age == null || age > 45 ? " stale" : "");
+    t.textContent = age == null ? "no data yet" : "updated " + age + " s ago · auto 15 s";
+  }
+
+  function load() {
+    var el = $("live"); el.classList.add("spin");
+    fetch(URL_, { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (j) {
+        data = j; lastOk = Date.now();
+        var pts = draw(); footer();
+        if (!fitted) { fitted = true; fit(allPts()); }
+      })
+      .catch(function () {})
+      .then(function () { el.classList.remove("spin"); status(); });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".chip[data-f]"), function (b) {
+    b.addEventListener("click", function () {
+      filter = b.dataset.f;
+      Array.prototype.forEach.call(document.querySelectorAll(".chip[data-f]"), function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      draw();
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".chip[data-c]"), function (b) {
+    b.addEventListener("click", function () {
+      colorMode = b.dataset.c;
+      Array.prototype.forEach.call(document.querySelectorAll(".chip[data-c]"), function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      $("legend-sig").hidden = colorMode !== "sig"; $("legend-age").hidden = colorMode === "sig";
+      draw();
+    });
+  });
+  $("recenter").addEventListener("click", function () { fit(allPts()); });
+
+  load();
+  setInterval(load, EVERY);
+  setInterval(status, 1000);
+})();
+</script>
+</body>
+</html>

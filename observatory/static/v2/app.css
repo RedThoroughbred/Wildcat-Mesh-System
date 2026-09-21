@@ -845,3 +845,14 @@ body.rail-collapsed { --rail: 52px; }
   .bub { max-width: 88%; }
 }
 .thread.unread .who b::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--terracotta); margin-left: 6px; vertical-align: middle; box-shadow: 0 0 8px var(--terracotta); }
+
+/* Signal dashboard hosted in the shell (an iframe of /v2/signal?embed=1): fill the panel, no double padding */
+.view-body:has(> iframe.embed-frame) { padding: 0; overflow: hidden; }
+iframe.embed-frame { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+
+/* Top bar at mid widths: the brand never wraps under the stats, the long radio status truncates instead of pushing */
+.topbar .brand { flex: none; }
+.topbar .brand .title { white-space: nowrap; }
+.topbar .status { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.topbar .status > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (min-width: 761px) and (max-width: 1180px) { .topbar .stats .stat:nth-child(n+4) { display: none; } }

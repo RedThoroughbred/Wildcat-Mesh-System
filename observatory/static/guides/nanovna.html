@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoVNA Field Guide — Seth's Wildcat Mesh Edition</title>
+<meta name="description" content="A practical, self-contained reference to the NanoVNA (H4): calibration, S11/S21, antenna tuning at 915 MHz for LoRa/Meshtastic, cable loss, TDR, filters, Smith chart, baluns, LC, and starter projects.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   NanoVNA Field Guide — single-file, no build step.
+   Theme: dark instrument panel. Light/print mode via body.light.
+   Color code: amber = reflection (S11), cyan = transmission (S21),
+   green = OK/pass, rose = danger.
+   ============================================================ */
+:root{
+  --bg:#0b0f14; --bg2:#0f151c; --panel:#121a23; --panel2:#17212c; --line:#213040; --line2:#2b3d50;
+  --text:#dfe7ef; --muted:#93a4b5; --dim:#65788b;
+  --amber:#f5b445; --amber2:#ffd27a; --amber-dim:rgba(245,180,69,.14);
+  --cyan:#3fd0e8; --cyan2:#8ee8f5; --cyan-dim:rgba(63,208,232,.13);
+  --green:#5bd78f; --green-dim:rgba(91,215,143,.13);
+  --rose:#ff6b7a; --rose-dim:rgba(255,107,122,.13);
+  --violet:#b48cff; --violet-dim:rgba(180,140,255,.13);
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --radius:14px; --nav-w:270px; --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+body.light{
+  --bg:#f5f7fa; --bg2:#eef2f6; --panel:#ffffff; --panel2:#f3f6f9; --line:#d9e0e8; --line2:#c6d0db;
+  --text:#14202c; --muted:#4b5c6e; --dim:#7a8b9c;
+  --amber:#b7741a; --amber2:#8a5510; --amber-dim:rgba(183,116,26,.10);
+  --cyan:#0b8fa8; --cyan2:#076e82; --cyan-dim:rgba(11,143,168,.10);
+  --green:#1f9a57; --green-dim:rgba(31,154,87,.10);
+  --rose:#d0334a; --rose-dim:rgba(208,51,74,.10);
+  --violet:#6c47c9; --violet-dim:rgba(108,71,201,.10);
+  --shadow:0 8px 24px rgba(20,32,44,.08);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(63,208,232,.10), transparent 60%),
+    radial-gradient(700px 400px at -10% 20%, rgba(245,180,69,.09), transparent 60%);
+}
+body.light::before{opacity:.5}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,.mono{font-family:var(--mono);font-size:.92em}
+code{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:.08em .4em;color:var(--amber2)}
+body.light code{color:var(--amber2)}
+kbd{background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:6px;padding:.05em .45em;color:var(--text);font-weight:500;white-space:nowrap}
+h1,h2,h3,h4{line-height:1.2;margin:0 0 .5em;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.75rem;margin-top:0}
+h3{font-size:1.2rem;margin-top:1.4em}
+h4{font-size:1rem;margin-top:1.1em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}
+p{margin:0 0 1em}
+ul,ol{padding-left:1.35em;margin:0 0 1em}
+li{margin:.3em 0}
+hr{border:0;border-top:1px solid var(--line);margin:2em 0}
+strong{color:var(--text)}
+.muted{color:var(--muted)}
+.small{font-size:.9rem}
+
+/* ---------- Top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:rgba(11,15,20,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:10px 18px}
+body.light .topbar{background:rgba(245,247,250,.85)}
+.topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em}
+.topbar .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+.topbar .brand small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:.75rem}
+.topbar .spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:10px;padding:7px 12px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:var(--sans)}
+.btn:hover{border-color:var(--cyan)}
+.btn svg{width:16px;height:16px}
+#menuBtn{display:none}
+
+/* ---------- Layout ---------- */
+.layout{position:relative;z-index:1;display:grid;grid-template-columns:var(--nav-w) minmax(0,1fr);gap:0;max-width:1320px;margin:0 auto}
+nav.toc{position:sticky;top:60px;align-self:start;height:calc(100vh - 60px);overflow-y:auto;padding:22px 14px 40px 18px;border-right:1px solid var(--line);scrollbar-width:thin}
+nav.toc .toc-title{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px 10px;font-weight:700}
+nav.toc a{display:block;padding:6px 10px;border-radius:8px;color:var(--muted);font-size:.9rem;font-weight:500;border-left:2px solid transparent}
+nav.toc a:hover{color:var(--text);background:var(--panel);text-decoration:none}
+nav.toc a.active{color:var(--text);background:var(--panel);border-left-color:var(--amber)}
+nav.toc a.sub{padding-left:22px;font-size:.83rem;font-weight:400}
+nav.toc .grp{margin:14px 0 4px 10px;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:700}
+main{padding:28px 36px 90px;min-width:0}
+section.sec{margin:0 0 56px;scroll-margin-top:84px}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+.sec-num{font-family:var(--mono);color:var(--amber);font-size:.85rem;font-weight:600;letter-spacing:.1em}
+.lede{font-size:1.08rem;color:var(--muted);max-width:74ch;margin-bottom:1.4em}
+
+/* ---------- Hero ---------- */
+.hero{position:relative;border:1px solid var(--line);border-radius:22px;padding:40px 40px 34px;margin:6px 0 44px;overflow:hidden;
+  background:linear-gradient(135deg,var(--panel) 0%,var(--bg2) 100%);box-shadow:var(--shadow)}
+.hero .eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);margin-bottom:12px}
+.hero h1{font-size:clamp(2rem,4.2vw,3.2rem);font-weight:800;letter-spacing:-.03em;margin-bottom:12px;max-width:16ch}
+.hero h1 .accent{color:var(--amber)}
+.hero p{max-width:66ch;color:var(--muted);font-size:1.08rem}
+.hero .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.pill{font-family:var(--mono);font-size:.74rem;padding:5px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);background:var(--panel)}
+.pill.amber{border-color:rgba(245,180,69,.5);color:var(--amber)}
+.pill.cyan{border-color:rgba(63,208,232,.5);color:var(--cyan)}
+.pill.green{border-color:rgba(91,215,143,.5);color:var(--green)}
+.hero .scope{position:absolute;right:-30px;top:-30px;width:320px;height:320px;opacity:.35;pointer-events:none}
+
+/* ---------- Cards ---------- */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.grid.two{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow)}
+.card h3{margin-top:0}
+.card.amber{border-top:3px solid var(--amber)}
+.card.cyan{border-top:3px solid var(--cyan)}
+.card.green{border-top:3px solid var(--green)}
+.card.rose{border-top:3px solid var(--rose)}
+.card.violet{border-top:3px solid var(--violet)}
+
+.callout{display:flex;gap:14px;border:1px solid var(--line);border-left:4px solid var(--cyan);background:var(--cyan-dim);border-radius:12px;padding:14px 18px;margin:16px 0}
+.callout.warn{border-left-color:var(--amber);background:var(--amber-dim)}
+.callout.danger{border-left-color:var(--rose);background:var(--rose-dim)}
+.callout.ok{border-left-color:var(--green);background:var(--green-dim)}
+.callout .ico{flex:none;width:22px;height:22px;margin-top:2px}
+.callout p:last-child{margin-bottom:0}
+.callout strong{display:block;margin-bottom:2px}
+
+/* ---------- How-to cards ---------- */
+.howto{background:var(--panel);border:1px solid var(--line);border-radius:18px;margin:22px 0;overflow:hidden;box-shadow:var(--shadow)}
+.howto .ht-head{display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,var(--panel2),transparent)}
+.howto .ht-head h3{margin:0;font-size:1.25rem}
+.howto .ht-head .tag{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag span{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;padding:4px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.tag span.s11{border-color:rgba(245,180,69,.6);color:var(--amber);background:var(--amber-dim)}
+.tag span.s21{border-color:rgba(63,208,232,.6);color:var(--cyan);background:var(--cyan-dim)}
+.tag span.star{border-color:rgba(91,215,143,.6);color:var(--green);background:var(--green-dim)}
+.howto .ht-body{display:grid;grid-template-columns:1.1fr .9fr;gap:0}
+.howto .ht-main{padding:20px 22px}
+.howto .ht-side{padding:20px 22px;border-left:1px solid var(--line);background:var(--bg2)}
+.howto .ht-side h4{margin-top:0}
+.howto .ht-side h4 + *{margin-top:0}
+.howto .ht-side h4:not(:first-child){margin-top:1.4em}
+.ht-icon{width:38px;height:38px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--panel2);border:1px solid var(--line2)}
+.ht-icon svg{width:20px;height:20px}
+.steps{counter-reset:step;list-style:none;padding:0;margin:0 0 1em}
+.steps li{position:relative;padding-left:40px;margin:.6em 0}
+.steps li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:.05em;width:26px;height:26px;border-radius:50%;background:var(--panel2);border:1px solid var(--line2);color:var(--amber);font-family:var(--mono);font-size:.78rem;font-weight:600;display:grid;place-items:center}
+.readout{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.92rem}
+.readout ul{margin:0}
+.chip{display:inline-block;font-family:var(--mono);font-size:.74rem;padding:2px 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:.92rem;margin:0 0 1.2em}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.74rem;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:700;background:var(--panel2)}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:var(--mono)}
+.tbl{border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)}
+.good{color:var(--green);font-weight:600}.meh{color:var(--amber);font-weight:600}.bad{color:var(--rose);font-weight:600}
+
+/* ---------- Figures ---------- */
+figure{margin:18px 0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px 10px;box-shadow:var(--shadow)}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-size:.86rem;color:var(--muted);padding:10px 4px 4px}
+.fig-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.fig-row figure{margin:0}
+
+/* ---------- Glossary ---------- */
+dl.gloss{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin:0}
+dl.gloss > div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+dl.gloss dt{font-weight:700;color:var(--amber2);font-family:var(--mono);font-size:.9rem;margin-bottom:4px}
+body.light dl.gloss dt{color:var(--amber)}
+dl.gloss dd{margin:0;font-size:.92rem;color:var(--muted)}
+
+/* ---------- Calculators ---------- */
+.calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.calc .card label{display:block;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:700;margin:10px 0 4px}
+.calc input,.calc select{width:100%;background:var(--bg);border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:.95rem}
+.calc .out{font-family:var(--mono);font-size:.92rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px;line-height:1.7}
+.calc .out b{color:var(--cyan2)}
+body.light .calc .out b{color:var(--cyan)}
+
+/* ---------- Projects ---------- */
+.proj{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.proj .card{position:relative;padding-top:24px}
+.proj .num{position:absolute;top:-12px;left:18px;background:var(--amber);color:#1a1200;font-family:var(--mono);font-weight:700;font-size:.78rem;padding:3px 10px;border-radius:999px}
+.proj .card ul{font-size:.93rem}
+.proj .gear{font-size:.8rem;color:var(--dim);font-family:var(--mono);margin-bottom:8px}
+
+/* ---------- Footer ---------- */
+footer{border-top:1px solid var(--line);padding:24px 36px 60px;color:var(--dim);font-size:.85rem}
+footer a{color:var(--muted)}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1000px){
+  .howto .ht-body{grid-template-columns:1fr}
+  .howto .ht-side{border-left:0;border-top:1px solid var(--line)}
+}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  #menuBtn{display:inline-flex}
+  nav.toc{position:fixed;top:57px;left:0;bottom:0;width:min(86vw,320px);background:var(--bg);z-index:60;transform:translateX(-105%);transition:transform .25s ease;box-shadow:var(--shadow);height:auto}
+  nav.toc.open{transform:none}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55;display:none}
+  .overlay.show{display:block}
+  main{padding:18px 16px 70px}
+  .hero{padding:28px 22px 24px;border-radius:18px}
+  .hero .scope{display:none}
+  h2{font-size:1.5rem}
+  .howto .ht-head{flex-wrap:wrap}
+  .howto .ht-head .tag{margin-left:0;width:100%;justify-content:flex-start}
+  footer{padding:20px 16px 50px}
+}
+
+/* ---------- Print ---------- */
+@media print{
+  body{background:#fff;color:#111;font-size:11.5pt}
+  body::before,.topbar,nav.toc,.overlay,#toTop{display:none !important}
+  .layout{display:block;max-width:none}
+  main{padding:0}
+  .hero,.card,.howto,figure,.tbl,dl.gloss>div,.callout{box-shadow:none;break-inside:avoid;border-color:#bbb;background:#fff}
+  .howto .ht-side,.howto .ht-head{background:#f4f4f4}
+  section.sec{break-before:page}
+  section.sec:first-of-type{break-before:auto}
+  a{color:#0a5a70}
+  a[href^="http"]::after{content:" (" attr(href) ")";font-size:.8em;color:#666}
+  .calc{display:none}
+  code{color:#7a4a00;background:#f6f6f6;border-color:#ddd}
+}
+#toTop{position:fixed;right:18px;bottom:18px;z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+#toTop.show{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="btn" id="menuBtn" aria-label="Open contents">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <div class="brand"><span class="dot"></span> NanoVNA Field Guide <small>// Wildcat Mesh edition</small></div>
+  <div class="spacer"></div>
+  <button class="btn" id="themeBtn" title="Toggle light / dark">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <span class="label">Light</span>
+  </button>
+  <button class="btn" onclick="window.print()" title="Print / save as PDF">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>
+    <span class="label">Print</span>
+  </button>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#start">Start here</a>
+  <a href="#primer">1 · What a VNA measures</a>
+  <a href="#calibration">2 · Calibration (do this first)</a>
+  <a href="#display">3 · Reading the screen</a>
+  <div class="grp">How-to catalog</div>
+  <a href="#uses">4 · Practical uses</a>
+  <a class="sub" href="#u-antenna">Antenna SWR &amp; tuning @ 915</a>
+  <a class="sub" href="#u-cableloss">Coax / cable loss</a>
+  <a class="sub" href="#u-tdr">Cable length &amp; faults (TDR)</a>
+  <a class="sub" href="#u-filter">Filters &amp; duplexers</a>
+  <a class="sub" href="#u-smith">Impedance &amp; the Smith chart</a>
+  <a class="sub" href="#u-balun">Baluns, ununs, chokes</a>
+  <a class="sub" href="#u-lc">Inductors, capacitors, LC</a>
+  <a class="sub" href="#u-connectors">Connectors, adapters, pigtails</a>
+  <a class="sub" href="#u-ham">Ham antennas across bands</a>
+  <div class="grp">Workflow</div>
+  <a href="#saving">5 · Saving &amp; recalling</a>
+  <a href="#computer">6 · NanoVNA-Saver on a PC</a>
+  <a href="#safety">7 · Safety &amp; limits</a>
+  <a href="#projects">8 · Wildcat Mesh projects</a>
+  <a href="#calcs">9 · RF calculators</a>
+  <a href="#glossary">10 · Glossary</a>
+  <a href="#sources">Sources</a>
+</nav>
+
+<main>
+
+<!-- ======================= HERO ======================= -->
+<div class="hero" id="start">
+  <svg class="scope" viewBox="0 0 320 320" aria-hidden="true">
+    <defs><radialGradient id="g1" cx="50%" cy="50%"><stop offset="0" stop-color="#3fd0e8" stop-opacity=".5"/><stop offset="1" stop-color="#3fd0e8" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="160" cy="160" r="140" fill="url(#g1)"/>
+    <circle cx="160" cy="160" r="140" fill="none" stroke="#3fd0e8" stroke-width="1"/>
+    <circle cx="230" cy="160" r="70" fill="none" stroke="#3fd0e8" stroke-width=".8"/>
+    <circle cx="195" cy="160" r="105" fill="none" stroke="#3fd0e8" stroke-width=".6"/>
+    <circle cx="265" cy="160" r="35" fill="none" stroke="#3fd0e8" stroke-width=".8"/>
+    <line x1="20" y1="160" x2="300" y2="160" stroke="#3fd0e8" stroke-width=".8"/>
+    <path d="M300 160 A140 140 0 0 0 160 20" fill="none" stroke="#f5b445" stroke-width="1" opacity=".8"/>
+    <path d="M300 160 A140 140 0 0 1 160 300" fill="none" stroke="#f5b445" stroke-width="1" opacity=".8"/>
+    <path d="M70 90 C 140 60, 220 90, 236 160 C 250 220, 200 260, 160 250" fill="none" stroke="#f5b445" stroke-width="2.2"/>
+    <circle cx="236" cy="160" r="5" fill="#f5b445"/>
+  </svg>
+  <div class="eyebrow">NanoVNA-H4 · 10 kHz – 1.5 GHz · S11 / S21</div>
+  <h1>Everything else your <span class="accent">NanoVNA</span> can do — and how.</h1>
+  <p>You've made one measurement: an S11 SWR sweep of 902–928 MHz. That's genuinely the hardest first step — you already know what a sweep looks like and where the ports are. This guide is the rest of it: what the box is really measuring, why calibration is non-negotiable, and a catalog of hands-on jobs built around the antennas, pigtails, and coax in your Wildcat Mesh kit — plus the ham bands you'll be on once the Technician ticket comes through.</p>
+  <div class="pills">
+    <span class="pill amber">S11 · reflection · CH0</span>
+    <span class="pill cyan">S21 · transmission · CH0 → CH1</span>
+    <span class="pill green">915 MHz LoRa / Meshtastic</span>
+    <span class="pill">Heltec mesh nodes · Ebyte E22</span>
+    <span class="pill">u.FL → SMA pigtails</span>
+    <span class="pill">Technician bands: 2 m · 70 cm · 6 m · 10 m</span>
+  </div>
+</div>
+
+<div class="callout ok">
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  <div><strong>How to use this guide</strong>
+  <p>Read sections 1–3 once (about 15 minutes). Then jump straight to <a href="#u-antenna">Antenna SWR &amp; tuning</a> with a mesh antenna in hand, and come back to the other how-to cards as you need them. Section 8 is a concrete to-do list for this week. Menu names follow the DiSlord <em>NanoVNA-D</em> firmware most H4 units ship with; older/other firmware uses the same words in slightly different places.</p></div>
+</div>
+
+<!-- ======================= 1. PRIMER ======================= -->
+<section class="sec" id="primer">
+  <div class="sec-head"><span class="sec-num">01</span><h2>What a VNA actually measures</h2></div>
+  <p class="lede">A vector network analyzer is a tiny transmitter and two very precise receivers. It sends a known signal into whatever you connect to it, one frequency at a time across a sweep, and measures how much comes <em>back</em> and how much goes <em>through</em> — including phase, which is what "vector" means and what makes impedance and the Smith chart possible.</p>
+
+  <div class="grid two">
+    <div class="card amber">
+      <h3>S11 — Reflection <span class="chip">CH0 only</span></h3>
+      <p>Signal goes out of <strong>CH0</strong>, hits your device (antenna, cable, filter input), and some fraction bounces back into CH0. S11 is that reflected fraction, with phase. From S11 alone the NanoVNA derives:</p>
+      <ul>
+        <li><strong>SWR</strong> — how badly the load mismatches 50 Ω (1.0 is perfect).</li>
+        <li><strong>Return loss</strong> (LOGMAG, in dB) — same information, plotted as a dip; more negative = better match.</li>
+        <li><strong>Impedance</strong> R + jX — resistance and reactance, shown on the Smith chart or as R / X / |Z| traces.</li>
+        <li><strong>TDR</strong> — with a math transform, distance to cable faults and cable length.</li>
+      </ul>
+      <p class="small muted">This is what your first sweep was. One cable, one port, nothing connected to CH1.</p>
+    </div>
+    <div class="card cyan">
+      <h3>S21 — Transmission <span class="chip">CH0 → CH1</span></h3>
+      <p>Signal leaves <strong>CH0</strong>, passes <em>through</em> your device, and is received at <strong>CH1</strong>. S21 is how much made it, with phase. It tells you:</p>
+      <ul>
+        <li><strong>Insertion loss / gain</strong> in dB — how much a cable, filter, attenuator, adapter chain, or amplifier eats (or adds).</li>
+        <li><strong>Filter shape</strong> — passband, stopband, -3 dB bandwidth, roll-off.</li>
+        <li><strong>Phase &amp; group delay</strong> — mostly for filters and matching networks.</li>
+        <li><strong>Series / shunt component values</strong> — the accurate way to measure small inductors and capacitors.</li>
+      </ul>
+      <p class="small muted">Two-port. You need a cable on each port and a THRU calibration.</p>
+    </div>
+  </div>
+
+  <h3>The mental model</h3>
+  <p>Everything RF is a question of whether energy goes where you want it. A 50 Ω system means every cable, connector, radio, and antenna is <em>supposed</em> to look like 50 Ω of resistance and no reactance. When something looks like 50 Ω, energy flows through it without bouncing. When it doesn't — an antenna cut for the wrong frequency, a corroded connector, a kinked cable — energy reflects. The VNA measures that reflection directly, and because it also measures phase it can tell you <em>what kind</em> of wrong the load is (too long, too short, too resistive) so you know which way to fix it.</p>
+
+  <div class="tbl"><table>
+    <tr><th>Quantity</th><th>What it says</th><th>Good</th><th>Acceptable</th><th>Bad</th></tr>
+    <tr><td><strong>SWR</strong></td><td>Standing-wave ratio (mismatch)</td><td class="good">&lt; 1.5</td><td class="meh">1.5 – 2.0</td><td class="bad">&gt; 3</td></tr>
+    <tr><td><strong>Return loss</strong></td><td>Reflected power in dB (shown negative as S11 LOGMAG)</td><td class="good">≤ −14 dB</td><td class="meh">−10 to −14 dB</td><td class="bad">≥ −6 dB</td></tr>
+    <tr><td><strong>Reflected power</strong></td><td>Fraction of forward power bounced</td><td class="good">&lt; 4 %</td><td class="meh">4 – 11 %</td><td class="bad">&gt; 25 %</td></tr>
+    <tr><td><strong>S21 insertion loss</strong></td><td>Loss through a cable/adapter at your frequency</td><td class="good">Pigtail &lt; 0.5 dB</td><td class="meh">Short coax run 1–2 dB</td><td class="bad">Anything unexpected</td></tr>
+  </table></div>
+  <p class="small muted">SWR, return loss, and reflected power are the same fact in three units. SWR 2.0 = −9.5 dB return loss = 11 % of power reflected. The <a href="#calcs">calculators</a> convert between them.</p>
+
+  <h3>Your instrument, specifically</h3>
+  <div class="grid">
+    <div class="card"><h4>Range</h4><p>NanoVNA-H4: 10 kHz – 1.5 GHz. Native (fundamental) mode up to 300 MHz; 300–900 MHz and 900 MHz–1.5 GHz use harmonics of the internal synthesizer. <strong>Your 902–928 MHz band sits just inside the top region.</strong></p></div>
+    <div class="card"><h4>Dynamic range</h4><p>Better than ~70 dB below 300 MHz, ~60 dB in 300–900 MHz, and ~40 dB in 900 MHz–1.5 GHz. At 915 MHz, 40 dB is still plenty for SWR/return-loss work (a −30 dB match is "perfect" for any practical purpose) — just don't expect to see the floor of a deep notch filter up there.</p></div>
+    <div class="card"><h4>Resolution</h4><p>Up to <strong>401 sweep points</strong> on the H4 (the smaller H does 101). Narrow spans + more points = finer detail. The H4's 4-inch screen is what makes reading Smith charts on the device itself practical.</p></div>
+    <div class="card"><h4>Output</h4><p>About 0 dBm (1 mW). Harmless to any antenna. Whether the antenna is harmless to the VNA is section 7.</p></div>
+  </div>
+</section>
+
+<!-- ======================= 2. CALIBRATION ======================= -->
+<section class="sec" id="calibration">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Calibration — the most important step</h2></div>
+  <p class="lede">An uncalibrated NanoVNA measures its own cable, connectors, and internal bridge as much as your antenna. Calibration teaches it what "perfect open," "perfect short," and "perfect 50 Ω" look like at the exact spot you'll connect your device, so it can subtract everything before that spot. It takes ~90 seconds and it is the difference between numbers you can trust and numbers that look plausible.</p>
+
+  <div class="callout warn">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div><strong>Rule #1: recalibrate whenever you change the frequency range.</strong>
+    <p>A calibration is only valid for the start/stop frequencies and point count it was made with. Change the sweep and the H4 will <em>interpolate</em> the old calibration (the status letter on the left drops to lowercase <code>c</code>) — usable in a pinch inside the original range, but wrong if you sweep outside it. Rule #2: also recalibrate if you change the cable/adapter chain, because the calibration plane moved.</p></div>
+  </div>
+
+  <h3>The three (or five) standards</h3>
+  <div class="grid">
+    <div class="card amber"><h3>OPEN</h3><p>Nothing connected (or the supplied OPEN cap). Teaches it what total reflection with 0° phase looks like.</p><p class="small muted">S11 · required</p></div>
+    <div class="card amber"><h3>SHORT</h3><p>The shorted cap. Total reflection with 180° phase.</p><p class="small muted">S11 · required</p></div>
+    <div class="card amber"><h3>LOAD</h3><p>The 50 Ω dummy load. "This is the target — no reflection at all." Sets the center of the Smith chart.</p><p class="small muted">S11 · required</p></div>
+    <div class="card cyan"><h3>ISOLN</h3><p>Isolation: LOAD on CH0, LOAD (or nothing) on CH1. Tells it how much leaks between ports internally. Optional; skip it unless you're measuring deep filter stopbands.</p><p class="small muted">S21 · optional</p></div>
+    <div class="card cyan"><h3>THRU</h3><p>Connect CH0's cable directly to CH1's cable (with a female-female barrel if both ends are male). "This is 0 dB loss."</p><p class="small muted">S21 · required for any S21 work</p></div>
+  </div>
+
+  <h3>The general flow</h3>
+  <ol class="steps">
+    <li><strong>Set the sweep first.</strong> <kbd>STIMULUS</kbd> → <kbd>START</kbd> / <kbd>STOP</kbd> (or <kbd>CENTER</kbd> / <kbd>SPAN</kbd>). For mesh work: 850–1000 MHz gives you context around the band; 902–928 MHz is a tight look. Pick a point count (<kbd>SWEEP POINTS</kbd>) now too — 201 or 401 for a tight span.</li>
+    <li><strong>Build the exact cable chain you'll measure through</strong> — e.g. the SMA cable plus the u.FL→SMA adapter if that's what the antenna needs. Calibration standards go on the <em>far end of that chain</em>. That end is your <strong>calibration plane</strong>; everything before it disappears from the measurement.</li>
+    <li><kbd>CALIBRATE</kbd> → <kbd>RESET</kbd> to clear any old calibration (so you can't accidentally blend two).</li>
+    <li><kbd>CALIBRATE</kbd> → <kbd>CALIBRATE</kbd>, then attach each standard and tap its button: <kbd>OPEN</kbd> → <kbd>SHORT</kbd> → <kbd>LOAD</kbd>. Each tap runs one sweep (the firmware temporarily narrows the IF bandwidth to 100 Hz for a cleaner reference). Let the trace settle before tapping. Watch the status column on the left: <code>O</code>, <code>S</code>, then <code>D</code> letters appear as each is collected.</li>
+    <li>For S21: connect CH0 chain to CH1 chain and tap <kbd>THRU</kbd>. Optionally, with loads on both ports, tap <kbd>ISOLN</kbd>.</li>
+    <li>Tap <kbd>DONE</kbd>. The firmware computes the error terms and shows <code>C*</code> (calibrated, unsaved) on the left. It then offers <kbd>SAVE</kbd> — pick a slot (the H4 has slots 0–6). Slot labels show their frequency range, so name-by-range is automatic.</li>
+    <li><strong>Sanity check</strong>: with the LOAD still on, the SWR trace should be a flat line at ~1.0 and the Smith marker should sit dead center. Put the OPEN on: the marker jumps to the far right edge. If not, something in the chain is loose.</li>
+  </ol>
+
+  <div class="grid two">
+    <div class="card">
+      <h3>Status letters, decoded</h3>
+      <p class="small">The narrow column on the left of the screen tells you the truth about your calibration:</p>
+      <div class="tbl"><table>
+        <tr><td class="mono"><b>C0…C6</b></td><td>Calibration applied, from that saved slot. ✅</td></tr>
+        <tr><td class="mono"><b>C*</b></td><td>Calibrated but not saved to a slot (lost on power-off unless saved).</td></tr>
+        <tr><td class="mono"><b>c0 / c*</b></td><td>Lowercase = <em>interpolated</em>. You changed the sweep. Recalibrate if you care about the numbers.</td></tr>
+        <tr><td class="mono"><b>(nothing)</b></td><td>No calibration applied. Every number is suspect.</td></tr>
+        <tr><td class="mono"><b>D R S T X</b></td><td>Error terms present: directivity, reflection tracking, source match, transmission tracking, isolation.</td></tr>
+        <tr><td class="mono"><b>Pa / P2…P8</b></td><td>Output drive. Turns red if it differs from what you calibrated with — recalibrate.</td></tr>
+      </table></div>
+    </div>
+    <div class="card">
+      <h3>Things people get wrong</h3>
+      <ul class="small">
+        <li><strong>Calibrating at the VNA's SMA jack, then measuring through a cable.</strong> The cable's length shows up as phase rotation and its loss flattens your SWR. Calibrate at the cable's end.</li>
+        <li><strong>Wide-span cal, narrow-span measurement.</strong> Interpolation between widely-spaced cal points is coarse. For the 902–928 band, calibrate over the band (or a modest margin around it).</li>
+        <li><strong>Touching the standards while sweeping.</strong> Fingers on the OPEN change it. Set it down.</li>
+        <li><strong>Finger-tight SMA.</strong> Snug is fine; over-torque strips brass adapters. Consistency matters more than force.</li>
+        <li><strong>Forgetting the calibration kit's tolerance.</strong> The cheap included kit is fine to ~1 GHz for hobby work. The LOAD is the most important piece; if it ever gets damaged, replace it.</li>
+        <li><strong>Blending calibrations.</strong> Hit <kbd>RESET</kbd> first. If the range or point count changed, the firmware clears the old set anyway when you collect a new standard — but be deliberate.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div><strong>Suggested slot plan for your bench</strong>
+    <p><code>C0</code> 850–1000 MHz, 401 pts, cal at the SMA cable end (mesh antennas) · <code>C1</code> 902–928 MHz, 201 pts, same plane (fine tuning) · <code>C2</code> 1–500 MHz, 401 pts (general / TDR / ham VHF-UHF) · <code>C3</code> 140–150 MHz (2 m) · <code>C4</code> 420–450 MHz (70 cm) · <code>C5</code> the same as C0 but with THRU done, for S21 pigtail/cable loss. Leave <code>C6</code> as scratch. With <kbd>CONFIG → EXPERT SETTINGS → REMEMBER STATE</kbd> on, the H4 boots back into the last slot you used.</p></div>
+  </div>
+</section>
+
+<!-- ======================= 3. DISPLAY ======================= -->
+<section class="sec" id="display">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Reading the screen</h2></div>
+  <p class="lede">Four traces, eight markers, a bottom line showing the sweep, and a status column. Learn to set a trace to what you want and put a marker where you care, and the rest is reading.</p>
+
+  <div class="grid two">
+    <div class="card">
+      <h3>Setting the sweep</h3>
+      <p><kbd>STIMULUS</kbd> menu:</p>
+      <ul class="small">
+        <li><kbd>START</kbd> / <kbd>STOP</kbd> — edges. The bottom line then shows START … STOP.</li>
+        <li><kbd>CENTER</kbd> / <kbd>SPAN</kbd> — same thing, centered. Handy for "915 MHz ± 50".</li>
+        <li><kbd>CW FREQ</kbd> — single frequency, no sweep. Great for live tuning: set CW to 915 MHz, watch SWR at the marker change as you trim.</li>
+        <li><kbd>SWEEP POINTS</kbd> — 51 / 101 / 201 / 301 / 401. More points = slower sweep, finer detail.</li>
+        <li>Numeric keypad: type the number, then the unit key (<kbd>M</kbd> for MHz, <kbd>G</kbd> for GHz). <kbd>BS</kbd> backspace, <kbd>Enter</kbd> accept.</li>
+        <li>The lever (jog switch) nudges whichever value has the little arrow beside it; <kbd>JOG STEP</kbd> sets how far.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Traces &amp; formats</h3>
+      <p><kbd>DISPLAY</kbd> → <kbd>TRACE</kbd> picks which of the four traces is active (yellow, cyan, green, magenta). Then <kbd>FORMAT S11</kbd> or <kbd>FORMAT S21</kbd> assigns what it shows:</p>
+      <ul class="small">
+        <li><strong>LOGMAG</strong> — dB. For S11: return loss (dip = good). For S21: insertion loss / gain.</li>
+        <li><strong>SWR</strong> — the antenna-tuner's view (S11 only). Dip = resonance.</li>
+        <li><strong>SMITH</strong> — impedance, R + jX at the marker. Where the antenna <em>is</em>, not just how far off.</li>
+        <li><strong>PHASE</strong> — degrees; crosses zero at resonance. Mostly for cable and filter work.</li>
+        <li><strong>RESISTANCE / REACTANCE / |Z|</strong> — the Smith chart's numbers as flat plots.</li>
+        <li><strong>SERIES L / SERIES C</strong> — component values straight from S11.</li>
+        <li><strong>DELAY</strong> — group delay (filters).</li>
+      </ul>
+      <p class="small">A good default set: <span class="chip">T1 S11 SWR</span> <span class="chip">T2 S11 SMITH</span> <span class="chip">T3 S11 LOGMAG</span> <span class="chip">T4 S21 LOGMAG</span></p>
+    </div>
+  </div>
+
+  <div class="grid two">
+    <div class="card">
+      <h3>Markers</h3>
+      <ul class="small">
+        <li><kbd>MARKER</kbd> → <kbd>SELECT MARKER</kbd> → <kbd>MARKER 1</kbd>…<kbd>8</kbd>. The active one is what the top readout describes and what the lever moves.</li>
+        <li><kbd>SEARCH MINIMUM</kbd> on an SWR trace jumps the marker to the resonance. <kbd>TRACKING</kbd> keeps it there sweep after sweep — turn this on while trimming an antenna.</li>
+        <li><kbd>DELTA</kbd> shows other markers relative to the active one — e.g. marker 1 on the SWR minimum, markers 2 and 3 at the 2:1 SWR edges → instant bandwidth.</li>
+        <li><kbd>OPERATIONS</kbd> → <kbd>→ CENTER</kbd> / <kbd>→ SPAN</kbd> re-center the sweep on the marker(s). Zoom in on a resonance in two taps (then recalibrate!).</li>
+        <li>Tap a marker on the touchscreen and drag it. Tap the top readout to change the active trace.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Scale &amp; cleanliness</h3>
+      <ul class="small">
+        <li><kbd>DISPLAY</kbd> → <kbd>SCALE</kbd> → <kbd>AUTO SCALE</kbd> fits the active trace. <kbd>SCALE/DIV</kbd>, <kbd>TOP</kbd>, <kbd>BOTTOM</kbd>, <kbd>REFERENCE POSITION</kbd> for manual.</li>
+        <li>SWR trace: set scale 1/div with reference at the bottom so 1.0 is the baseline. 1.5 and 2.0 then read as grid lines.</li>
+        <li><kbd>IF BANDWIDTH</kbd> (4 kHz → 30 Hz): narrower = less noise, slower sweep. Use 1 kHz or 333 Hz above 900 MHz where the noise floor is higher.</li>
+        <li><kbd>DATA SMOOTH</kbd> averages neighboring points. Helps a jittery 915 MHz trace look honest; don't use it to hide a real problem.</li>
+        <li><kbd>STORE TRACE</kbd> freezes a copy (red). Store "before," then trim, and compare "after" live. This is the trimming workflow.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="fig-row">
+    <figure>
+      <svg viewBox="0 0 520 300" role="img" aria-label="SWR versus frequency showing a resonance dip at 915 MHz">
+        <defs>
+          <linearGradient id="swrfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f5b445" stop-opacity=".35"/><stop offset="1" stop-color="#f5b445" stop-opacity="0"/></linearGradient>
+        </defs>
+        <rect x="0" y="0" width="520" height="300" fill="none"/>
+        <!-- grid -->
+        <g stroke="#2b3d50" stroke-width="1">
+          <line x1="60" y1="30" x2="60" y2="250"/><line x1="60" y1="250" x2="500" y2="250"/>
+          <line x1="60" y1="206" x2="500" y2="206" stroke-dasharray="3 4"/>
+          <line x1="60" y1="162" x2="500" y2="162" stroke-dasharray="3 4"/>
+          <line x1="60" y1="118" x2="500" y2="118" stroke-dasharray="3 4"/>
+          <line x1="60" y1="74" x2="500" y2="74" stroke-dasharray="3 4"/>
+          <line x1="170" y1="30" x2="170" y2="250" stroke-dasharray="3 4"/>
+          <line x1="280" y1="30" x2="280" y2="250" stroke-dasharray="3 4"/>
+          <line x1="390" y1="30" x2="390" y2="250" stroke-dasharray="3 4"/>
+        </g>
+        <!-- band shading 902-928 -->
+        <rect x="257" y="30" width="72" height="220" fill="#5bd78f" fill-opacity=".08"/>
+        <text x="293" y="44" fill="#5bd78f" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">902–928</text>
+        <!-- SWR 2 line -->
+        <line x1="60" y1="206" x2="500" y2="206" stroke="#ff6b7a" stroke-width="1.2" stroke-dasharray="6 4" opacity=".7"/>
+        <text x="497" y="202" fill="#ff6b7a" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="end">SWR 2:1</text>
+        <!-- curve: y for SWR; baseline 250 = SWR1, 206 = 2, 162 = 3, 118=4, 74=5 -->
+        <path d="M60 60 C 120 70, 180 110, 230 175 C 260 214, 275 238, 293 244 C 311 238, 326 214, 356 175 C 406 110, 460 70, 500 60" fill="url(#swrfill)" stroke="none" transform="translate(0,0)"/>
+        <path d="M60 60 C 120 70, 180 110, 230 175 C 260 214, 275 238, 293 244 C 311 238, 326 214, 356 175 C 406 110, 460 70, 500 60" fill="none" stroke="#f5b445" stroke-width="2.5"/>
+        <!-- marker -->
+        <circle cx="293" cy="244" r="5" fill="#f5b445" stroke="#0b0f14" stroke-width="2"/>
+        <path d="M293 232 l-6 -10 h12 z" fill="#3fd0e8"/>
+        <text x="293" y="215" fill="#3fd0e8" font-size="11" font-family="JetBrains Mono,monospace" text-anchor="middle">M1 915.0 MHz  SWR 1.12</text>
+        <!-- bandwidth arrows at SWR2 -->
+        <line x1="252" y1="206" x2="334" y2="206" stroke="#5bd78f" stroke-width="1.5"/>
+        <path d="M252 206 l6 -4 v8 z M334 206 l-6 -4 v8 z" fill="#5bd78f"/>
+        <text x="293" y="264" fill="#5bd78f" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">2:1 bandwidth ≈ 50 MHz</text>
+        <!-- axes labels -->
+        <g fill="#93a4b5" font-size="10" font-family="JetBrains Mono,monospace">
+          <text x="52" y="254" text-anchor="end">1</text><text x="52" y="210" text-anchor="end">2</text><text x="52" y="166" text-anchor="end">3</text><text x="52" y="122" text-anchor="end">4</text><text x="52" y="78" text-anchor="end">5</text>
+          <text x="60" y="282" text-anchor="middle">850</text><text x="170" y="282" text-anchor="middle">880</text><text x="280" y="282" text-anchor="middle">910</text><text x="390" y="282" text-anchor="middle">940</text><text x="500" y="282" text-anchor="middle">970 MHz</text>
+          <text x="18" y="140" transform="rotate(-90 18 140)" text-anchor="middle">SWR</text>
+        </g>
+      </svg>
+      <figcaption><strong>The SWR dip.</strong> The bottom of the V is the antenna's resonance. You want that bottom inside the green band and the whole band under the red 2:1 line. If the V sits to the <em>left</em> (low), the antenna is too long → trim. To the <em>right</em> (high) → it's too short → you can't grow it, so add length or accept it.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 520 300" role="img" aria-label="S11 log magnitude return loss dip">
+        <g stroke="#2b3d50" stroke-width="1">
+          <line x1="60" y1="30" x2="60" y2="250"/><line x1="60" y1="250" x2="500" y2="250"/>
+          <line x1="60" y1="74" x2="500" y2="74" stroke-dasharray="3 4"/>
+          <line x1="60" y1="118" x2="500" y2="118" stroke-dasharray="3 4"/>
+          <line x1="60" y1="162" x2="500" y2="162" stroke-dasharray="3 4"/>
+          <line x1="60" y1="206" x2="500" y2="206" stroke-dasharray="3 4"/>
+        </g>
+        <rect x="257" y="30" width="72" height="220" fill="#5bd78f" fill-opacity=".08"/>
+        <line x1="60" y1="118" x2="500" y2="118" stroke="#ff6b7a" stroke-width="1.2" stroke-dasharray="6 4" opacity=".7"/>
+        <text x="497" y="114" fill="#ff6b7a" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="end">−10 dB (SWR 1.92)</text>
+        <path d="M60 40 C 140 42, 200 50, 240 90 C 268 120, 282 200, 293 226 C 304 200, 318 120, 346 90 C 386 50, 440 42, 500 40" fill="none" stroke="#f5b445" stroke-width="2.5"/>
+        <circle cx="293" cy="226" r="5" fill="#f5b445" stroke="#0b0f14" stroke-width="2"/>
+        <text x="293" y="206" fill="#3fd0e8" font-size="11" font-family="JetBrains Mono,monospace" text-anchor="middle">−25 dB → SWR 1.12</text>
+        <g fill="#93a4b5" font-size="10" font-family="JetBrains Mono,monospace">
+          <text x="52" y="34" text-anchor="end">0</text><text x="52" y="78" text-anchor="end">−5</text><text x="52" y="122" text-anchor="end">−10</text><text x="52" y="166" text-anchor="end">−15</text><text x="52" y="210" text-anchor="end">−20</text><text x="52" y="254" text-anchor="end">−25</text>
+          <text x="60" y="282" text-anchor="middle">850</text><text x="280" y="282" text-anchor="middle">910</text><text x="500" y="282" text-anchor="middle">970 MHz</text>
+          <text x="18" y="140" transform="rotate(-90 18 140)" text-anchor="middle">S11 dB</text>
+        </g>
+      </svg>
+      <figcaption><strong>Same antenna as S11 LOGMAG.</strong> Return loss plots "down is good." The dip depth tells you match quality (−10 dB ≈ SWR 1.9, −14 dB ≈ 1.5, −20 dB ≈ 1.2), the dip position tells you resonance. Ham folks think in SWR; RF engineers think in dB. The H4 gives you both.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================= 4. USES ======================= -->
+<section class="sec" id="uses">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Practical uses — the how-to catalog</h2></div>
+  <p class="lede">Each card: what it's for, which port(s), the setup, the steps, and how to read what comes back. Tags: <span class="tag" style="display:inline-flex;gap:6px"><span class="s11">S11</span><span class="s21">S21</span><span class="star">Wildcat Mesh</span></span>. Calibrate for the sweep before every one of these.</p>
+
+  <!-- ---------- ANTENNA ---------- -->
+  <div class="howto" id="u-antenna">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V10"/><path d="M8 10a4 4 0 0 1 8 0"/><path d="M5 7a8 8 0 0 1 14 0"/><path d="M2 4a12 12 0 0 1 20 0"/></svg></div>
+      <h3>Antenna SWR &amp; resonance tuning — your 915 MHz LoRa antennas</h3>
+      <div class="tag"><span class="s11">S11</span><span class="star">Wildcat Mesh</span><span>CH0</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> Answering the single most useful question in your mesh: <em>is this antenna actually resonant where my radios transmit?</em> A stock "915 MHz" whip that came in a bag is often tuned for 868 MHz (the EU LoRa band), or nowhere in particular. A mismatched antenna reflects power back into the SX1262 in your Heltec / E22 modules, cuts range, and over time can stress the PA. Ten minutes with the VNA tells you which antennas to keep.</p>
+        <h4>Setup</h4>
+        <ul>
+          <li>SMA cable from CH0 → (adapter if needed) → antenna. Most mesh whips are <strong>SMA male</strong>; some are <strong>RP-SMA</strong> (the "reverse polarity" Wi-Fi style — pin in the wrong gender). Check before forcing anything. Keep an SMA↔RP-SMA adapter in the kit.</li>
+          <li>Calibrate at the end of the cable/adapter chain (slot C0: 850–1000 MHz, 401 pts).</li>
+          <li>Traces: T1 <strong>S11 SWR</strong>, T2 <strong>S11 SMITH</strong>. Marker 1 with <kbd>SEARCH MINIMUM</kbd> + <kbd>TRACKING</kbd>.</li>
+        </ul>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li>Hold the antenna <strong>as it will be used</strong>, away from your hand, your body, the desk, and the VNA itself. A whip on a bare SMA jack has almost no ground plane; screw it onto the node's pigtail with the node powered <em>off</em>, or onto a small metal plate or the enclosure it will live in, for a realistic counterpoise. Your hand near a 915 MHz whip will move the dip by tens of MHz — that's not a bug, that's physics, and it's why handheld nodes vary.</li>
+          <li>Read the SWR minimum frequency and value at M1. Note the SWR at 902, 915, and 928 (drop markers 2–4 there, or just read the trace).</li>
+          <li>Decide: dip inside 902–928 and SWR &lt; 2 across the band → keep, done. Dip below ~890 → antenna is electrically too long → trim (next step). Dip above ~940 → too short → it's not a 915 antenna; retire it to the parts bin.</li>
+          <li><strong>Trimming</strong> (only for whips you can cut — the rubber-duck / helical ones aren't trimmable): <kbd>STORE TRACE</kbd> first. Remove the tip cap, cut <strong>1 mm at a time</strong>, re-measure. Near 915 MHz, 1 mm on a quarter-wave whip moves resonance about <strong>10 MHz</strong>. It only goes one way; stop early.</li>
+          <li>Check the Smith trace: at resonance the marker crosses the horizontal center line (reactance = 0). If it crosses left of center the antenna's resistance is below 50 Ω (common for short whips on small ground planes); right of center, above. You can't easily fix that without matching — but a 1.5 SWR from a 35 Ω resonant antenna is still a fine antenna.</li>
+          <li>Save the slot; write the result on tape on the antenna (e.g. <code>915 ✓ 1.3</code>). Future-you will thank you.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>SWR at 915 &lt; 1.5</strong> — excellent, ship it.</li>
+          <li><strong>1.5 – 2.0 across the band</strong> — normal for a compact whip. Fine.</li>
+          <li><strong>&gt; 3 anywhere in band</strong> — wrong antenna or broken connection. Check the pigtail first (see <a href="#u-connectors">connectors</a>).</li>
+          <li><strong>No dip at all / flat SWR ~1</strong> — you're measuring a dummy load or a lossy cable, not an antenna. Or the calibration isn't applied.</li>
+          <li><strong>Dip jumps when you touch the cable</strong> — common-mode current on the coax; the antenna is using the cable as its ground plane. Realistic for tiny nodes.</li>
+        </ul></div>
+        <h4>Where Meshtastic actually transmits</h4>
+        <p class="small">The US default (LongFast, slot 20) is <strong>906.875 MHz</strong>; other presets land elsewhere in 902–928. So the whole band matters, but if you're choosing between two antennas, prefer the one that's best near 907.</p>
+        <h4>Numbers for 915 MHz</h4>
+        <div class="readout small">
+          λ = 32.8 cm · λ/4 = 8.2 cm free-space<br>
+          Practical λ/4 whip ≈ <b>7.6–7.9 cm</b> of radiator (wire is electrically "fatter")<br>
+          λ/2 ≈ 15.7 cm free-space<br>
+          Trim sensitivity ≈ <b>−10 MHz per mm cut</b> (λ/4 whip)
+        </div>
+        <h4>Gotcha</h4>
+        <p class="small">A dip on the VNA proves the antenna is <em>matched</em>, not that it <em>radiates well</em>. A dummy load has a perfect dip. Match first, then confirm with real RSSI/SNR between two nodes.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- CABLE LOSS ---------- -->
+  <div class="howto" id="u-cableloss">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l2-5 4 10 2-5h4"/></svg></div>
+      <h3>Measuring coax / cable loss</h3>
+      <div class="tag"><span class="s21">S21</span><span class="s11">S11 alt.</span><span class="star">Wildcat Mesh</span><span>CH0 → CH1</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> Every dB lost in the feedline is a dB you don't get on the air — and at 915 MHz, thin coax is <em>hungry</em> (RG-174: roughly 0.5 dB per foot; RG-58: ~0.2 dB/ft; LMR-400: ~0.04 dB/ft). A 10 ft RG-58 run to a rooftop mesh node quietly throws away a third of your power. Measure it, then decide whether the run is worth upgrading.</p>
+        <h4>Setup — S21 (the right way)</h4>
+        <ul>
+          <li>Short, good cable on CH0 and another on CH1. Calibrate including <kbd>THRU</kbd> with those two joined by a barrel (slot C5). The barrel is now part of the "zero."</li>
+          <li>Trace: <strong>S21 LOGMAG</strong>, scale 1 dB/div, reference at the top.</li>
+        </ul>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li>Insert the cable under test between the two calibration cables (replacing the barrel, or with the barrel still in on one side — be consistent with the cal).</li>
+          <li>Read S21 at your frequency. It's negative dB; the magnitude is the one-way loss. −1.2 dB at 915 MHz = 1.2 dB loss = 24 % of power gone.</li>
+          <li>Sweep wide (1–1000 MHz) to see loss vs frequency — it should be a smooth curve growing with frequency. Bumps or ripples mean a bad connector or a damaged section.</li>
+        </ol>
+        <h4>S11 alternative (one port, no THRU)</h4>
+        <p>Leave the far end of the cable <strong>open</strong> (or shorted) and look at S11 LOGMAG. The signal goes down and back, so the return loss you read is <strong>twice</strong> the cable loss. −3 dB S11 with an open far end = 1.5 dB cable loss. The DiSlord firmware automates this: <kbd>MEASURE</kbd> → <kbd>CABLE (S11)</kbd> reports loss and <code>Att (dB/100m)</code>. Less accurate than S21 but good enough to sort cables into keep/toss.</p>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>Matches the datasheet ± 20 %</strong> — healthy cable.</li>
+          <li><strong>Much worse than datasheet</strong> — water ingress, crushed dielectric, or a bad crimp. The TDR card finds where.</li>
+          <li><strong>Ripple in the S21 trace</strong> — an impedance bump reflecting at both ends. Bad connector.</li>
+          <li><strong>Loss changes when you flex it</strong> — intermittent connection. Toss it.</li>
+        </ul></div>
+        <h4>Rule of thumb @ 915 MHz</h4>
+        <div class="tbl"><table>
+          <tr><th>Cable</th><th>dB / 10 ft</th></tr>
+          <tr><td class="mono">RG-174 / 1.13 mm pigtail</td><td class="mono">≈ 4–5</td></tr>
+          <tr><td class="mono">RG-316</td><td class="mono">≈ 3</td></tr>
+          <tr><td class="mono">RG-58</td><td class="mono">≈ 2</td></tr>
+          <tr><td class="mono">RG-8X / LMR-240</td><td class="mono">≈ 1.2 / 0.8</td></tr>
+          <tr><td class="mono">LMR-400</td><td class="mono">≈ 0.4</td></tr>
+        </table></div>
+        <p class="small muted">Approximate; the point is that at 915 MHz, keep pigtails short and put the node at the antenna, not the antenna at the node.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- TDR ---------- -->
+  <div class="howto" id="u-tdr">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h5l2-12 3 16 2-8h6"/></svg></div>
+      <h3>Cable length &amp; fault finding (TDR / distance-to-fault)</h3>
+      <div class="tag"><span class="s11">S11</span><span>TRANSFORM</span><span>CH0</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> Time-domain reflectometry turns a frequency sweep into a plot of reflections vs <em>distance</em> along a cable. Every impedance change — a connector, a kink, a crushed spot, the end — shows as a bump at its distance. Measure a mystery cable's length, find where the rooftop run got pinched, or confirm a pigtail's electrical length. The NanoVNA computes this with an inverse FFT of S11 (the feature cho45 added to the original firmware).</p>
+        <h4>Setup</h4>
+        <ul>
+          <li>Cable on CH0, calibrated at its end (that's distance zero). Connect the cable under test there; leave its far end open or shorted.</li>
+          <li><strong>Sweep wide from low</strong>: e.g. 1–500 MHz or 50 kHz–900 MHz with 401 points. Span sets resolution; point spacing sets max distance: <code>max distance ≈ (points−1) × VF × c ÷ (2 × span)</code> — 401 pts over 500 MHz with VF 0.66 → ~80 m. Fine for anything in your house.</li>
+          <li><kbd>DISPLAY</kbd> → <kbd>TRANSFORM</kbd> → <kbd>VELOCITY F.</kbd> = your cable's VF as a percent (RG-58/RG-174/RG-316 ≈ 66; RG-8X ≈ 82; LMR-400 ≈ 85; foam RG-6 ≈ 82). Wrong VF = right shape, wrong ruler.</li>
+          <li><kbd>TRANSFORM ON</kbd>, <kbd>LOW PASS STEP</kbd> (shows impedance steps — the intuitive one) or <kbd>LOW PASS IMPULSE</kbd> (sharp spikes at each discontinuity). Trace S11 <strong>REAL</strong> or LINEAR.</li>
+        </ul>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li>With the far end open, drop a marker on the big step/spike — that's the end. The marker readout shows time <em>and</em> distance (one-way, already halved).</li>
+          <li>Any bump <em>before</em> the end is a discontinuity. Its distance is where to look for the fault; its polarity tells you the flavor (step up = higher impedance/open-ish, step down = lower/short-ish).</li>
+          <li>Unknown cable type? Measure a known length and adjust VF until the end lands at the right distance — you've now measured VF. <kbd>MEASURE</kbd> → <kbd>CABLE (S11)</kbd> does this too: enter <kbd>CABLE LENGTH</kbd> and it reports VF and Z0.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>One clean step at the end, flat before it</strong> — good cable.</li>
+          <li><strong>Small blip at 0.5 m then flat</strong> — that's your adapter/connector. Normal if small.</li>
+          <li><strong>Big bump mid-run</strong> — damage there. Distance = position.</li>
+          <li><strong>End appears at half the distance</strong> — VF is wrong, or the cable is actually shorter than the label.</li>
+          <li><strong>Everything smeared</strong> — span too narrow. Widen the sweep, recalibrate.</li>
+        </ul></div>
+        <figure style="margin:14px 0 0">
+          <svg viewBox="0 0 320 150" role="img" aria-label="TDR step response with a fault bump and cable end">
+            <g stroke="#2b3d50" stroke-width="1"><line x1="30" y1="120" x2="310" y2="120"/><line x1="30" y1="20" x2="30" y2="120"/></g>
+            <path d="M30 90 L 120 90 L 126 74 L 134 96 L 140 90 L 228 90 L 236 32 L 310 30" fill="none" stroke="#b48cff" stroke-width="2.5"/>
+            <text x="128" y="66" fill="#ff6b7a" font-size="9" font-family="JetBrains Mono,monospace" text-anchor="middle">fault @ 3.1 m</text>
+            <text x="236" y="24" fill="#5bd78f" font-size="9" font-family="JetBrains Mono,monospace" text-anchor="middle">open end @ 6.4 m</text>
+            <g fill="#93a4b5" font-size="9" font-family="JetBrains Mono,monospace"><text x="30" y="134" text-anchor="middle">0</text><text x="170" y="134" text-anchor="middle">distance →</text><text x="310" y="134" text-anchor="end">8 m</text></g>
+          </svg>
+          <figcaption>Low-pass step TDR: flat 50 Ω, a fault bump, then the rise to open at the end.</figcaption>
+        </figure>
+        <p class="small muted" style="margin-top:10px">NanoVNA-Saver's TDR tab is easier to read than the on-device one and lets you pick the cable type from a list.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- FILTER ---------- -->
+  <div class="howto" id="u-filter">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18 8 6h8l5 12"/><path d="M8 6v12M16 6v12"/></svg></div>
+      <h3>Filter / duplexer / band-pass characterization</h3>
+      <div class="tag"><span class="s21">S21</span><span class="s11">S11</span><span>CH0 → CH1</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> Seeing exactly what a filter passes and blocks. Relevant to you sooner than you'd think: a cheap 915 MHz SAW band-pass filter in front of a mesh node's receiver can rescue a site that's swamped by a nearby cell tower or pager transmitter; a "70 cm" duplexer for a repeater; a low-pass filter on an HF transmitter. The VNA shows the real passband, real insertion loss, and real stopband — not the datasheet's.</p>
+        <h4>Setup</h4>
+        <ul>
+          <li>CH0 → filter input, filter output → CH1. Two-port cal including THRU (and ISOLN if you care about deep stopbands).</li>
+          <li>Sweep wide enough to see the skirts: for a 915 MHz SAW, try 700–1100 MHz. Traces: <strong>S21 LOGMAG</strong> (10 dB/div, reference at top) and <strong>S11 LOGMAG</strong> (input match).</li>
+        </ul>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li>Marker on the S21 peak: that's the insertion loss (a good SAW: −2 to −3 dB; an LC band-pass: −0.5 to −1.5 dB).</li>
+          <li><kbd>MEASURE</kbd> → <kbd>FILTER (S21)</kbd>: the firmware finds the peak and the −3 dB and −6 dB edges and prints center frequency, bandwidth, Q, and roll-off in dB/octave. Otherwise use <kbd>DELTA</kbd> markers 3 dB down on each side.</li>
+          <li>Check that <em>your</em> frequencies are inside the flat top with margin — a 915 filter whose −3 dB edge is at 905 MHz will hurt LongFast at 906.875.</li>
+          <li>Look at the stopband depth at the interferer's frequency (e.g. 850 MHz cellular). Remember the H4's ~40 dB dynamic range above 900 MHz — a −60 dB stopband will read as −40. That's the instrument floor, not the filter.</li>
+          <li>Swap the ports (or just look at S11) to confirm the input is matched in the passband; a filter that passes but reflects is still a loss.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>Flat top, steep sides, low loss</strong> — good filter.</li>
+          <li><strong>Passband tilted or rippled</strong> — mismatch; check cal and connectors.</li>
+          <li><strong>Peak shifted from the label</strong> — cheap SAWs drift with temperature and lot; that's why you measure.</li>
+          <li><strong>Stopband "floor" around −40 dB above 900 MHz</strong> — instrument limit, not the filter.</li>
+        </ul></div>
+        <h4>Duplexers</h4>
+        <p class="small">Each pass leg is a filter: measure ANT→RX (should pass the RX freq, notch TX) and ANT→TX (the reverse). Tuning cans is the classic "watch the notch move on S21 while turning the screw" job — set <kbd>CW</kbd> at the notch frequency for live feedback, or use marker tracking on SEARCH MINIMUM.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- SMITH ---------- -->
+  <div class="howto" id="u-smith">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="16.5" cy="12" r="4.5"/><line x1="3" y1="12" x2="21" y2="12"/></svg></div>
+      <h3>Impedance matching &amp; how to read the Smith chart</h3>
+      <div class="tag"><span class="s11">S11</span><span>SMITH</span><span>CH0</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> SWR tells you <em>how far</em> from 50 Ω. The Smith chart tells you <em>which direction</em> — and therefore what to do about it. It's just a map of every possible impedance, bent so that 50 Ω is the bull's-eye. Once it clicks, you'll never want a plain SWR trace again.</p>
+        <figure>
+          <svg viewBox="0 0 560 400" role="img" aria-label="Annotated Smith chart">
+            <defs><clipPath id="sc"><circle cx="280" cy="200" r="170"/></clipPath></defs>
+            <!-- outer -->
+            <circle cx="280" cy="200" r="170" fill="rgba(63,208,232,.04)" stroke="#3fd0e8" stroke-width="1.5"/>
+            <!-- resistance circles: r = 0.2,0.5,1,2,5 → center x = 280 + 170*r/(1+r), radius 170/(1+r) -->
+            <g fill="none" stroke="#2b3d50" stroke-width="1" clip-path="url(#sc)">
+              <circle cx="308.3" cy="200" r="141.7"/>   <!-- r=0.2 -->
+              <circle cx="336.7" cy="200" r="113.3"/>   <!-- r=0.5 -->
+              <circle cx="365" cy="200" r="85" stroke="#3fd0e8" stroke-opacity=".8"/>   <!-- r=1 -->
+              <circle cx="393.3" cy="200" r="56.7"/>    <!-- r=2 -->
+              <circle cx="421.7" cy="200" r="28.3"/>    <!-- r=5 -->
+              <!-- reactance arcs: x = ±0.5, ±1, ±2 → center (450, 200 ∓ 170/x), radius 170/x -->
+              <circle cx="450" cy="-140" r="340"/><circle cx="450" cy="540" r="340"/>
+              <circle cx="450" cy="30" r="170"/><circle cx="450" cy="370" r="170"/>
+              <circle cx="450" cy="115" r="85"/><circle cx="450" cy="285" r="85"/>
+            </g>
+            <line x1="110" y1="200" x2="450" y2="200" stroke="#3fd0e8" stroke-width="1.2"/>
+            <!-- center point -->
+            <circle cx="365" cy="200" r="6" fill="#5bd78f"/>
+            <text x="365" y="222" fill="#5bd78f" font-size="11" font-family="JetBrains Mono,monospace" text-anchor="middle" font-weight="600">50 Ω  · bull's-eye</text>
+            <!-- ends -->
+            <text x="104" y="204" fill="#93a4b5" font-size="11" font-family="JetBrains Mono,monospace" text-anchor="end">SHORT 0 Ω</text>
+            <text x="456" y="204" fill="#93a4b5" font-size="11" font-family="JetBrains Mono,monospace">OPEN ∞</text>
+            <!-- labels -->
+            <text x="300" y="60" fill="#f5b445" font-size="12" font-family="Inter,sans-serif" text-anchor="middle" font-weight="600">upper half = inductive (+jX)</text>
+            <text x="300" y="58" fill="#f5b445" font-size="10" font-family="Inter,sans-serif" text-anchor="middle" dy="14">"too long" — electrically long antenna, series L</text>
+            <text x="300" y="350" fill="#3fd0e8" font-size="12" font-family="Inter,sans-serif" text-anchor="middle" font-weight="600">lower half = capacitive (−jX)</text>
+            <text x="300" y="364" fill="#3fd0e8" font-size="10" font-family="Inter,sans-serif" text-anchor="middle">"too short" — short antenna, series C</text>
+            <text x="200" y="190" fill="#93a4b5" font-size="10" font-family="Inter,sans-serif" text-anchor="middle">R &lt; 50 Ω</text>
+            <text x="415" y="190" fill="#93a4b5" font-size="10" font-family="Inter,sans-serif" text-anchor="middle">R &gt; 50 Ω</text>
+            <!-- antenna sweep trace: passes through near center; goes from inductive top to capacitive bottom clockwise as frequency increases -->
+            <path d="M 250 110 C 330 120, 380 150, 372 195 C 366 235, 320 270, 262 285" fill="none" stroke="#f5b445" stroke-width="2.5"/>
+            <circle cx="250" cy="110" r="4" fill="#f5b445"/><text x="238" y="104" fill="#f5b445" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="end">850</text>
+            <circle cx="371" cy="200" r="5" fill="#f5b445" stroke="#0b0f14" stroke-width="2"/><text x="386" y="176" fill="#f5b445" font-size="10" font-family="JetBrains Mono,monospace">M1 915: 48+j2 Ω</text>
+            <circle cx="262" cy="285" r="4" fill="#f5b445"/><text x="250" y="300" fill="#f5b445" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="end">980</text>
+            <!-- SWR 2 circle: radius = 170*(2-1)/(2+1) = 56.7 about center -->
+            <circle cx="365" cy="200" r="56.7" fill="none" stroke="#ff6b7a" stroke-width="1.2" stroke-dasharray="5 4"/>
+            <text x="365" y="132" fill="#ff6b7a" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">SWR 2:1 circle</text>
+          </svg>
+          <figcaption><strong>Reading the Smith chart.</strong> Horizontal line = pure resistance, from short (left) to open (right), 50 Ω in the middle. Above the line = inductive, below = capacitive. As frequency rises, a trace always moves <em>clockwise</em>. Anything inside the dashed circle has SWR under 2. The amber antenna trace crosses the line right by the bull's-eye at 915 MHz: resonant and matched.</figcaption>
+        </figure>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li>Trace S11 <kbd>SMITH</kbd>. Tap SMITH again to choose the marker readout: <strong>R + jX</strong> for raw impedance, or <strong>R + L/C</strong> to see the reactance as the equivalent inductance or capacitance (the value you'd need to cancel it).</li>
+          <li>Put the marker at your operating frequency. Read R and X.</li>
+          <li>Diagnose: X positive → inductive → the load is "long"; shorten it or add series C. X negative → capacitive → "short"; lengthen it or add series L. R off 50 with X ≈ 0 → resonant but wrong resistance; needs a transformer or an L-network.</li>
+          <li><kbd>MEASURE</kbd> → <kbd>L/C MATCH</kbd> prints the L-network (series + shunt component values) that would match the marker impedance to 50 Ω. Real components at 915 MHz are tiny (a few nH / pF) — surface-mount territory, but it tells you what the antenna designer was up against.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>Cheat sheet</h4>
+        <div class="readout"><ul>
+          <li><strong>Marker at center</strong> → 50 Ω, matched.</li>
+          <li><strong>On the line, left of center</strong> → resonant, R &lt; 50 (typical small whip: 25–40 Ω).</li>
+          <li><strong>On the line, right</strong> → resonant, R &gt; 50 (folded dipoles, some end-feds).</li>
+          <li><strong>Upper half</strong> → inductive. Shorten.</li>
+          <li><strong>Lower half</strong> → capacitive. Lengthen.</li>
+          <li><strong>Hugging the outer rim</strong> → total reflection: open, short, or a nonresonant stub. Almost no power accepted.</li>
+          <li><strong>Trace spirals in tight loops</strong> → you're looking through a long cable; each loop is a half-wave of cable. Calibrate at the cable end to un-spin it (or set <kbd>E-DELAY</kbd>).</li>
+        </ul></div>
+        <h4>Why a trace goes clockwise</h4>
+        <p class="small">Phase delay grows with frequency, so the reflection's phase rotates one way. Direction is a sanity check: a counter-clockwise trace means your start/stop are swapped or the data is being read backwards.</p>
+        <h4>The admittance grid</h4>
+        <p class="small">Choosing a <code>G + jB</code> readout flips the chart to its mirror (admittance) — the right view for <em>shunt</em> components. Don't panic when the grid changes; tap SMITH → <code>R + jX</code> to get the familiar one back.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- BALUN ---------- -->
+  <div class="howto" id="u-balun">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/><path d="M3 17c2-4 4-4 6 0s4 4 6 0 4-4 6 0" opacity=".5"/></svg></div>
+      <h3>Checking baluns, ununs &amp; common-mode chokes</h3>
+      <div class="tag"><span class="s21">S21</span><span class="s11">S11</span><span>CH0 → CH1</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> When you build a wire antenna for HF or a dipole for 2 m / 70 cm, the balun or choke at the feedpoint decides whether the coax shield becomes part of the antenna (RF in the shack, noisy receive, wandering SWR). Three questions: does it pass signal with low loss, does it transform impedance correctly, and does it actually block common-mode current at the bands you use?</p>
+        <h4>A · Insertion loss and match (any balun/unun)</h4>
+        <ol class="steps">
+          <li>Two-port cal with THRU. CH0 → balun input; balun output → CH1. Trace S21 LOGMAG, sweep the band(s) of interest.</li>
+          <li>For a 1:1 the loss should be well under 0.5 dB across the band. For 4:1 or 9:1, S21 alone is misleading (CH1 is 50 Ω, not 200/450) — so instead:</li>
+          <li>Put the correct resistor on the output (200 Ω for a 4:1, 450 for a 9:1 — a non-inductive resistor soldered to a connector) and read <strong>S11 SWR</strong> at the input. Flat and low across the band = the transformer is doing its job.</li>
+          <li>Back-to-back trick: two identical baluns output-to-output, S21 through the pair; half the total loss is each one's.</li>
+        </ol>
+        <h4>B · Common-mode choking impedance (the one that matters)</h4>
+        <ol class="steps">
+          <li>Treat the choke as a <em>series</em> device: CH0 center pin → one end of the choke's winding (shield and center tied together, i.e. the "common-mode" path) → other end → CH1 center pin. Ground the VNA side of both.</li>
+          <li>Trace S21, format <kbd>SERIES |Z|</kbd> (the firmware converts the attenuation into the series impedance that caused it). Or read S21 LOGMAG and use the rule: −20 dB ≈ 1 kΩ, −26 dB ≈ 2 kΩ, −32 dB ≈ 4 kΩ.</li>
+          <li>Sweep 1–60 MHz for HF chokes, 100–500 MHz for VHF/UHF ones. You want <strong>&gt; 1 kΩ, ideally 3–5 kΩ</strong>, across the bands you operate — and mostly resistive (check the phase or SERIES R vs X), which is what makes ferrite chokes better than air-core coils.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>S21 within −0.3 dB, S11 SWR &lt; 1.3 with the right load</strong> — transformer is good.</li>
+          <li><strong>Choke |Z| peaks at 5 kΩ on 40 m but 300 Ω on 10 m</strong> — normal: chokes are band-specific. Choose ferrite mix by band (Mix 31 for low HF, 43 for upper HF, 61 for VHF).</li>
+          <li><strong>Loss rising steeply at the top of the band</strong> — the core is saturating/self-resonating; too many turns for that frequency.</li>
+          <li><strong>Great choke on the bench, still RF in the shack</strong> — the antenna is unbalanced for a different reason (asymmetric legs, coax running parallel to a leg). The VNA can only test the part.</li>
+        </ul></div>
+        <h4>Ununs for your future end-fed</h4>
+        <p class="small">A 49:1 EFHW transformer wants ~2450 Ω on its output for the S11 test. Two 4.7 kΩ resistors in parallel works. Look for SWR &lt; 1.5 on the bands you care about and watch loss — a bad 49:1 turns your RF into core heat.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- LC ---------- -->
+  <div class="howto" id="u-lc">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round"><path d="M2 12h3c0-3 2-3 2 0s2 3 2 0 2-3 2 0 2 3 2 0h2"/><path d="M16 8v8M19 8v8M19 12h3"/></svg></div>
+      <h3>Measuring inductors &amp; capacitors, and an LC's resonant frequency</h3>
+      <div class="tag"><span class="s11">S11</span><span class="s21">S21</span><span>CH0 (+CH1)</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> Mystery parts from the junk drawer, homemade coils for a matching network or a trap, checking a capacitor's real value at RF (they drift), and finding where an LC actually resonates before you build a filter around it. Also the fastest way to learn what "reactance" feels like: watch the Smith marker slide around the rim as you change frequency.</p>
+        <h4>Method 1 · S11 direct read (quick; best for 10 nH–10 µH, 5 pF–10 nF)</h4>
+        <ol class="steps">
+          <li>Calibrate at a female SMA jack (or a small test fixture: an SMA connector with two short pads). Solder or clip the part between center and ground, leads as short as possible.</li>
+          <li>Trace S11 format <kbd>SERIES L</kbd> (for a coil) or <kbd>SERIES C</kbd> (for a cap). Sweep a range where the part's reactance is between about 10 Ω and 500 Ω — the VNA is most accurate there. For a 100 nH coil that's roughly 20–500 MHz; for a 100 pF cap, 3–150 MHz.</li>
+          <li>Read the value at a marker. Ignore any frequency where the reading flips sign or dives to zero — that's the part's self-resonance, above which a coil looks like a cap and vice versa.</li>
+        </ol>
+        <h4>Method 2 · S21 shunt / series (accurate for very small or very large values)</h4>
+        <ol class="steps">
+          <li>Two-port cal with THRU. Put the part either in <em>series</em> between CH0 and CH1 (good for big |Z|: large L, small C) or in <em>shunt</em> from the through line to ground (good for small |Z|: small L, large C).</li>
+          <li>Trace S21 format <kbd>SERIES |Z|</kbd> / <kbd>SERIES X</kbd> or <kbd>SHUNT |Z|</kbd> / <kbd>SHUNT X</kbd>. The firmware reports the component's reactance and the Smith readout (<code>R+L/C SER..</code>) gives L or C directly.</li>
+        </ol>
+        <h4>Method 3 · LC resonance</h4>
+        <ol class="steps">
+          <li>Series LC (coil and cap in series) across CH0: S11 shows a sharp dip toward the short point at resonance. Or use <kbd>MEASURE</kbd> → <kbd>RESONANCE (S11)</kbd>, which lists every frequency where reactance crosses zero.</li>
+          <li>For a parallel LC "tank" (traps, tuned circuits): loosely couple it in shunt or series in a two-port line and use <kbd>MEASURE</kbd> → <kbd>SHUNT LC</kbd> / <kbd>SERIES LC (S21)</kbd>. It finds the resonance and prints L, C, R, and Q.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>Flat value across a decade of frequency</strong> — clean part, trust it.</li>
+          <li><strong>Value rising with frequency, then blowing up</strong> — approaching self-resonance. Use the low-frequency value.</li>
+          <li><strong>Different value than the label</strong> — normal for ±20 % ceramic caps and hand-wound coils. Now you know.</li>
+          <li><strong>Reading jumps when you touch the fixture</strong> — stray capacitance; at 915 MHz, 1 pF is 174 Ω. Keep hands off, leads short.</li>
+        </ul></div>
+        <h4>Reactance reference</h4>
+        <div class="tbl"><table>
+          <tr><th>Part</th><th>X @ 915 MHz</th><th>X @ 146 MHz</th></tr>
+          <tr><td class="mono">10 nH</td><td class="mono">57 Ω</td><td class="mono">9 Ω</td></tr>
+          <tr><td class="mono">100 nH</td><td class="mono">575 Ω</td><td class="mono">92 Ω</td></tr>
+          <tr><td class="mono">1 pF</td><td class="mono">174 Ω</td><td class="mono">1.09 kΩ</td></tr>
+          <tr><td class="mono">10 pF</td><td class="mono">17 Ω</td><td class="mono">109 Ω</td></tr>
+        </table></div>
+        <p class="small muted">X<sub>L</sub> = 2πfL · X<sub>C</sub> = 1/(2πfC). At 915 MHz everything is small, which is why LoRa matching networks are 0402 parts.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- CONNECTORS ---------- -->
+  <div class="howto" id="u-connectors">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5M17 12h5"/><rect x="7" y="8" width="10" height="8" rx="2"/><path d="M10 8V5M14 8V5"/></svg></div>
+      <h3>Checking connectors, adapters &amp; pigtails (your u.FL → SMA leads)</h3>
+      <div class="tag"><span class="s21">S21</span><span class="s11">S11</span><span class="star">Wildcat Mesh</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> The u.FL (IPEX / MHF) connector on a Heltec board and an E22 module is rated for about 30 mating cycles and is <em>easy</em> to half-seat. The tiny 1.13 mm pigtail behind it is lossy at 915 MHz and easy to crimp. A bad pigtail looks exactly like a bad antenna on an SWR sweep — so test the pigtail alone, first, and you'll never chase the wrong problem.</p>
+        <h4>Setup</h4>
+        <ul>
+          <li>You need a u.FL↔SMA adapter or a second known-good pigtail to get from the u.FL end to the VNA's SMA. (A short u.FL-female-to-SMA-female adapter lead is worth owning; note it in the calibration.)</li>
+          <li>Two-port cal with THRU (slot C5), 850–1000 MHz. If you can only do one port, the S11 method below still catches gross faults.</li>
+        </ul>
+        <h4>Steps — S21 loss (the definitive test)</h4>
+        <ol class="steps">
+          <li>CH0 cable → pigtail SMA end. Pigtail u.FL end → u.FL adapter → CH1 cable. S21 LOGMAG, 0.5 dB/div.</li>
+          <li>A 10 cm 1.13 mm pigtail should read about <strong>−0.3 to −0.6 dB</strong> at 915 MHz, plus a little for the adapter. Longer pigtails scale: ~1.5 dB per 30 cm for 1.13 mm, ~1 dB per 30 cm for RG-178/316.</li>
+          <li><strong>Wiggle test</strong>: flex the pigtail and rotate the u.FL gently while watching S21. Any jump = intermittent. Retire it.</li>
+          <li>Rank your pigtails by loss. Label the best ones for the nodes that matter (the solar repeater), use the worst for bench testing only.</li>
+        </ol>
+        <h4>Steps — S11 quick check (one port)</h4>
+        <ol class="steps">
+          <li>Calibrate at CH0's cable end. Attach the pigtail with the 50 Ω <strong>LOAD</strong> on its far end (via the u.FL adapter). S11 LOGMAG should be below about −20 dB across the band (SWR &lt; 1.2). Anything worse than −15 dB is a suspect connector.</li>
+          <li>Far end open: S11 near 0 dB minus twice the pigtail loss (−1 dB → 0.5 dB loss). A reading like −6 dB with the far end open means the pigtail is eating 3 dB — broken shield or water.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>−0.3 to −0.8 dB, stable when flexed</strong> — good pigtail.</li>
+          <li><strong>&gt; 1.5 dB for a short lead</strong> — damaged. Or it's RG-174 and 30 cm long; both are reasons to replace it.</li>
+          <li><strong>Reading changes with u.FL rotation</strong> — the u.FL is worn or not fully clicked. Reseat straight down until it snaps; if it still moves, replace the pigtail.</li>
+          <li><strong>SMA vs RP-SMA confusion</strong> — an RP-SMA-female adapter on an SMA-male antenna "screws on" but the pin doesn't mate: S11 shows open (rim of the Smith chart). Now you know why the node has no range.</li>
+        </ul></div>
+        <h4>Adapters &amp; barrels</h4>
+        <p class="small">Test adapters by putting them in the THRU path and reading S21: a good SMA barrel or SMA↔N adapter costs &lt; 0.1 dB at 915 MHz. Cheap ones with mis-sized pins can cost 0.5 dB and show as a ripple on a wide sweep. Bin the bad ones.</p>
+        <h4>u.FL care</h4>
+        <p class="small">Press straight down, never at an angle; lift with a proper u.FL puller (or a fingernail under the metal skirt, straight up). Never pull by the cable. If a node has a switchable "antenna select" resistor (some Heltec boards do), confirm which path is active before blaming the connector.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- HAM ---------- -->
+  <div class="howto" id="u-ham">
+    <div class="ht-head">
+      <div class="ht-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V8"/><path d="M4 8h16"/><path d="M6 8 12 2l6 6"/><path d="M8 20h8"/></svg></div>
+      <h3>Ham antenna tuning across the bands you'll use</h3>
+      <div class="tag"><span class="s11">S11</span><span>Technician</span><span>CH0</span></div>
+    </div>
+    <div class="ht-body">
+      <div class="ht-main">
+        <p><strong>What it's for.</strong> The same SWR-dip workflow as the mesh antennas, at bigger wavelengths. As a Technician you get all of <strong>2 m (144–148)</strong>, <strong>70 cm (420–450)</strong>, <strong>1.25 m (222–225)</strong>, <strong>6 m (50–54)</strong>, plus 10 m SSB/CW (28.0–28.5 MHz) and CW slices of 80/40/15 m. The NanoVNA covers all of it in its cleanest (fundamental, &lt; 300 MHz) range except 70 cm, which is still comfortably inside the 60 dB region.</p>
+        <h4>Setup</h4>
+        <ul>
+          <li>Calibrate per band at the end of the coax you'll actually use (or at the antenna feedpoint, then measure again through the coax to see what the radio sees — the difference is the feedline's loss flattening the SWR).</li>
+          <li>Slots: C3 = 140–150 MHz, C4 = 420–450 MHz, plus a wide 1–500 MHz one to find where a mystery antenna lives.</li>
+          <li>Traces: S11 SWR + SMITH. Markers at band edges and your favorite frequency (e.g. 146.52 simplex, your local repeater).</li>
+        </ul>
+        <h4>Steps</h4>
+        <ol class="steps">
+          <li><strong>Wide sweep first</strong> (1–500 MHz) with a dual-band HT antenna: you'll see two dips, ~146 and ~440. A "tri-band" adds ~222. Anything else the seller claimed — you'll see if it's real.</li>
+          <li>Narrow to the band. Check SWR at the band edges and center. HT rubber ducks are typically 1.5–3 on the VNA without a body nearby — they're designed to use <em>you</em> as the counterpoise, so hold the HT-shaped ground (or clip a 19 in. counterpoise wire "tiger tail" to the SMA shell and watch the SWR drop; that's a real, measurable upgrade).</li>
+          <li><strong>Dipole / J-pole / ground plane you build</strong>: cut long (formula length + 5 %), measure, trim both legs equally. For 2 m, ~1 cm per leg moves resonance ~1 MHz; for 70 cm, ~3 mm per ~1 MHz. Store the "before" trace and watch it slide up.</li>
+          <li><strong>Mobile / base antennas</strong>: measure through the feedline from the shack end. SWR that looks great at the radio but was mediocre at the feedpoint = lossy coax hiding a bad match. Go fix the antenna anyway.</li>
+          <li>Record final SWR at band edges in your log. Repeat seasonally — antennas move with weather, corrosion, and tree growth.</li>
+        </ol>
+      </div>
+      <div class="ht-side">
+        <h4>How to read it</h4>
+        <div class="readout"><ul>
+          <li><strong>2 m ≤ 1.5 across 144–148</strong> — done.</li>
+          <li><strong>Dip at 143, 2.5 at 148</strong> — slightly long. Trim.</li>
+          <li><strong>70 cm dip at 435 but 3+ at 446</strong> — narrow-band antenna; fine for one repeater, not for the whole band.</li>
+          <li><strong>SWR bottoms at 1.8 no matter what</strong> — resistance isn't 50 Ω at resonance. Adjust the antenna's geometry (J-pole tap point, ground-plane radial droop ~45°) rather than length.</li>
+        </ul></div>
+        <h4>Band quick reference</h4>
+        <div class="tbl"><table>
+          <tr><th>Band</th><th>Tech privileges</th><th>λ/2 dipole</th></tr>
+          <tr><td class="mono">10 m</td><td class="mono">28.0–28.5 (SSB/CW/data)</td><td class="mono">≈ 16.6 ft</td></tr>
+          <tr><td class="mono">6 m</td><td class="mono">50–54 all modes</td><td class="mono">≈ 9.0 ft</td></tr>
+          <tr><td class="mono">2 m</td><td class="mono">144–148 all modes</td><td class="mono">≈ 38.5 in</td></tr>
+          <tr><td class="mono">1.25 m</td><td class="mono">222–225 all modes</td><td class="mono">≈ 25 in</td></tr>
+          <tr><td class="mono">70 cm</td><td class="mono">420–450 all modes</td><td class="mono">≈ 12.9 in</td></tr>
+        </table></div>
+        <p class="small muted">Dipole lengths from 468/f(MHz) feet; trim from there. The <a href="#calcs">calculator</a> does the math.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 5. SAVING ======================= -->
+<section class="sec" id="saving">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Saving &amp; recalling calibrations and setups</h2></div>
+  <p class="lede">A saved slot is more than the calibration: it stores the sweep range, point count, traces, formats, markers, and electrical delay together. Recalling a slot brings your whole bench setup back.</p>
+  <div class="grid two">
+    <div class="card">
+      <h3>Internal slots</h3>
+      <ul>
+        <li><kbd>CALIBRATE</kbd> → <kbd>SAVE</kbd> → <kbd>0</kbd>…<kbd>6</kbd> (7 slots on the H4). A populated slot shows its start/stop frequency as its label; empty ones say <code>Empty N</code>. Saving overwrites without asking.</li>
+        <li><kbd>RECALL</kbd> → slot. The status column switches to <code>C</code> + that slot number.</li>
+        <li>Slot <strong>0</strong> is what the H4 loads at power-on (unless <kbd>REMEMBER STATE</kbd> is on, in which case it restores whatever you used last). Put your everyday setup — say the 850–1000 MHz mesh cal — in slot 0.</li>
+        <li>Slot contents survive power-off and battery drain; they don't survive a firmware update or <kbd>CLEAR CONFIG</kbd>. Re-do them after flashing.</li>
+        <li><kbd>CALIBRATE</kbd> → <kbd>RANGE</kbd> shows a slot's point count and frequency range, and snaps the sweep back to it if you've drifted (undoing the lowercase-<code>c</code> interpolation).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>SD card (H4 has a microSD slot)</h3>
+      <ul>
+        <li><kbd>SD CARD</kbd> → <kbd>SAVE CALIBRATION</kbd> writes a <code>.cal</code> file: the complete slot contents. <kbd>LOAD</kbd> → <kbd>LOAD CAL</kbd> brings it back. Unlimited "slots," and they survive firmware flashes (as long as the firmware version's file layout matches — re-save after major updates).</li>
+        <li><kbd>SAVE S1P</kbd> / <kbd>SAVE S2P</kbd> writes the current sweep as a Touchstone file — the standard interchange format. Open it later in NanoVNA-Saver, or keep it as a permanent record of "the T096 antenna on 2026-09-21."</li>
+        <li><kbd>SCREENSHOT</kbd> saves a BMP of the screen. Great for a notebook or a forum post.</li>
+        <li><kbd>AUTO NAME</kbd> on = files named by date/time from the built-in clock (set it under <kbd>CONFIG</kbd> → <kbd>DATE/TIME</kbd>). Off = you type a name.</li>
+        <li>Card format: FAT32, files in the root directory. A small (≤ 32 GB) card is safest.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div><strong>Device config vs. slot properties</strong>
+    <p>Touch calibration, brightness, IF bandwidth default, and the like are <em>device config</em>: save them with <kbd>CONFIG</kbd> → <kbd>SAVE CONFIG</kbd>, which is separate from calibration slots. If you re-do the touch calibration (<kbd>CONFIG</kbd> → <kbd>TOUCH CAL</kbd>, tap the two corner targets) remember to SAVE CONFIG afterward or it's gone at reboot.</p></div>
+  </div>
+</section>
+
+<!-- ======================= 6. COMPUTER ======================= -->
+<section class="sec" id="computer">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Connecting to a computer: NanoVNA-Saver</h2></div>
+  <p class="lede">The H4 is a USB serial device. Plug it into a Mac/PC/Linux box and free software drives it: bigger charts, more sweep points than the screen can show, exports, and a friendlier calibration and TDR interface. <strong>NanoVNA-Saver</strong> is the community standard.</p>
+  <div class="grid">
+    <div class="card cyan">
+      <h3>What it adds</h3>
+      <ul class="small">
+        <li><strong>A real screen.</strong> Multiple charts at once: SWR, Smith, S11/S21 logmag, phase, group delay, R/X, TDR, all resizable.</li>
+        <li><strong>Segmented sweeps.</strong> It sweeps a wide span in slices and stitches them — thousands of points instead of 401. A 1–1000 MHz "what is this antenna" sweep becomes actually readable.</li>
+        <li><strong>Averaging</strong> across repeated sweeps for a quieter trace at 915 MHz.</li>
+        <li><strong>Calibration in software</strong>, with optional correction for the standards' real (non-ideal) values, save/load with notes. Its cal can be more precise than the device's, especially for S21.</li>
+        <li><strong>Markers with band tables</strong>, min-SWR finder, bandwidth readouts, and a "band" overlay for the ham allocations.</li>
+        <li><strong>Touchstone export/import</strong> (.s1p/.s2p), CSV, and chart image export. Load two files and compare before/after.</li>
+        <li><strong>TDR panel</strong> with cable-type presets (VF built in) and a distance axis you can actually read.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Getting connected</h3>
+      <ol class="small steps">
+        <li>Install from <a href="https://github.com/NanoVNA-Saver/nanovna-saver" target="_blank" rel="noopener">github.com/NanoVNA-Saver/nanovna-saver</a> — prebuilt macOS/Windows/Linux releases, or <code>pip install nanovna-saver</code> in a venv.</li>
+        <li>USB-C the H4 to the computer. On macOS/Linux no driver is needed (it's a CDC serial device); Windows 10+ also usually just works. The H4 must be <em>on</em> and on its normal screen (not DFU).</li>
+        <li>In NanoVNA-Saver, pick the serial port (it auto-detects <code>/dev/cu.usbmodem…</code> on a Mac), click <strong>Connect</strong>.</li>
+        <li>Set start/stop, segments (e.g. 5 segments × 401 = 2005 points), click <strong>Sweep</strong>.</li>
+        <li>Calibrate in the app (Calibration → Calibration assistant walks you through OPEN/SHORT/LOAD/ISOLN/THRU) — this cal lives on the computer, independent of the device's slots. Keep the device slot cal <em>off</em> or make them agree; don't stack them unknowingly.</li>
+      </ol>
+      <p class="small muted">The upstream ttrftech repo also lists NanoVNA-App (Windows), cho45's WebUSB client (runs in Chrome, zero install), and a Python/Jupyter interface if you ever want to script sweeps of a dozen antennas.</p>
+    </div>
+    <div class="card">
+      <h3>When to bother</h3>
+      <ul class="small">
+        <li><strong>On the bench:</strong> always. The screen is worth it and you get a saved record.</li>
+        <li><strong>On the roof / in the field:</strong> the H4 alone. That's why you bought the 4-inch one.</li>
+        <li><strong>Documenting an antenna build</strong> or comparing two antennas: export .s1p from both, overlay them.</li>
+        <li><strong>Firmware updates</strong> (DiSlord's NanoVNA-D, <a href="https://github.com/DiSlord/NanoVNA-D/releases" target="_blank" rel="noopener">releases</a>): <kbd>CONFIG</kbd> → <kbd>EXPERT SETTINGS</kbd> → <kbd>DFU</kbd>, then flash with <code>dfu-util</code> or the STM32 tool. Re-do your slot calibrations after. Don't chase every release; update when a feature you want lands.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 7. SAFETY ======================= -->
+<section class="sec" id="safety">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Safety &amp; limits — how not to kill it</h2></div>
+  <p class="lede">The NanoVNA's front end is a resistive bridge feeding a sensitive mixer with no input protection to speak of. It's a receiver, not a radio. The failures below are the ones that actually happen to people.</p>
+  <div class="grid two">
+    <div class="card rose">
+      <h3>Never connect…</h3>
+      <ul>
+        <li><strong>A transmitting radio.</strong> Not a Meshtastic node that's powered on (SX1262 modules put out +20 to +22 dBm — 100+ mW), not an HT, not an E22 with power applied. The ports are measurement inputs. <strong>Power the node off and unplug its antenna lead before the VNA touches it.</strong> Keying a 5 W HT into CH0 will destroy the bridge and the mixer instantly.</li>
+        <li><strong>DC voltage.</strong> Bias-tees, phantom-powered LNAs, active antennas, anything with a supply on the coax. The safe working assumption is <strong>no DC at all</strong>; the widely-quoted ceiling is about 10 V, but nothing good happens above zero.</li>
+        <li><strong>A big antenna during a storm, or a long unterminated coax you just dragged across carpet.</strong> Static.</li>
+        <li><strong>An antenna next to a strong transmitter.</strong> A 915 MHz antenna a few meters from a cell site, or a 2 m antenna beside a repeater, picks up enough to distort readings — and, in extreme cases, damage the input.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>The numbers</h3>
+      <ul>
+        <li><strong>Treat +10 dBm (10 mW) as the absolute max on either port.</strong> Some designers quote higher bridge tolerances (up to ~+20 dBm on some models), but the H4 has no documented margin above that and the mixer is the weak link. +10 dBm is the conservative community figure — stay far below it.</li>
+        <li><strong>~0 dBm output</strong> from CH0. It cannot hurt anything you connect to it, including a powered-off radio's antenna port.</li>
+        <li><strong>Any external DC:</strong> avoid. Use a DC block (a series capacitor in an SMA barrel) if you must measure something with a supply present.</li>
+        <li><strong>Lithium cell:</strong> charge over USB-C at ≤ 2 A; the H4's battery icon turns red below ~3.3 V. Don't store it fully dead for months.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card green">
+      <h3>ESD habits</h3>
+      <ul class="small">
+        <li>Touch the VNA's SMA shell or a grounded metal object <em>before</em> connecting a cable, especially in dry weather.</li>
+        <li><strong>Discharge a long coax before connecting it:</strong> short the center pin to the shell with a screwdriver, or momentarily connect a 50 Ω load. Coax is a capacitor (~100 pF/m) and a whip antenna in wind is a static generator.</li>
+        <li>Keep the calibration standards in their bag. The LOAD is the crown jewel.</li>
+        <li>Put dust caps on CH0/CH1 when not in use; a bent center pin is the second most common cause of "my NanoVNA reads garbage."</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Connector habits</h3>
+      <ul class="small">
+        <li>Finger-tight SMA. Turn the <em>nut</em>, not the cable or the adapter body, so the center pin doesn't twist.</li>
+        <li>Use an SMA "saver" — a cheap male-female adapter left permanently on each port. Wear the saver out, not the H4's soldered jacks.</li>
+        <li>Never mate SMA with RP-SMA or force N onto anything. If it takes effort, stop.</li>
+        <li>Don't let cables dangle off the ports; the jacks are board-mounted.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Interpreting weird readings</h3>
+      <ul class="small">
+        <li><strong>SWR trace jumps around at 915 MHz</strong> — normal noise in the top harmonic region; narrow the IF bandwidth, add smoothing, or use NanoVNA-Saver averaging.</li>
+        <li><strong>Everything reads open, even the LOAD</strong> — bent/pushed-in center pin, or cal not applied. Check for the <code>C</code>.</li>
+        <li><strong>OPEN and SHORT look the same</strong> — the bridge is damaged (see: transmitting radio, above). Time for a new one; they're inexpensive, and that is part of the design philosophy.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 8. PROJECTS ======================= -->
+<section class="sec" id="projects">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Wildcat Mesh starter projects — this week</h2></div>
+  <p class="lede">Five concrete jobs, in order, using the gear you have. Each one leaves you with a number written on a piece of tape. By the end you'll know which antenna belongs on the solar repeater and which pigtail belongs in the trash.</p>
+  <div class="proj">
+    <div class="card amber">
+      <span class="num">PROJECT 1</span>
+      <h3>Build the mesh calibration and save it</h3>
+      <div class="gear">gear: H4 · cal kit · your best SMA cable · (u.FL adapter)</div>
+      <ul>
+        <li>Sweep 850–1000 MHz, 401 points, IF BW 1 kHz.</li>
+        <li>OPEN / SHORT / LOAD at the cable end → DONE → save <strong>slot 0</strong>.</li>
+        <li>Repeat with a second cable on CH1 and a THRU → save <strong>slot 5</strong>.</li>
+        <li>Verify: LOAD on = flat SWR 1.0; OPEN = marker on the Smith rim.</li>
+        <li>Set traces: T1 SWR, T2 SMITH, T3 S21 LOGMAG. Marker 1 tracking minimum. Save again so the setup rides with the slot.</li>
+      </ul>
+      <p class="small muted">Outcome: from now on the H4 boots ready to measure a 915 antenna in one tap.</p>
+    </div>
+    <div class="card amber">
+      <span class="num">PROJECT 2</span>
+      <h3>Grade every pigtail and adapter</h3>
+      <div class="gear">gear: slot 5 · every u.FL→SMA pigtail, SMA↔RP-SMA adapter, barrel you own</div>
+      <ul>
+        <li>One at a time in the THRU path. Read S21 at 915 MHz. Wiggle test.</li>
+        <li>Label each: <code>0.4 dB ✓</code>, <code>1.1 dB meh</code>, <code>BAD</code>.</li>
+        <li>While you're there: the 50 Ω LOAD through each pigtail on S11 — anything worse than −18 dB is a connector problem.</li>
+      </ul>
+      <p class="small muted">Outcome: a known-good pigtail set. Every later antenna measurement is trustworthy because the lead isn't the variable.</p>
+    </div>
+    <div class="card green">
+      <span class="num">PROJECT 3</span>
+      <h3>Tune (or triage) the Heltec node whips</h3>
+      <div class="gear">gear: slot 0 · each Heltec whip · the node itself, powered OFF · tape &amp; pen</div>
+      <ul>
+        <li>Screw the whip onto the node's own SMA (or use its pigtail through the known-good adapter from Project 2) with the board unpowered, so the counterpoise is realistic. Hold by the case, arm extended.</li>
+        <li>Record: dip frequency, SWR at 902 / 907 / 915 / 928.</li>
+        <li>Rank them. Best ones → the fixed / solar nodes. If a whip dips at ~868 (very common), it's an EU antenna: trimmable whips get trimmed 1 mm at a time; helical ducks get demoted to "indoor test node."</li>
+        <li>Bonus: measure one whip held in your hand vs. on the desk vs. in the enclosure. Watch how much the environment moves it. That's your intuition for "why does range change when I put it in a box."</li>
+      </ul>
+      <p class="small muted">Outcome: every node has an antenna you've seen the dip for, with numbers on tape.</p>
+    </div>
+    <div class="card green">
+      <span class="num">PROJECT 4</span>
+      <h3>Verify the E22 module's antenna path</h3>
+      <div class="gear">gear: slot 0 · Ebyte E22 module (unpowered!) · its antenna · its pigtail if IPEX version</div>
+      <ul>
+        <li><strong>Power off the E22 first.</strong> The E22-900 family transmits at up to +30 dBm (1 W) on the high-power variants — a lethal dose for the VNA.</li>
+        <li>Measure the E22's antenna on its own (Project 3 method). Then, if it's an IPEX module, measure its pigtail (Project 2 method). Sum the pigtail loss with the antenna's match to get the real picture.</li>
+        <li>If the E22 is the high-power one, this antenna's match matters more than any other: 3:1 SWR at 1 W reflects a quarter-watt back into the PA. Aim for &lt; 1.5.</li>
+      </ul>
+      <p class="small muted">Outcome: confidence the high-power node isn't cooking its own amplifier.</p>
+    </div>
+    <div class="card cyan">
+      <span class="num">PROJECT 5</span>
+      <h3>Sweep the coax runs and TDR one of them</h3>
+      <div class="gear">gear: slots 0 &amp; 5 · any coax run to a rooftop / window / solar node · a wide 1–500 MHz cal in slot 2</div>
+      <ul>
+        <li>S21 through each run at 915 MHz (both ends accessible) → loss in dB. Compare to the table in the cable-loss card. Decide: keep, shorten, or upgrade to LMR-240/400.</li>
+        <li>Run that can't reach both ends: S11 with the far end open, halve the return loss.</li>
+        <li>Pick the longest one, recall slot 2, TRANSFORM on, VF set, and find its end on the TDR trace. Then put a marker on every bump before the end — those are the connectors and any damage. Measure the length with a tape and compare; adjust VF until they agree and you've characterized the cable.</li>
+      </ul>
+      <p class="small muted">Outcome: you know where every dB of the feedline budget goes, and you've used TDR on a real cable so it's no longer mysterious.</p>
+    </div>
+    <div class="card violet">
+      <span class="num">STRETCH</span>
+      <h3>Build a 915 MHz ground-plane and tune it live</h3>
+      <div class="gear">gear: SMA panel jack (female) · 4 × 9 cm stiff wire · 1 × 9 cm radiator · solder</div>
+      <ul>
+        <li>Solder the radiator to the center pin, four radials to the flange, bend radials down ~45°.</li>
+        <li>Slot 0 · CW mode at 906.875 MHz · watch SWR live · trim the radiator 1 mm at a time toward ~7.8 cm until the dip lands. Then sweep to confirm the whole band is under 2:1.</li>
+        <li>This will out-perform every whip in the bag and cost $3. Put it on the repeater.</li>
+      </ul>
+      <p class="small muted">Outcome: your first tuned-from-scratch antenna, and a reference antenna to compare the commercial ones against.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 9. CALCS ======================= -->
+<section class="sec" id="calcs">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Bench calculators</h2></div>
+  <p class="lede">Small, offline, and exactly the conversions that come up mid-measurement.</p>
+  <div class="calc">
+    <div class="card">
+      <h3>Wavelength &amp; antenna lengths</h3>
+      <label>Frequency (MHz)</label>
+      <input type="number" id="c-freq" value="915" step="0.001">
+      <div class="out" id="c-freq-out"></div>
+      <p class="small muted">Practical lengths use a ~0.95 end-effect factor for wire; whips vary — measure and trim.</p>
+    </div>
+    <div class="card">
+      <h3>SWR ↔ return loss ↔ reflected power</h3>
+      <label>Enter one</label>
+      <select id="c-mtype"><option value="swr">SWR</option><option value="rl">Return loss (dB, positive)</option><option value="s11">S11 LOGMAG (dB, negative)</option></select>
+      <input type="number" id="c-mval" value="1.5" step="0.01" style="margin-top:6px">
+      <div class="out" id="c-m-out"></div>
+    </div>
+    <div class="card">
+      <h3>dBm ↔ milliwatts</h3>
+      <label>dBm</label>
+      <input type="number" id="c-dbm" value="22" step="0.1">
+      <label>or mW</label>
+      <input type="number" id="c-mw" value="" step="0.001" placeholder="type here instead">
+      <div class="out" id="c-dbm-out"></div>
+      <p class="small muted">Reference points: Heltec/SX1262 ≈ +22 dBm (158 mW); E22-900T30 ≈ +30 dBm (1 W); 5 W HT = +37 dBm; NanoVNA output ≈ 0 dBm; port limit +10 dBm.</p>
+    </div>
+    <div class="card">
+      <h3>Reactance &amp; TDR</h3>
+      <label>Frequency (MHz)</label><input type="number" id="c-xf" value="915" step="0.1">
+      <label>Inductance (nH)</label><input type="number" id="c-xl" value="10" step="0.1">
+      <label>Capacitance (pF)</label><input type="number" id="c-xc" value="1" step="0.1">
+      <label>TDR: span (MHz) · points · VF</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <input type="number" id="c-tspan" value="500"><input type="number" id="c-tpts" value="401"><input type="number" id="c-tvf" value="0.66" step="0.01">
+      </div>
+      <div class="out" id="c-x-out"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 10. GLOSSARY ======================= -->
+<section class="sec" id="glossary">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Glossary</h2></div>
+  <dl class="gloss">
+    <div><dt>Impedance (Z)</dt><dd>How much a load resists AC current, as resistance R plus reactance X: Z = R + jX, in ohms. RF systems are built around 50 Ω. Matching means making the load look like 50 + j0.</dd></div>
+    <div><dt>Reactance (X)</dt><dd>The "imaginary" part of impedance — energy stored rather than dissipated. Positive X is inductive (coils, long antennas), negative is capacitive (caps, short antennas). Zero at resonance.</dd></div>
+    <div><dt>Resonance</dt><dd>The frequency where a load's reactance is zero — for an antenna, where it's the "right" electrical length. The bottom of the SWR dip, the Smith trace crossing the horizontal line.</dd></div>
+    <div><dt>SWR (VSWR)</dt><dd>Standing-wave ratio. 1:1 = no reflection; 2:1 = 11 % of power reflected; 3:1 = 25 %. Radios generally want ≤ 2. Derived from |Γ|: SWR = (1+|Γ|)/(1−|Γ|).</dd></div>
+    <div><dt>Return loss (RL)</dt><dd>Reflected power in dB: RL = −20·log10|Γ|. Bigger is better (20 dB = only 1 % reflected). The NanoVNA plots it as S11 LOGMAG with a minus sign, so "more negative is better."</dd></div>
+    <div><dt>Reflection coefficient (Γ, "gamma")</dt><dd>The raw S11 value: what fraction of the wave bounces, with phase. |Γ| = 0 perfect, 1 total reflection. The Smith chart is a plot of Γ.</dd></div>
+    <div><dt>S-parameters</dt><dd>S<sub>ij</sub> = signal out of port i when driving port j. S11 = reflection at port 1 (CH0); S21 = transmission from port 1 to port 2 (CH1). The H4 measures those two; it can't measure S12/S22 without physically flipping the device.</dd></div>
+    <div><dt>Insertion loss</dt><dd>How much signal a device eats when placed in line, in dB: the magnitude of S21. A 3 dB loss = half the power gone.</dd></div>
+    <div><dt>dB (decibel)</dt><dd>A ratio on a log scale: 10·log10(P2/P1). 3 dB = 2×, 10 dB = 10×, 20 dB = 100×. Negative = loss. Add them up along a signal path.</dd></div>
+    <div><dt>dBm</dt><dd>Power referenced to 1 milliwatt: 0 dBm = 1 mW, 10 dBm = 10 mW, 20 dBm = 100 mW, 30 dBm = 1 W. Your USB power meter and the SX1262 datasheet both speak dBm.</dd></div>
+    <div><dt>Calibration plane</dt><dd>The physical point where the OPEN/SHORT/LOAD were connected. The VNA's "zero." Everything between the instrument and that point is mathematically removed; everything after it is measured.</dd></div>
+    <div><dt>SOLT</dt><dd>Short-Open-Load-Thru — the calibration method the NanoVNA uses. The kit in the box.</dd></div>
+    <div><dt>Bandwidth (2:1)</dt><dd>The range of frequencies over which an antenna's SWR stays under 2. Fat antennas are wide; thin whips are narrow. A 915 antenna needs ≥ 26 MHz of it to cover 902–928.</dd></div>
+    <div><dt>Velocity factor (VF)</dt><dd>How fast a signal moves in a cable relative to light in vacuum: 0.66 for solid-polyethylene coax (RG-58, RG-174, RG-316), ~0.82–0.85 for foam. Needed for TDR distance and for cutting phasing lines.</dd></div>
+    <div><dt>TDR</dt><dd>Time-domain reflectometry: reflections vs. time/distance along a line. The NanoVNA derives it from a frequency sweep via inverse FFT (DISPLAY → TRANSFORM).</dd></div>
+    <div><dt>Smith chart</dt><dd>A map of all impedances, with 50 Ω in the center, short on the left, open on the right, inductive above, capacitive below. See the <a href="#u-smith">Smith card</a>.</dd></div>
+    <div><dt>Counterpoise / ground plane</dt><dd>The "other half" of a monopole antenna — radials, a metal box, the PCB, or your hand. Tiny mesh nodes have almost none, which is why their whips are touchy.</dd></div>
+    <div><dt>Common-mode current</dt><dd>RF flowing on the <em>outside</em> of the coax shield, making the feedline part of the antenna. Chokes/baluns stop it. Symptom on the VNA: the SWR changes when you touch the cable.</dd></div>
+    <div><dt>Q factor</dt><dd>Sharpness of a resonance: center frequency ÷ bandwidth. High-Q = narrow and efficient (traps, crystals); low-Q = broad and forgiving (fat antennas).</dd></div>
+    <div><dt>Group delay</dt><dd>How long each frequency takes to pass through a device. Flat = distortion-free. Mostly a filter/matching-network thing.</dd></div>
+    <div><dt>Dynamic range</dt><dd>The gap between the biggest signal the receiver can read and its noise floor. On the H4: ~70 dB below 300 MHz, ~40 dB above 900 MHz. Deep filter notches at 915 MHz will bottom out at the floor.</dd></div>
+    <div><dt>IF bandwidth</dt><dd>How narrowly the receiver listens at each sweep point. Narrower = quieter but slower. 1 kHz is a fine default; 100–333 Hz for noisy UHF work.</dd></div>
+    <div><dt>Electrical delay (E-DELAY)</dt><dd>A phase correction that "moves" the reference plane down a cable mathematically. Un-spirals a Smith trace measured through a length of coax without recalibrating.</dd></div>
+    <div><dt>Touchstone (.s1p / .s2p)</dt><dd>The universal text format for S-parameter data. The NanoVNA writes them to SD; NanoVNA-Saver reads and writes them.</dd></div>
+  </dl>
+</section>
+
+<!-- ======================= SOURCES ======================= -->
+<section class="sec" id="sources">
+  <div class="sec-head"><span class="sec-num">REF</span><h2>Sources &amp; further reading</h2></div>
+  <ul class="small">
+    <li><a href="https://nanovna.com/" target="_blank" rel="noopener">nanovna.com</a> — project history, NanoVNA-H / H4 hardware revisions (H rev3.6, H4 rev4.3; NE602A mixer from H4 v4.4), harmonic-extension frequency range, dynamic-range figures, TDR credit to cho45, DiSlord firmware credit.</li>
+    <li><a href="https://github.com/ttrftech/NanoVNA" target="_blank" rel="noopener">github.com/ttrftech/NanoVNA</a> — edy555's original firmware, schematics, DFU flashing, companion-software list (NanoVNA-Saver, WebUSB client, Python).</li>
+    <li><a href="https://github.com/DiSlord/NanoVNA-D" target="_blank" rel="noopener">github.com/DiSlord/NanoVNA-D</a> — the firmware most H4 units ship with; menu names in this guide follow its v1.2.x layout (DISPLAY / MARKER / STIMULUS / CALIBRATE / RECALL / MEASURE / SD CARD / CONFIG; H4 = 401 points, 7 cal slots).</li>
+    <li><a href="https://www.inshame.com/2026/09/nanovna-h-firmware-manual-and-nanovna.html" target="_blank" rel="noopener">NanoVNA-D firmware manual (v1.2.46)</a> — derived from source; status-column letters, calibration internals, MEASURE modes, TRANSFORM settings.</li>
+    <li><a href="https://github.com/NanoVNA-Saver/nanovna-saver" target="_blank" rel="noopener">NanoVNA-Saver</a> — segmented sweeps, calibration, Touchstone export, TDR.</li>
+    <li><a href="https://groups.io/g/nanovna-users" target="_blank" rel="noopener">nanovna-users on groups.io</a> — the community forum; port-rating and ESD discussions informed section 7.</li>
+    <li><a href="https://n7tar.org/wp-content/uploads/2021/12/Absolute_Beginner_Guide_NanoVNA_v1_5.pdf" target="_blank" rel="noopener">Absolute Beginner's Guide to the NanoVNA</a> (PDF) — a good next read.</li>
+    <li>General RF: the ARRL Antenna Book (any edition) for dipole/ground-plane/balun theory; the Technician license manual for band allocations.</li>
+  </ul>
+  <p class="small muted">Menu paths vary slightly across firmware builds and vendors; where this guide names a menu, treat it as the DiSlord layout and look for the same word nearby on other firmware. Loss figures for cables and pigtails are typical datasheet values — your measurement is the truth.</p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  NanoVNA Field Guide · built for Seth &amp; the Wildcat Mesh · September 2026 · single-file HTML, works offline, print with the button up top.
+</footer>
+
+<button class="btn" id="toTop" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+</button>
+
+<script>
+(function(){
+  // ---------- Theme ----------
+  var body=document.body, themeBtn=document.getElementById('themeBtn');
+  function applyTheme(t){ body.classList.toggle('light', t==='light'); themeBtn.querySelector('.label').textContent = t==='light' ? 'Dark' : 'Light'; }
+  var saved=null; try{ saved=localStorage.getItem('nanovna-guide-theme'); }catch(e){}
+  applyTheme(saved || 'dark');
+  themeBtn.addEventListener('click', function(){
+    var t = body.classList.contains('light') ? 'dark' : 'light';
+    applyTheme(t); try{ localStorage.setItem('nanovna-guide-theme', t); }catch(e){}
+  });
+
+  // ---------- Mobile nav ----------
+  var toc=document.getElementById('toc'), overlay=document.getElementById('overlay'), menuBtn=document.getElementById('menuBtn');
+  function closeNav(){ toc.classList.remove('open'); overlay.classList.remove('show'); }
+  menuBtn.addEventListener('click', function(){ toc.classList.toggle('open'); overlay.classList.toggle('show'); });
+  overlay.addEventListener('click', closeNav);
+  toc.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', closeNav); });
+
+  // ---------- Active section highlighting ----------
+  var links=[].slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var targets=links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+  function setActive(id){
+    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href')==='#'+id); });
+  }
+  if('IntersectionObserver' in window){
+    var visible={};
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ visible[e.target.id]=e.isIntersecting ? e.boundingClientRect.top : null; });
+      var best=null, bestTop=Infinity;
+      targets.forEach(function(t){ var v=visible[t.id]; if(v!==null && v!==undefined && Math.abs(v)<bestTop){ bestTop=Math.abs(v); best=t.id; } });
+      if(best) setActive(best);
+    },{rootMargin:'-80px 0px -60% 0px', threshold:[0,0.1]});
+    targets.forEach(function(t){ io.observe(t); });
+  }
+
+  // ---------- Back to top ----------
+  var toTop=document.getElementById('toTop');
+  window.addEventListener('scroll', function(){ toTop.classList.toggle('show', window.scrollY>600); }, {passive:true});
+  toTop.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); });
+
+  // ---------- Calculators ----------
+  var $=function(id){ return document.getElementById(id); };
+  var C=299792458;
+  function fmt(n,d){ return Number(n).toFixed(d===undefined?2:d); }
+  function cm(m){ return fmt(m*100,1)+' cm'; }
+  function inch(m){ return fmt(m*39.3701,2)+' in'; }
+  function ft(m){ return fmt(m*3.28084,2)+' ft'; }
+
+  function calcFreq(){
+    var f=parseFloat($('c-freq').value); if(!(f>0)){ $('c-freq-out').textContent='—'; return; }
+    var lam=C/(f*1e6), q=lam/4, h=lam/2, k=0.95;
+    $('c-freq-out').innerHTML =
+      'λ (free space): <b>'+cm(lam)+'</b> · '+inch(lam)+'<br>'+
+      'λ/4 free space: <b>'+cm(q)+'</b> · '+inch(q)+'<br>'+
+      'λ/4 practical whip (×0.95): <b>'+cm(q*k)+'</b> · '+inch(q*k)+'<br>'+
+      'λ/2 dipole practical (×0.95): <b>'+cm(h*k)+'</b> · '+ft(h*k)+' total<br>'+
+      'each dipole leg: <b>'+cm(h*k/2)+'</b> · '+inch(h*k/2)+'<br>'+
+      'trim sensitivity (λ/4): ≈ <b>'+fmt(f/(q*k*1000),1)+' MHz per mm</b>';
+  }
+  function calcMatch(){
+    var t=$('c-mtype').value, v=parseFloat($('c-mval').value), g;
+    if(isNaN(v)){ $('c-m-out').textContent='—'; return; }
+    if(t==='swr'){ if(v<1){ $('c-m-out').textContent='SWR ≥ 1'; return; } g=(v-1)/(v+1); }
+    else if(t==='rl'){ g=Math.pow(10,-Math.abs(v)/20); }
+    else { g=Math.pow(10,-Math.abs(v)/20); }
+    var swr = g>=1 ? Infinity : (1+g)/(1-g);
+    var rl = g<=0 ? Infinity : -20*Math.log10(g);
+    var refl = g*g*100, ml = -10*Math.log10(1-g*g);
+    $('c-m-out').innerHTML =
+      '|Γ|: <b>'+fmt(g,3)+'</b><br>'+
+      'SWR: <b>'+(isFinite(swr)?fmt(swr,2):'∞')+'</b><br>'+
+      'Return loss: <b>'+(isFinite(rl)?fmt(rl,1)+' dB':'∞')+'</b> (S11 = '+(isFinite(rl)?'−'+fmt(rl,1):'−∞')+' dB)<br>'+
+      'Power reflected: <b>'+fmt(refl,1)+' %</b><br>'+
+      'Mismatch loss: <b>'+fmt(ml,2)+' dB</b>';
+  }
+  var dbmLock=false;
+  function fromDbm(){
+    if(dbmLock) return; dbmLock=true;
+    var d=parseFloat($('c-dbm').value); if(isNaN(d)){ $('c-dbm-out').textContent='—'; dbmLock=false; return; }
+    var mw=Math.pow(10,d/10); $('c-mw').value = mw>=1000? fmt(mw,0) : (mw>=1? fmt(mw,2): mw.toPrecision(3));
+    renderDbm(d,mw); dbmLock=false;
+  }
+  function fromMw(){
+    if(dbmLock) return; dbmLock=true;
+    var mw=parseFloat($('c-mw').value); if(!(mw>0)){ dbmLock=false; return; }
+    var d=10*Math.log10(mw); $('c-dbm').value=fmt(d,1); renderDbm(d,mw); dbmLock=false;
+  }
+  function renderDbm(d,mw){
+    var w = mw/1000, vrms=Math.sqrt(w*50);
+    var warn = d>10 ? '<br><span style="color:var(--rose)">⚠ above the +10 dBm NanoVNA port limit</span>' : (d>0 ? '<br><span style="color:var(--amber)">note: above the VNA\'s own ~0 dBm output</span>' : '');
+    $('c-dbm-out').innerHTML = '<b>'+fmt(d,1)+' dBm</b> = <b>'+(mw>=1000? fmt(w,2)+' W' : (mw>=1? fmt(mw,2)+' mW' : (mw*1000).toPrecision(3)+' µW'))+'</b><br>'+
+      'into 50 Ω: <b>'+(vrms>=1? fmt(vrms,2)+' V' : fmt(vrms*1000,1)+' mV')+' RMS</b>'+warn;
+  }
+  function calcX(){
+    var f=parseFloat($('c-xf').value)*1e6, L=parseFloat($('c-xl').value)*1e-9, Cc=parseFloat($('c-xc').value)*1e-12;
+    var span=parseFloat($('c-tspan').value)*1e6, pts=parseInt($('c-tpts').value,10), vf=parseFloat($('c-tvf').value);
+    var out='';
+    if(f>0){
+      if(L>0) out+='X<sub>L</sub> of '+$('c-xl').value+' nH @ '+fmt(f/1e6,1)+' MHz: <b>'+fmt(2*Math.PI*f*L,1)+' Ω</b><br>';
+      if(Cc>0) out+='X<sub>C</sub> of '+$('c-xc').value+' pF: <b>'+fmt(1/(2*Math.PI*f*Cc),1)+' Ω</b><br>';
+      if(L>0&&Cc>0) out+='LC resonance: <b>'+fmt(1/(2*Math.PI*Math.sqrt(L*Cc))/1e6,2)+' MHz</b><br>';
+    }
+    if(span>0&&pts>1&&vf>0){
+      var maxd=(pts-1)*vf*C/(2*span), res=vf*C/(2*span);
+      out+='TDR max range: <b>'+fmt(maxd,1)+' m</b> ('+ft(maxd)+')<br>TDR resolution ≈ <b>'+cm(res)+'</b>';
+    }
+    $('c-x-out').innerHTML=out||'—';
+  }
+  ['c-freq'].forEach(function(id){ $(id).addEventListener('input',calcFreq); });
+  ['c-mtype','c-mval'].forEach(function(id){ $(id).addEventListener('input',calcMatch); $(id).addEventListener('change',calcMatch); });
+  $('c-dbm').addEventListener('input',fromDbm); $('c-mw').addEventListener('input',fromMw);
+  ['c-xf','c-xl','c-xc','c-tspan','c-tpts','c-tvf'].forEach(function(id){ $(id).addEventListener('input',calcX); });
+  calcFreq(); calcMatch(); fromDbm(); calcX();
+})();
+</script>
+</body>
+</html>

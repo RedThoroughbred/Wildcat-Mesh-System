@@ -42,5 +42,6 @@ Thumbs.db
 
 # live config (contains node IPs / API keys) — copy from config/wildcat.example.toml
 config/wildcat.toml
+config/panel.json
 *.db-wal
 *.db-shm

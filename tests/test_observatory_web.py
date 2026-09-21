@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -336,3 +337,142 @@ def test_channels_route_reports_the_nodes_configured_slots(tmp_path):
     j = c.get("/v2/api/channels").get_json()
     assert [x["name"] for x in j["configured"]] == ["", "NKY Private"]
     assert c.get("/v2/api/state").get_json()["channels"][1]["role"] == "SECONDARY"
+
+
+def test_compact_endpoints(client):
+    n = client.get("/v2/api/nodes/compact?limit=5")
+    assert n.status_code == 200 and n.get_json()["my"]["s"] == "6b18" and "n" in n.get_json()
+    m = client.get("/v2/api/messages/recent?limit=5")
+    assert m.status_code == 200 and m.get_json()["m"] == []
+    c = client.get("/v2/api/channels/compact")
+    assert c.status_code == 200 and c.get_json() == {"c": []}
+
+
+# ---- Pico panel config -------------------------------------------------------------------------
+
+def _panel_app(tmp_path, token=""):
+    (tmp_path / "content").mkdir(exist_ok=True)
+    data = {"radio": {"type": "serial"}, "database": {"path": str(tmp_path / "b.db")},
+            "bbs": {"content_dir": str(tmp_path / "content")}}
+    if token:
+        data["observatory"] = {"operator_token": token}
+    cfg = build(data)
+    app = flask.Flask("obs-panel", template_folder=str(ROOT / "observatory" / "templates"),
+                      static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    app.register_blueprint(create_blueprint(Bridge(cfg, sio), sio))
+    return app.test_client()
+
+
+def test_panel_get_open_and_shape(client):
+    r = client.get("/v2/api/panel/config")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert set(j) == {"rev", "updated", "presets", "accent", "pollSecs", "defaultChannel", "nodeSort", "panicText", "now", "tz"}
+    assert isinstance(j["now"], int) and isinstance(j["tz"], int) and j["rev"] == 0 and len(j["presets"]) == 9
+    assert len(r.data) < 1024 and r.data.isascii()
+
+
+def test_panel_post_valid_and_invalid(client):
+    r = client.post("/v2/api/panel/config", json={"pollSecs": 30, "accent": "gold", "junk": 1, "rev": 50})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["pollSecs"] == 30 and j["accent"] == "gold" and j["rev"] == 1 and "now" in j and "tz" in j
+    assert client.get("/v2/api/panel/config").get_json()["pollSecs"] == 30
+    bad = client.post("/v2/api/panel/config", json={"pollSecs": 500})
+    assert bad.status_code == 400 and "pollSecs" in bad.get_json()["error"]
+    assert client.post("/v2/api/panel/config", data="nope", content_type="text/plain").status_code == 400
+    assert client.get("/v2/api/panel/config").get_json()["rev"] == 1
+
+
+def test_panel_reset(client):
+    client.post("/v2/api/panel/config", json={"accent": "pink", "presets": ["x"]})
+    j = client.post("/v2/api/panel/config/reset").get_json()
+    assert j["accent"] == "teal" and len(j["presets"]) == 9 and j["rev"] == 2
+
+
+def test_panel_file_lives_beside_db_when_no_config_source(client, tmp_path):
+    client.post("/v2/api/panel/config", json={"pollSecs": 12})
+    assert (tmp_path / "panel.json").is_file()
+
+
+def test_panel_page(client):
+    r = client.get("/v2/panel")
+    assert r.status_code == 200 and r.mimetype == "text/html" and b"Reset to defaults" in r.data
+    assert b"/v2/panel" in client.get("/v2/").data
+
+
+def test_panel_writes_are_token_gated(tmp_path):
+    c = _panel_app(tmp_path, token="s3cret-token")
+    assert c.get("/v2/api/panel/config").status_code == 200
+    assert c.get("/v2/panel").status_code == 200
+    assert c.post("/v2/api/panel/config", json={"pollSecs": 20}).status_code == 401
+    assert c.post("/v2/api/panel/config", json={"pollSecs": 20}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert c.post("/v2/api/panel/config/reset").status_code == 401
+    ok = c.post("/v2/api/panel/config", json={"pollSecs": 20}, headers={"Authorization": "Bearer s3cret-token"})
+    assert ok.status_code == 200 and ok.get_json()["pollSecs"] == 20
+    assert c.post("/v2/api/panel/config/reset", headers={"X-Wildcat-Token": "s3cret-token"}).status_code == 200
+    assert c.get("/v2/api/auth").get_json() == {"required": True, "authorized": False}
+
+
+# ---- map / pos / sos / panicText through the Flask client ---------------------------------------
+
+def test_map_page_and_compact_pos_params(tmp_path):
+    (tmp_path / "content").mkdir()
+    cfg = build({"radio": {"type": "serial"}, "database": {"path": str(tmp_path / "b.db")},
+                 "bbs": {"content_dir": str(tmp_path / "content")}})
+    app = flask.Flask("obs-map", template_folder=str(ROOT / "observatory" / "templates"),
+                      static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    now = time.time()
+    bridge.state.apply_roster({"my_id": "!9e766b18", "roster": {
+        "!9e766b18": {"id": "!9e766b18", "short_name": "6b18", "position": {"lat": 38.88123, "lon": -84.62}},
+        "!a0000001": {"id": "!a0000001", "short_name": "A1", "last_heard": now - 10, "position": {"lat": 38.9, "lon": -84.5}},
+        "!a0000002": {"id": "!a0000002", "short_name": "A2", "last_heard": now - 20},
+        "!a0000003": {"id": "!a0000003", "short_name": "A3", "last_heard": now - 30, "position": {"lat": 38.95, "lon": -84.4}},
+    }})
+    app.register_blueprint(create_blueprint(bridge, sio))
+    c = app.test_client()
+    r = c.get("/v2/map")
+    assert r.status_code == 200 and r.mimetype == "text/html"
+    assert b"/v2/api/nodes/compact?limit=40&pos=1" in r.data and b"vendor/leaflet/leaflet.js" in r.data
+    j = c.get("/v2/api/nodes/compact?limit=40&pos=1").get_json()
+    assert [n["id"] for n in j["n"]] == ["!a0000001", "!a0000003"] and j["withpos"] == 2 and j["total"] == 4
+    assert j["my"]["lat"] == 38.8812 and j["my"]["lon"] == -84.62
+    j = c.get("/v2/api/nodes/compact?limit=1&pos=1").get_json()
+    assert len(j["n"]) == 1 and j["withpos"] == 2
+    assert len(c.get("/v2/api/nodes/compact").get_json()["n"]) == 3
+
+
+def test_messages_recent_sos_flag_route(tmp_path):
+    (tmp_path / "content").mkdir()
+    cfg = build({"radio": {"type": "serial"}, "database": {"path": str(tmp_path / "b.db")},
+                 "bbs": {"content_dir": str(tmp_path / "content")}})
+    app = flask.Flask("obs-sos", template_folder=str(ROOT / "observatory" / "templates"),
+                      static_folder=str(ROOT / "observatory" / "static"))
+    sio = flask_socketio.SocketIO(app, async_mode="threading")
+    bridge = Bridge(cfg, sio)
+    bridge.state.my_id = "!9e766b18"
+    now = time.time()
+    bridge.state.packets.append({"kind": "text", "ts": now - 3, "from": "!a0000001", "text": "SOS please help", "channel": 0})
+    bridge.state.packets.append({"kind": "text", "ts": now - 4, "from": "!a0000001", "text": "hello there", "channel": 0})
+    bridge.state.packets.append({"kind": "text", "ts": now - 5, "from": "!9e766b18", "text": "SOS mine", "sent": True})
+    app.register_blueprint(create_blueprint(bridge, sio))
+    m = {x["t"]: x for x in app.test_client().get("/v2/api/messages/recent").get_json()["m"]}
+    assert m["SOS please help"]["sos"] is True
+    assert "sos" not in m["hello there"] and "sos" not in m["SOS mine"]
+
+
+def test_panel_panic_text_routes(tmp_path):
+    c = _panel_app(tmp_path, token="tok")
+    assert c.get("/v2/api/panel/config").get_json()["panicText"] == "Net check - anyone on?"
+    assert c.post("/v2/api/panel/config", json={"panicText": "x"}).status_code == 401
+    h = {"Authorization": "Bearer tok"}
+    assert c.post("/v2/api/panel/config", json={"panicText": ""}, headers=h).status_code == 400
+    assert c.post("/v2/api/panel/config", json={"panicText": "z" * 49}, headers=h).status_code == 400
+    j = c.post("/v2/api/panel/config", json={"panicText": "Radio check"}, headers=h).get_json()
+    assert j["panicText"] == "Radio check" and j["rev"] == 1
+    assert c.post("/v2/api/panel/config/reset", headers=h).get_json()["panicText"] == "Net check - anyone on?"
+    page = c.get("/v2/panel").data.decode()
+    assert "Net-check button text (hold K1+K2 on the Pico)" in page

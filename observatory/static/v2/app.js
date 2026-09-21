@@ -1050,6 +1050,12 @@
 
   // ---- views ----
   const VIEWS = {
+    signal: {                                       // the signal dashboard, hosted inside the shell so the nav/topbar stay
+      title: "Signal",
+      async render(arg) {
+        if (this.seq !== S.viewSeq) return; viewBody.innerHTML = `<iframe class="embed-frame" title="Signal dashboard" src="signal?embed=1${arg ? "#" + encodeURIComponent(arg) : ""}"></iframe>`;
+      }
+    },
     nodes: {
       title: "Nodes",
       async render() {

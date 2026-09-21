@@ -107,6 +107,17 @@ def timestamp_to_datetime(timestamp):
         return "unknown"
 
 
+# Static reference pages (read-only, no auth)
+@app.route('/nanovna')
+@app.route('/guide/nanovna')
+def guide_nanovna():
+    from flask import send_from_directory
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'guides')
+    r = send_from_directory(d, 'nanovna.html', mimetype='text/html')
+    r.headers['Cache-Control'] = 'no-cache'
+    return r
+
+
 # Routes
 @app.route('/')
 def dashboard():

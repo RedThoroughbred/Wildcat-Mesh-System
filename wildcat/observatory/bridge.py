@@ -731,6 +731,41 @@ class Bridge:
         except sqlite3.Error as e:
             log.warning("could not log outgoing message: %s", e)
 
+    def _record_incoming(self, env: Dict[str, Any], now: float) -> None:
+        """Persist a received channel (broadcast) text into message_logs so the per-channel view, the
+        conversations view and the Pico's history have it. Without this the Den only *displays* what it
+        hears (live feed / packet ring) and only logs what it sends -- the old BBS did the receiving side.
+        Skipped when the Den's own node IS the BBS node (the BBS is then logging the same packets), and a
+        row that is already there (same sender / channel / text within 10 s) is never doubled."""
+        if env.get("kind") != "text" or not env.get("broadcast"):
+            return
+        frm, text, my = env.get("from"), env.get("text"), self.state.my_id
+        if not isinstance(frm, str) or not frm or not text or frm == my or my == self.cfg.observatory.bbs_node_id:
+            return
+        db = str(self.cfg.database.path)
+        if not os.path.exists(db):
+            return
+        rx = env.get("rx") if isinstance(env.get("rx"), dict) else {}
+        if rx.get("via_mqtt") is True:      # an internet-bridged packet carries no measurement of *our* radio path
+            rx = {}
+        ts = int(env.get("received_at") or now)
+        channel = env.get("channel") if isinstance(env.get("channel"), int) and not isinstance(env.get("channel"), bool) else 0
+        name = self.state.roster.get(frm, {}).get("short_name") or frm[-4:]
+        try:
+            conn = sqlite3.connect(db, timeout=3)
+            try:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                if conn.execute("SELECT 1 FROM message_logs WHERE sender_id=? AND channel_index=? AND message=?"
+                                " AND ABS(timestamp-?) <= 10 LIMIT 1", (frm, channel, text, ts)).fetchone():
+                    return
+                conn.execute("INSERT INTO message_logs (timestamp, sender_id, sender_short_name, to_id, channel_index, message, snr, rssi, hop_limit)"
+                             " VALUES (?,?,?,?,?,?,?,?,?)", (ts, frm, name, 4294967295, channel, text, rx.get("snr"), rx.get("rssi"), env.get("hopLimit")))
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            log.warning("could not log received channel message: %s", e)
+
     def _on_rx(self, topic: str, env: Dict[str, Any]) -> None:
         now = time.time()
         if env.get("kind") == "routing":
@@ -739,6 +774,7 @@ class Bridge:
                 self._emit("tx", ack)
         ev = self.state.apply_packet(env, now)
         if ev:
+            self._record_incoming(env, now)
             if isinstance(ev["packet"].get("via_mqtt"), bool):
                 self.transport.note(ev["packet"]["from"], ev["packet"]["via_mqtt"], now)
             ev["per_min"] = self.state.rate_per_min(now)

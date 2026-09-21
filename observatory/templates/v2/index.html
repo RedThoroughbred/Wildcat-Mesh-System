@@ -129,6 +129,9 @@
   <div class="sb-gap"></div>
   <a href="#/admin" data-view="admin" class="admin-only" title="Admin"><i>⚙</i><span>Admin</span></a>
   <a href="#/api" data-view="api" title="API"><i>{}</i><span>API</span></a>
+  <a href="{{ url_for('v2.panel_page') }}" title="Configure the Pico handheld panel"><i>▤</i><span>Pico panel</span></a>
+  <a href="{{ url_for('v2.map_page') }}" title="Phone-friendly map of nodes with a position"><i>⌖</i><span>Node map</span></a>
+  <a href="#/signal" data-view="signal" title="Per-node SNR/RSSI, live trend, signal-coloured map"><i>▅</i><span>Signal</span></a>
   <div class="sb-hint">⌘K find · / find · Esc back</div>
   <button class="sb-share" id="sb-share" title="Copy a read-only public link"><i>⇗</i><span>Copy public link</span></button>
   <button class="sb-collapse" id="sb-collapse" title="collapse the sidebar" aria-label="collapse the sidebar">‹ collapse</button>

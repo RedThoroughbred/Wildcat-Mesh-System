@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Signal - the Den</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+<script>
+/* Opened on its own (a bookmark, a link) -> load it inside the Den shell so the sidebar and header are there.
+   ?embed=1 is the shell's own iframe; ?standalone=1 keeps this bare page (debugging). */
+(function () {
+  var q = location.search, embedded = /[?&]embed=1/.test(q);
+  if (embedded) { document.documentElement.className += " embed"; return; }
+  if (window.top === window.self && !/[?&]standalone=1/.test(q)) {
+    var id = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+    location.replace("{{ url_for('v2.index') }}#/signal" + (id ? "/" + encodeURIComponent(id) : ""));
+  }
+})();
+</script>
+<style>
+:root{--bg:#0b0f14;--card:#121922;--card2:#0f151d;--line:rgba(255,255,255,.12);--text:#e8eef5;--muted:#8a97a8;--acc:#2dd4bf;
+--strong:#58e39c;--ok:#fbbf24;--weak:#ff7a7a;--none:#5d6a7b}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.35 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif}
+a{color:#6fc3ff;text-decoration:none}
+.wrap{max-width:980px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.top h1{font-size:1.15rem;margin:0;flex:1;letter-spacing:.02em}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:var(--text);font:inherit;font-size:.85rem}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:.78rem}
+.live b{width:8px;height:8px;border-radius:50%;background:var(--strong);display:inline-block}
+.live.stale b{background:var(--weak)}.live.spin b{animation:p 1s infinite}
+@keyframes p{50%{opacity:.25}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.card h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 .sp{flex:1}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 11px;min-width:0}
+.tile .k{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.tile .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.tile .s{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.hist{grid-column:span 2}
+.c-strong{color:var(--strong)}.c-ok{color:var(--ok)}.c-weak{color:var(--weak)}.c-none{color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:5px 11px;color:var(--muted);font:inherit;font-size:.8rem;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--acc);color:#000;border-color:transparent;font-weight:700}
+.big{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.big .n{font-size:2.6rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.big .u{font-size:.85rem;color:var(--muted);margin-left:3px;font-weight:500}
+.big .r{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;border-radius:999px;padding:2px 9px;font-size:.72rem;font-weight:700;color:#000;text-transform:uppercase;letter-spacing:.05em}
+.b-strong{background:var(--strong)}.b-ok{background:var(--ok)}.b-weak{background:var(--weak)}.b-none{background:var(--none);color:#fff}
+.sub{color:var(--muted);font-size:.82rem}
+.kv{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:.82rem;color:var(--muted)}
+.kv b{color:var(--text);font-variant-numeric:tabular-nums}
+svg{display:block;width:100%;height:auto}
+.chart text{fill:#8a97a8;font-size:10px;font-family:inherit}
+.row{display:grid;grid-template-columns:8px 1fr auto 74px;gap:10px;align-items:center;padding:9px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:8px}
+.row:first-of-type{border-top:0}
+.row:hover,.row.sel{background:rgba(45,212,191,.09)}
+.row .bar{width:6px;height:34px;border-radius:3px}
+.row .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .val{text-align:right;font-variant-numeric:tabular-nums}
+.row .val .a{font-weight:700;font-size:1.05rem}
+.row .val .b{font-size:.74rem;color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:18px 8px}
+#map{height:320px;border-radius:10px;background:var(--bg)}
+.dark-tiles{filter:invert(1) hue-rotate(190deg) brightness(.72) contrast(.9) saturate(.55)}
+.leaflet-popup-content{margin:9px 11px;line-height:1.35;color:#111}
+.leaflet-tooltip{background:rgba(11,15,20,.82);color:#e8eef5;border:1px solid var(--line);border-radius:6px;font-size:10.5px;padding:1px 5px;box-shadow:none}
+.leaflet-tooltip-right:before,.leaflet-tooltip-left:before{display:none}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.grid2{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:820px){.grid2{grid-template-columns:1fr 1fr}}
+.note{font-size:.76rem;color:var(--muted);margin-top:6px}
+/* embedded in the Den shell: the shell supplies the header, title and way back */
+html.embed,html.embed body{background:transparent}
+html.embed .wrap{padding-top:6px;max-width:none}
+html.embed .top .back,html.embed .top h1{display:none}
+html.embed .top{justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="pill back" href="{{ url_for('v2.index') }}">&larr; the Den</a>
+    <h1>Signal</h1>
+    <a class="pill" href="{{ url_for('v2.map_page') }}?from=signal" target="_top">Map</a>
+    <span class="live" id="live"><b></b><span id="livet">loading...</span></span>
+  </div>
+
+  <div class="strip" id="strip"></div>
+
+  <div class="card" id="trend">
+    <h2><span>Live trend</span><span class="sp"></span>
+      <span class="chips" id="wins"></span></h2>
+    <div id="tsel" class="empty">Pick a node below to watch its signal live.</div>
+  </div>
+
+  <div class="card">
+    <h2><span>Links &middot; worst first</span><span class="sp"></span>
+      <span class="chips" id="sorts"></span></h2>
+    <div class="chips" id="ages" style="margin-bottom:6px"></div>
+    <div id="list"></div>
+    <div class="note" id="listnote"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h2>Signal map</h2><div id="map"></div>
+      <div class="legend"><span><i style="background:var(--strong)"></i>strong &ge; 0 dB</span><span><i style="background:var(--ok)"></i>ok</span><span><i style="background:var(--weak)"></i>weak &lt; &minus;10 dB</span><span><i style="background:var(--none)"></i>no sample</span></div></div>
+    <div class="card"><h2>Link radar</h2><div id="radar"></div>
+      <div class="note" id="radarnote"></div></div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script>
+(function () {
+  "use strict";
+  var OVERVIEW = "{{ url_for('v2.api_signal') }}";
+  var NODEURL = "{{ url_for('v2.api_signal') }}/";
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  var COL = { strong: "#58e39c", ok: "#fbbf24", weak: "#ff7a7a", none: "#5d6a7b" };
+  function col(c) { return COL[c || "none"]; }
+  function fmt(v, d) { return v == null ? "–" : (typeof v === "number" ? (d == null ? String(v) : v.toFixed(d)) : String(v)); }
+  function ago(s) {
+    if (s == null) return "–";
+    if (s < 90) return s + " s";
+    if (s < 5400) return Math.round(s / 60) + " min";
+    if (s < 172800) return Math.round(s / 3600) + " h";
+    return Math.round(s / 86400) + " d";
+  }
+
+  var ov = null, sel = decodeURIComponent((location.hash || "").replace(/^#/, "")) || null, sortBy = "worst";
+  var winMin = 30, baseline = null, ageWin = 86400, userWin = false;
+  var AGES = [[3600, "Heard < 1 h"], [86400, "< 24 h"], [604800, "< 7 d"], [0, "All"]];
+  var hist = { id: null, samples: [], seen: {}, meta: null };
+  var lastOk = 0, timers = {};
+
+  /* ---------------- summary strip ---------------- */
+  function drawStrip() {
+    var s = ov.summary, h = [];
+    function tile(k, v, sub, cls) { return '<div class="tile"><div class="k">' + k + '</div><div class="v ' + (cls || "") + '">' + v + '</div><div class="s">' + sub + '</div></div>'; }
+    var best = s.best, worst = s.worst;
+    h.push(tile("Best link", best ? fmt(best.snr) + '<span class="sub"> dB</span>' : "–", best ? esc(best.s) : "no samples", best ? "c-" + clsOf(best.snr) : "c-none"));
+    h.push(tile("Worst link", worst ? fmt(worst.snr) + '<span class="sub"> dB</span>' : "–", worst ? esc(worst.s) : "no samples", worst ? "c-" + clsOf(worst.snr) : "c-none"));
+    h.push(tile("Average SNR", s.avg_snr == null ? "–" : fmt(s.avg_snr, 1) + '<span class="sub"> dB</span>', s.measured + " measured", s.avg_snr == null ? "c-none" : "c-" + clsOf(s.avg_snr)));
+    h.push(tile("RF nodes", s.rf, s.internet_only + " internet-only" + (s.older ? " \u00b7 " + s.older + " older" : ""), ""));
+    h.push('<div class="tile hist"><div class="k">SNR distribution</div>' + histSvg(s.hist) + '</div>');
+    $("strip").innerHTML = h.join("");
+  }
+  function clsOf(snr) { var t = ov.thresholds; return snr >= t.strong_snr ? "strong" : (snr >= t.weak_snr ? "ok" : "weak"); }
+  function histSvg(hh) {
+    var c = hh.counts, e = hh.edges, mx = Math.max.apply(null, c.concat([1])), W = 260, H = 52, bw = W / c.length, out = [];
+    var labels = ["<" + e[0]].concat(e.slice(0, -1).map(function (x, i) { return String(x); }), []);
+    for (var i = 0; i < c.length; i++) {
+      var lo = i === 0 ? e[0] - 5 : e[i - 1], mid = i === 0 ? e[0] - 2.5 : (i === c.length - 1 ? e[e.length - 1] + 2.5 : e[i - 1] + 2.5);
+      var cl = mid >= ov.thresholds.strong_snr ? "strong" : (mid >= ov.thresholds.weak_snr ? "ok" : "weak");
+      var bh = Math.round((c[i] / mx) * (H - 26));
+      out.push('<rect x="' + (i * bw + 3) + '" y="' + (H - 12 - bh) + '" width="' + (bw - 6) + '" height="' + Math.max(bh, c[i] ? 2 : 0) + '" rx="2" fill="' + col(cl) + '" opacity=".9"/>');
+      out.push('<text x="' + (i * bw + bw / 2) + '" y="' + (H - 2) + '" text-anchor="middle" font-size="8" fill="#8a97a8">' + (i === 0 ? "&lt;" + e[0] : (i === c.length - 1 ? "&ge;" + e[e.length - 1] : e[i - 1])) + '</text>');
+      if (c[i]) out.push('<text x="' + (i * bw + bw / 2) + '" y="' + (H - 14 - bh) + '" text-anchor="middle" font-size="9" fill="#e8eef5">' + c[i] + '</text>');
+    }
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart">' + out.join("") + '</svg>';
+  }
+
+  /* ---------------- list ---------------- */
+  var SORTS = { worst: "Worst", best: "Best", recent: "Recent", name: "Name" };
+  function sorted() {
+    var n = ov.nodes.slice();
+    if (sortBy === "best") n.sort(function (a, b) { return (b.snr == null ? -99 : b.snr) - (a.snr == null ? -99 : a.snr); });
+    else if (sortBy === "recent") n.sort(function (a, b) { return (a.age == null ? 1e9 : a.age) - (b.age == null ? 1e9 : b.age); });
+    else if (sortBy === "name") n.sort(function (a, b) { return a.s.toLowerCase() < b.s.toLowerCase() ? -1 : 1; });
+    return n;
+  }
+  function spark(vals, cl) {
+    var v = vals.filter(function (x) { return x != null; });
+    if (v.length < 2) return '<svg viewBox="0 0 70 26"><circle cx="35" cy="13" r="2" fill="' + col(cl) + '"/></svg>';
+    var mn = Math.min.apply(null, v), mx = Math.max.apply(null, v); if (mx - mn < 6) { var m = (mx + mn) / 2; mn = m - 3; mx = m + 3; }
+    var pts = v.map(function (x, i) { return (i / (v.length - 1) * 66 + 2).toFixed(1) + "," + (24 - (x - mn) / (mx - mn) * 22).toFixed(1); });
+    return '<svg viewBox="0 0 70 26"><polyline points="' + pts.join(" ") + '" fill="none" stroke="' + col(cl) + '" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  }
+  function drawList() {
+    var box = $("list"), n = sorted();
+    if (!n.length) { box.innerHTML = '<div class="empty">No RF-heard nodes in this window. Try a longer one, or wait for packets to arrive over the radio.</div>'; $("listnote").textContent = ""; return; }
+    box.innerHTML = n.map(function (r) {
+      var meta = [r.hops == null ? null : r.hops + " hop" + (r.hops === 1 ? "" : "s"), "heard " + ago(r.age) + " ago", r.km != null ? r.km + " km" : null, r.n ? r.n + " samples" : null].filter(Boolean).join(" · ");
+      return '<div class="row' + (r.id === sel ? " sel" : "") + '" data-id="' + esc(r.id) + '"><span class="bar" style="background:' + col(r.cls) + '"></span>' +
+        '<div style="min-width:0"><div class="nm">' + esc(r.l || r.s) + ' <span class="sub">' + esc(r.s) + '</span></div><div class="meta">' + esc(meta) + '</div></div>' +
+        '<div class="val"><div class="a c-' + (r.cls || "none") + '">' + (r.snr == null ? "–" : fmt(r.snr) + " dB") + '</div><div class="b">' + (r.rssi == null ? "no RSSI" : fmt(r.rssi) + " dBm") + '</div></div>' +
+        '<div>' + spark(r.spark || [], r.cls) + '</div></div>';
+    }).join("");
+    $("listnote").textContent = "Internet-only nodes are not listed: their SNR was measured upstream, not by this radio.";
+    Array.prototype.forEach.call(box.querySelectorAll(".row"), function (el) { el.addEventListener("click", function () { select(el.getAttribute("data-id")); }); });
+  }
+  function drawSorts() {
+    $("sorts").innerHTML = Object.keys(SORTS).map(function (k) { return '<button class="chip" data-s="' + k + '" aria-pressed="' + (k === sortBy) + '">' + SORTS[k] + '</button>'; }).join("");
+    Array.prototype.forEach.call($("sorts").querySelectorAll(".chip"), function (b) { b.addEventListener("click", function () { sortBy = b.getAttribute("data-s"); drawSorts(); drawList(); }); });
+  }
+
+  function drawAges() {
+    $("ages").innerHTML = AGES.map(function (a) { return '<button class="chip" data-a="' + a[0] + '" aria-pressed="' + (a[0] === ageWin) + '">' + a[1] + '</button>'; }).join("");
+    Array.prototype.forEach.call($("ages").querySelectorAll(".chip"), function (b) { b.addEventListener("click", function () { ageWin = +b.getAttribute("data-a"); drawAges(); loadOverview(); }); });
+  }
+
+  /* ---------------- trend ---------------- */
+  var WINS = [[5, "5 min"], [30, "30 min"], [180, "3 h"], [1440, "24 h"]];
+  function drawWins() {
+    $("wins").innerHTML = WINS.map(function (w) { return '<button class="chip" data-w="' + w[0] + '" aria-pressed="' + (w[0] === winMin) + '">' + w[1] + '</button>'; }).join("");
+    Array.prototype.forEach.call($("wins").querySelectorAll(".chip"), function (b) {
+      b.addEventListener("click", function () { winMin = +b.getAttribute("data-w"); userWin = true; drawWins(); if (sel) loadHistory(true); });
+    });
+  }
+  function chart(pts, o) {
+    // pts: [[ts, value]] ; o: {t0, t1, unit, bands:[[lo,hi,color]], baseline, min, max}
+    var W = 640, H = 190, L = 34, R = 10, T = 8, B = 20, vals = pts.map(function (p) { return p[1]; });
+    var lo = vals.length ? Math.min.apply(null, vals) : (o.min != null ? o.min : -10), hi = vals.length ? Math.max.apply(null, vals) : (o.max != null ? o.max : 10);
+    if (o.baseline != null) { lo = Math.min(lo, o.baseline); hi = Math.max(hi, o.baseline); }
+    var pad = Math.max(2, (hi - lo) * 0.18); lo -= pad; hi += pad; if (hi - lo < o.minspan) { var m = (hi + lo) / 2; lo = m - o.minspan / 2; hi = m + o.minspan / 2; }
+    function X(t) { return L + (t - o.t0) / Math.max(1, o.t1 - o.t0) * (W - L - R); }
+    function Y(v) { return T + (hi - v) / (hi - lo) * (H - T - B); }
+    var g = [];
+    (o.bands || []).forEach(function (b) { var y1 = Y(Math.min(b[1], hi)), y0 = Y(Math.max(b[0], lo)); if (y0 > y1) g.push('<rect x="' + L + '" y="' + y1 + '" width="' + (W - L - R) + '" height="' + (y0 - y1) + '" fill="' + b[2] + '" opacity=".07"/>'); });
+    var step = (hi - lo) > 40 ? 10 : ((hi - lo) > 16 ? 5 : 2);
+    for (var v = Math.ceil(lo / step) * step; v <= hi; v += step) g.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="#fff" opacity=".08"/><text x="' + (L - 4) + '" y="' + (Y(v) + 3) + '" text-anchor="end">' + v + '</text>');
+    var span = o.t1 - o.t0, ticks = 4;
+    for (var i = 0; i <= ticks; i++) { var t = o.t0 + span * i / ticks, m = Math.round((o.t1 - t) / 60); g.push('<text x="' + X(t) + '" y="' + (H - 5) + '" text-anchor="' + (i === 0 ? "start" : (i === ticks ? "end" : "middle")) + '">' + (i === ticks ? "now" : "-" + (m >= 90 ? Math.round(m / 60) + "h" : m + "m")) + '</text>'); }
+    if (o.baseline != null) g.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(o.baseline) + '" y2="' + Y(o.baseline) + '" stroke="#6fc3ff" stroke-dasharray="4 3" opacity=".9"/><text x="' + (W - R - 2) + '" y="' + (Y(o.baseline) - 3) + '" text-anchor="end" style="fill:#6fc3ff">baseline ' + o.baseline.toFixed(1) + '</text>');
+    if (pts.length) {
+      g.push('<polyline fill="none" stroke="' + o.color + '" stroke-width="1.6" stroke-linejoin="round" points="' + pts.map(function (p) { return X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1); }).join(" ") + '"/>');
+      pts.forEach(function (p, i) { g.push('<circle cx="' + X(p[0]).toFixed(1) + '" cy="' + Y(p[1]).toFixed(1) + '" r="' + (i === pts.length - 1 ? 4.5 : 2.4) + '" fill="' + o.color + '"' + (i === pts.length - 1 ? ' stroke="#fff" stroke-width="1.5"' : "") + '/>'); });
+    } else g.push('<text x="' + (W / 2) + '" y="' + (H / 2) + '" text-anchor="middle" style="font-size:12px">no samples in this window</text>');
+    return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '">' + g.join("") + '</svg>';
+  }
+  function drawTrend() {
+    var m = hist.meta, box = $("tsel");
+    if (!sel || !m) { box.className = "empty"; box.innerHTML = "Pick a node below to watch its signal live."; return; }
+    var now = Math.floor(Date.now() / 1000), t0 = now - winMin * 60;
+    var pts = hist.samples.filter(function (s) { return s[0] >= t0; });
+    var snrPts = pts.filter(function (s) { return s[1] != null; }).map(function (s) { return [s[0], s[1]]; });
+    var rssiPts = pts.filter(function (s) { return s[2] != null; }).map(function (s) { return [s[0], s[2]]; });
+    var last = pts.length ? pts[pts.length - 1] : null;
+    var snr = last && last[1] != null ? last[1] : m.snr, rssi = last && last[2] != null ? last[2] : m.rssi;
+    var t = ov.thresholds, cl = snr == null ? (rssi == null ? null : (rssi >= t.strong_rssi ? "strong" : rssi >= t.weak_rssi ? "ok" : "weak")) : clsOf(snr);
+    var st = { avg: avg(snrPts), recent: avg(snrPts.slice(-5)), min: mm(snrPts, Math.min), max: mm(snrPts, Math.max) };
+    var delta = (baseline != null && st.recent != null) ? st.recent - baseline : null;
+    box.className = "";
+    box.innerHTML =
+      '<div class="big"><div><span class="n c-' + (cl || "none") + '">' + (snr == null ? "–" : fmt(snr)) + '</span><span class="u">dB SNR</span></div>' +
+      '<div><span class="r">' + (rssi == null ? "–" : fmt(rssi)) + '</span><span class="u">dBm RSSI</span></div>' +
+      '<span class="badge b-' + (cl || "none") + '">' + (cl || "no sample") + '</span></div>' +
+      '<div class="sub" style="margin:4px 0 6px"><b style="color:var(--text)">' + esc(m.l || m.s) + '</b> <span class="sub">' + esc(m.s) + '</span> · ' + (m.hops == null ? "hops ?" : m.hops + " hop" + (m.hops === 1 ? "" : "s")) + ' · last sample ' + (last ? ago(now - last[0]) + " ago" : "–") + ' · ' + pts.length + ' samples</div>' +
+      '<div class="sub" style="margin-top:8px">SNR (dB)</div>' +
+      chart(snrPts, { t0: t0, t1: now, color: "#2dd4bf", minspan: 10, min: -10, max: 10, baseline: baseline, bands: [[t.strong_snr, 99, "#58e39c"], [t.weak_snr, t.strong_snr, "#fbbf24"], [-99, t.weak_snr, "#ff7a7a"]] }) +
+      '<div class="sub" style="margin-top:6px">RSSI (dBm)</div>' +
+      chart(rssiPts, { t0: t0, t1: now, color: "#a78bfa", minspan: 10, min: -110, max: -50, bands: [] }) +
+      '<div class="kv"><span>min <b>' + fmt(st.min) + '</b></span><span>avg <b>' + fmt(st.avg, 1) + '</b></span><span>max <b>' + fmt(st.max) + '</b></span><span>last 5 avg <b>' + fmt(st.recent, 1) + '</b></span>' +
+      (delta != null ? '<span>vs baseline <b style="color:' + (delta >= 0 ? COL.strong : COL.weak) + '">' + (delta >= 0 ? "+" : "") + delta.toFixed(1) + ' dB</b></span>' : "") + '</div>' +
+      '<div class="chips" style="margin-top:9px"><button class="chip" id="bl">' + (baseline == null ? "Set baseline (last 5 avg)" : "Clear baseline") + '</button></div>' +
+      '<div class="note">A node only adds a point when one of its packets is heard, so a busy node (frequent telemetry / position) makes the best antenna-tuning target.</div>';
+    var b = $("bl"); if (b) b.addEventListener("click", function () { baseline = baseline == null ? st.recent : null; drawTrend(); });
+  }
+  function avg(a) { return a.length ? a.reduce(function (s, p) { return s + p[1]; }, 0) / a.length : null; }
+  function mm(a, f) { return a.length ? f.apply(null, a.map(function (p) { return p[1]; })) : null; }
+
+  function select(id) {
+    if (id === sel) return;
+    sel = id; baseline = null; history.replaceState(null, "", "#" + id);
+    if (!userWin) winMin = 30;
+    hist = { id: id, samples: [], seen: {}, meta: null };
+    drawList(); drawTrend(); loadHistory(true);
+    var el = $("trend"); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    drawRadar(); drawMap();
+  }
+  function addSamples(list) {
+    list.forEach(function (s) { var k = s[0] + ":" + s[1] + ":" + s[2]; if (!hist.seen[k]) { hist.seen[k] = 1; hist.samples.push(s); } });
+    hist.samples.sort(function (a, b) { return a[0] - b[0]; });
+    if (hist.samples.length > 900) hist.samples = hist.samples.slice(-900);
+  }
+  function loadHistory(full) {
+    if (!sel) return;
+    if (!hist.loaded) full = true;      // first fetch for this node: whole window, plus the auto-widen below
+    var id = sel, url = NODEURL + encodeURIComponent(id) + "?minutes=" + winMin;
+    if (!full && hist.samples.length) url += "&after=" + hist.samples[hist.samples.length - 1][0];
+    fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+      if (id !== sel) return;
+      if (full) { hist.samples = []; hist.seen = {}; }
+      hist.loaded = true; hist.meta = j; addSamples(j.samples);
+      // a quiet node has nothing in the default window: widen it (until the user picks one) so the chart is not blank
+      if (full && !j.samples.length && !userWin && winMin < 1440) { winMin = winMin < 180 ? 180 : 1440; drawWins(); loadHistory(true); return; }
+      drawTrend();
+    }).catch(function () {});
+  }
+
+  /* ---------------- map (signal colours) ---------------- */
+  var map = null, layer = null, fitted = false;
+  function initMap() {
+    map = L.map("map", { zoomControl: true, attributionControl: true }).setView([20, 0], 2);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "dark-tiles", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+  }
+  function drawMap() {
+    if (!map) return; layer.clearLayers();
+    var pts = [], my = ov.my || {}, hasBase = typeof my.lat === "number";
+    if (hasBase) { L.circleMarker([my.lat, my.lon], { radius: 10, color: "#fff", weight: 3, fillColor: "#2dd4bf", fillOpacity: 1 }).bindTooltip("BASE " + (my.s || ""), { permanent: true, direction: "right", offset: [8, 0] }).addTo(layer); pts.push([my.lat, my.lon]); }
+    ov.nodes.forEach(function (n) {
+      if (typeof n.lat !== "number") return;
+      var c = col(n.cls), isSel = n.id === sel;
+      if (hasBase) L.polyline([[my.lat, my.lon], [n.lat, n.lon]], { color: c, weight: isSel ? 3 : 1.5, opacity: isSel ? .9 : .45, dashArray: n.snr == null ? "4 4" : null }).addTo(layer);
+      var mk = L.circleMarker([n.lat, n.lon], { radius: isSel ? 11 : 8, color: isSel ? "#fff" : "#000", weight: isSel ? 3 : 1, fillColor: c, fillOpacity: .95 });
+      mk.bindTooltip(esc(n.s) + (n.snr == null ? "" : " " + n.snr + " dB"), { permanent: true, direction: "right", offset: [8, 0], className: "" });
+      mk.on("click", function () { select(n.id); }); mk.addTo(layer); pts.push([n.lat, n.lon]);
+    });
+    if (!fitted && pts.length) { fitted = true; if (pts.length === 1) map.setView(pts[0], 14); else map.fitBounds(L.latLngBounds(pts), { padding: [36, 36], maxZoom: 15 }); }
+  }
+
+  /* ---------------- link radar ---------------- */
+  function drawRadar() {
+    var pn = ov.nodes.filter(function (n) { return n.brg != null; }), box = $("radar");
+    if (!pn.length) { box.innerHTML = '<div class="empty">Needs positions: the base and at least one RF node must have reported a location.</div>'; $("radarnote").textContent = ""; return; }
+    var ds = pn.map(function (n) { return n.km; }).sort(function (a, b) { return a - b; });
+    var want = ds[Math.min(ds.length - 1, Math.ceil(ds.length * 0.85) - 1)] * 1.15, NICE = [0.5, 1, 2, 5, 10, 20, 50, 100, 250], R = NICE[NICE.length - 1];
+    for (var i = 0; i < NICE.length; i++) { if (NICE[i] >= want) { R = NICE[i]; break; } }
+    var S = 300, C = S / 2, rad = C - 26, g = [];
+    [1, 2, 3].forEach(function (k) { g.push('<circle cx="' + C + '" cy="' + C + '" r="' + rad * k / 3 + '" fill="none" stroke="#fff" opacity="' + (k === 3 ? .22 : .1) + '"/>'); });
+    g.push('<line x1="' + C + '" y1="' + (C - rad) + '" x2="' + C + '" y2="' + (C + rad) + '" stroke="#fff" opacity=".08"/><line x1="' + (C - rad) + '" y1="' + C + '" x2="' + (C + rad) + '" y2="' + C + '" stroke="#fff" opacity=".08"/>');
+    [["N", C, 12], ["E", S - 8, C + 4], ["S", C, S - 3], ["W", 8, C + 4]].forEach(function (l) { g.push('<text x="' + l[1] + '" y="' + l[2] + '" text-anchor="middle" style="font-size:11px;fill:#8a97a8">' + l[0] + '</text>'); });
+    [1, 2, 3].forEach(function (k) { var v = R * k / 3; g.push('<text x="' + (C + 3) + '" y="' + (C - rad * k / 3 - 2) + '" style="font-size:9px;fill:#5d6a7b">' + (v < 1 ? v.toFixed(1) : Math.round(v * 10) / 10) + ' km</text>'); });
+    pn.forEach(function (n) {
+      var a = n.brg * Math.PI / 180, d = Math.min(1, n.km / R) * rad, x = C + Math.sin(a) * d, y = C - Math.cos(a) * d, out = n.km > R;
+      g.push('<g class="rd" data-id="' + esc(n.id) + '" style="cursor:pointer"><circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + (n.id === sel ? 9 : 6.5) + '" fill="' + col(n.cls) + '"' + (out ? ' fill-opacity=".45"' : "") + ' stroke="' + (n.id === sel ? "#fff" : "#000") + '" stroke-width="' + (n.id === sel ? 2.5 : 1) + '"/><text x="' + (x + 9).toFixed(1) + '" y="' + (y + 3).toFixed(1) + '" style="font-size:9.5px;fill:#e8eef5">' + esc(n.s) + '</text></g>');
+    });
+    g.push('<circle cx="' + C + '" cy="' + C + '" r="6" fill="#2dd4bf" stroke="#fff" stroke-width="2"/>');
+    box.innerHTML = '<svg class="chart" viewBox="0 0 ' + S + " " + S + '" style="max-width:420px;margin:0 auto">' + g.join("") + '</svg>';
+    Array.prototype.forEach.call(box.querySelectorAll(".rd"), function (el) { el.addEventListener("click", function () { select(el.getAttribute("data-id")); }); });
+    var np = ov.nodes.filter(function (n) { return n.brg == null; }).length;
+    $("radarnote").textContent = "Bearing/distance from the base. Dot colour = signal. Outer ring " + R + " km" + (np ? " · " + np + " RF node" + (np === 1 ? "" : "s") + " without a position not shown" : "") + ".";
+  }
+
+  /* ---------------- load loops ---------------- */
+  function status() {
+    var el = $("live"), age = lastOk ? Math.round((Date.now() - lastOk) / 1000) : null;
+    el.className = "live" + (age == null || age > 30 ? " stale" : "");
+    $("livet").textContent = age == null ? "no data yet" : "live · " + age + " s ago";
+  }
+  function loadOverview() {
+    $("live").classList.add("spin");
+    fetch(OVERVIEW + (ageWin ? "?max_age=" + ageWin : ""), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+      ov = j; lastOk = Date.now();
+      if (!sel || !j.nodes.some(function (n) { return n.id === sel; })) {
+        var byAge = function (a, b) { return (a.age == null ? 1e9 : a.age) - (b.age == null ? 1e9 : b.age); };
+        // default to something worth watching: a node with live samples, else the most recently heard measured link
+        var pick = j.nodes.filter(function (n) { return n.n > 0; }).sort(byAge)[0] || j.nodes.filter(function (n) { return n.snr != null; }).sort(byAge)[0] || j.nodes[0];
+        if (pick && !sel) { sel = pick.id; hist = { id: sel, samples: [], seen: {}, meta: null }; loadHistory(true); }
+      }
+      drawStrip(); drawList(); drawMap(); drawRadar();
+    }).catch(function () {}).then(function () { $("live").classList.remove("spin"); status(); });
+  }
+  function loop(name, fn, ms) {
+    (function tick(first) { if (first === true || !document.hidden) fn(); timers[name] = setTimeout(tick, ms); })(true);
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { loadOverview(); if (sel) loadHistory(false); } });
+
+  drawWins(); drawSorts(); drawAges(); initMap();
+  loop("ov", loadOverview, 5000);
+  loop("hist", function () { if (sel) loadHistory(false); }, 3000);
+  setInterval(status, 1000);
+  setInterval(function () { if (sel && hist.meta) drawTrend(); }, 15000);
+})();
+</script>
+</body>
+</html>

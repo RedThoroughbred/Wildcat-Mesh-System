@@ -217,6 +217,138 @@ def create_blueprint(bridge: Bridge, socketio) -> Blueprint:
         h = _hours(168)
         return jsonify({"hours": h, "my_id": bridge.state.my_id, "messages": Q.bbs_messages(_db(), bridge.state.my_id, h)})
 
+    # ---- compact, read-only views for tiny clients (the Pico panel) -- see compact.py --------
+    @bp.route("/api/nodes/compact")
+    def api_nodes_compact():
+        """~24 most-recently-heard nodes, ASCII, short keys. ?limit=N (max 40), ?transport=rf|all, ?pos=1 (only nodes with a position)."""
+        from flask import request
+        from . import compact as C
+        with bridge.state.lock:
+            roster = {k: dict(v) for k, v in bridge.state.roster.items()}
+            signal = {k: list(v)[-1:] for k, v in bridge.state.signal.items()}
+            my = bridge.state.my_id
+        tr = "rf" if request.args.get("transport") == "rf" else "all"
+        return jsonify(C.compact_nodes(roster, signal, my, time.time(), request.args.get("limit"), tr,
+                                          request.args.get("pos") == "1"))
+
+    @bp.route("/api/messages/recent")
+    def api_messages_recent():
+        """Recent text messages (live ring + DB history), newest first. ?limit=N (max 40), ?maxlen=N."""
+        from flask import request
+        from . import compact as C
+        with bridge.state.lock:
+            packets = list(bridge.state.packets)
+            my = bridge.state.my_id
+        try:
+            db_rows = Q.chat_messages(_db(), my, 168, 100)
+        except Exception:
+            db_rows = []
+        try:
+            maxlen = int(request.args.get("maxlen", C.TEXT_MAX))
+        except ValueError:
+            maxlen = C.TEXT_MAX
+        return jsonify(C.compact_messages(packets, db_rows, my, time.time(), request.args.get("limit"), maxlen))
+
+    @bp.route("/api/channels/compact")
+    def api_channels_compact():
+        from . import compact as C
+        with bridge.state.lock:
+            configured = list(bridge.state.channels)
+        return jsonify(C.compact_channels(configured))
+
+    # ---- signal dashboard: per-node SNR/RSSI + history (read-only; see signal_view.py) -----------
+    @bp.route("/signal")
+    def signal_page():
+        return render_template("v2/signal.html")
+
+    @bp.route("/api/signal")
+    def api_signal():
+        """Every RF-heard node: latest SNR/RSSI, class, trend spark, bearing/km from the base; worst link first, plus a summary. ?max_age=<secs> hides nodes not heard within that window."""
+        from flask import request
+        from . import signal_view as SV
+        try:
+            max_age = max(60.0, min(30 * 86400.0, float(request.args["max_age"]))) if "max_age" in request.args else None
+        except ValueError:
+            max_age = None
+        with bridge.state.lock:
+            roster = {k: dict(v) for k, v in bridge.state.roster.items()}
+            signal = {k: list(v) for k, v in bridge.state.signal.items()}
+            my = bridge.state.my_id
+        return jsonify(SV.signal_overview(roster, signal, my, time.time(), max_age))
+
+    @bp.route("/api/signal/<nid>")
+    def api_signal_node(nid):
+        """One node's SNR/RSSI samples over time. ?minutes=30 (max 1440), ?after=<unix ts> for cheap live polling."""
+        from flask import request
+        from . import signal_view as SV
+        try:
+            minutes = float(request.args.get("minutes", 30))
+        except ValueError:
+            minutes = 30.0
+        try:
+            after = float(request.args["after"]) if "after" in request.args else None
+        except ValueError:
+            after = None
+        with bridge.state.lock:
+            node = bridge.state.roster.get(nid)
+            if node is None:
+                return jsonify({"error": "unknown node"}), 404
+            node = dict(node)
+            ring = list(bridge.state.signal.get(nid, ()))
+        now = time.time()
+        db_rows = SV._db_samples(_db(), nid, int(now - max(1.0, min(1440.0, minutes)) * 60)) if after is None else []
+        return jsonify(SV.signal_history(node, ring, db_rows, now, minutes, after))
+
+    # ---- Pico panel settings (phone-editable; writes are covered by _gate_writes) ---------------
+    _panel_store = []
+
+    def _panel():
+        """The PanelConfigStore, created lazily: panel.json lives next to the loaded config file."""
+        if not _panel_store:
+            from pathlib import Path
+            from .panel_config import PanelConfigStore
+            src = getattr(bridge.cfg, "source", None)
+            base = Path(src).parent if src else Path(str(bridge.cfg.database.path)).parent
+            _panel_store.append(PanelConfigStore(base / "panel.json"))
+        return _panel_store[0]
+
+    def _panel_payload(cfg):
+        cfg = dict(cfg)
+        cfg["now"] = int(time.time())
+        cfg["tz"] = int(time.localtime().tm_gmtoff or 0)
+        return jsonify(cfg)
+
+    @bp.route("/panel")
+    def panel_page():
+        return render_template("v2/panel.html")
+
+    @bp.route("/map")
+    def map_page():
+        return render_template("v2/map.html")
+
+    @bp.route("/api/panel/config")
+    def api_panel_config():
+        return _panel_payload(_panel().get())
+
+    @bp.route("/api/panel/config", methods=["POST"])
+    def api_panel_config_set():
+        from flask import request
+        from .panel_config import PanelConfigError
+        body = request.get_json(silent=True)
+        try:
+            return _panel_payload(_panel().update(body))
+        except PanelConfigError as e:
+            return jsonify({"error": str(e)}), 400
+        except OSError as e:
+            return jsonify({"error": "could not save panel config: %s" % e.__class__.__name__}), 500
+
+    @bp.route("/api/panel/config/reset", methods=["POST"])
+    def api_panel_config_reset():
+        try:
+            return _panel_payload(_panel().reset())
+        except OSError as e:
+            return jsonify({"error": "could not save panel config: %s" % e.__class__.__name__}), 500
+
     @bp.route("/api/chat")
     def api_chat():
         """Conversations: every text in the window (DMs + channel broadcasts), newest first."""
